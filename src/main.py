@@ -80,33 +80,28 @@ def setup_scene(config):
         [15.0, 15.0, shelf_dimensions['height']/2]
     ]
 
-    # Create and add shelves using SceneObject
+        # Create and add shelves using Transmitter objects
     for i, position in enumerate(shelf_positions):
-        # Create transform that combines translation and scaling
-        transform = (
-            mi.ScalarTransform4f.translate(position) @
-            mi.ScalarTransform4f.scale([
-                shelf_dimensions['length'],
-                shelf_dimensions['width'],
-                shelf_dimensions['height']
-            ])
-        )
-        
-        # Create shelf with proper dimensions
-        shelf = SceneObject(
+        # Create a metal box for each shelf using a Transmitter as a placeholder
+        shelf = Transmitter(
             name=f"shelf_{i}",
-            orientation=[0.0, 0.0, 0.0],
-            mi_shape=mi.load_dict({
-                'type': 'cube',
-                'to_world': transform
-            })
+            position=position,
+            orientation=[0.0, 0.0, 0.0]
         )
         
-        # First add shelf to scene
+        # Add the shelf to the scene once
         scene.add(shelf)
         
-        # Then set the radio material
+        # Set the radio material
         shelf.radio_material = "shelf_metal"
+        
+        # Set physical dimensions for the shelf
+        shelf.size = [
+            shelf_dimensions['length'],
+            shelf_dimensions['width'], 
+            shelf_dimensions['height']
+        ]
+
         
         # Add shelf to scene
         scene.add(shelf)
