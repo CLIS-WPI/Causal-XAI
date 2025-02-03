@@ -161,6 +161,72 @@ def analyze_channel_properties(channel_response, config, result_dir):
         print(f"Error in power delay profile calculation: {e}")
     plt.close()
 
+def analyze_ris_effectiveness(channel_response, result_dir):
+    """Analyze RIS effectiveness by comparing channels with/without RIS"""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    h_with_ris = channel_response['h_with_ris']
+    h_without_ris = channel_response['h_without_ris']
+    
+    # Compute RIS gain
+    gain_with_ris = tf.reduce_mean(tf.abs(h_with_ris)**2)
+    gain_without_ris = tf.reduce_mean(tf.abs(h_without_ris)**2)
+    ris_gain = float(gain_with_ris / gain_without_ris)
+    
+    # Plot comparison
+    plt.figure(figsize=(10, 6))
+    plt.subplot(1, 2, 1)
+    plt.imshow(tf.abs(h_with_ris[0]).numpy())
+    plt.title('Channel with RIS')
+    plt.colorbar(label='Magnitude')
+    
+    plt.subplot(1, 2, 2)
+    plt.imshow(tf.abs(h_without_ris[0]).numpy())
+    plt.title('Channel without RIS')
+    plt.colorbar(label='Magnitude')
+    
+    plt.suptitle(f'RIS Gain: {ris_gain:.2f}x')
+    plt.savefig(os.path.join(result_dir, f'ris_effectiveness_{timestamp}.png'))
+    plt.close()
+    
+    return ris_gain
+
+def analyze_blockage_statistics(channel_response, result_dir):
+    """Analyze and visualize blockage statistics"""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    los_conditions = channel_response['los_condition']
+    los_ratio = tf.reduce_mean(tf.cast(los_conditions, tf.float32))
+    
+    # Save statistics
+    stats_file = os.path.join(result_dir, f'blockage_stats_{timestamp}.txt')
+    with open(stats_file, 'w') as f:
+        f.write(f"LOS Ratio: {float(los_ratio):.2%}\n")
+        f.write(f"NLOS Ratio: {float(1 - los_ratio):.2%}\n")
+    
+    return float(los_ratio)
+
+def plot_agv_trajectories(channel_gen, result_dir):
+    """Plot AGV movement trajectories"""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    
+    # Plot trajectories for each AGV
+    for i, positions in enumerate(channel_gen.positions_history):
+        positions = np.array(positions)
+        ax.plot3D(positions[:, 0], positions[:, 1], positions[:, 2], 
+                label=f'AGV {i+1}')
+    
+    ax.set_xlabel('X (m)')
+    ax.set_ylabel('Y (m)')
+    ax.set_zlabel('Z (m)')
+    ax.set_title('AGV Trajectories')
+    ax.legend()
+    
+    plt.savefig(os.path.join(result_dir, f'agv_trajectories_{timestamp}.png'))
+    plt.close()
 
 def main():
     # Set random seed for reproducibility
@@ -200,6 +266,23 @@ def main():
     
     # Analyze channel properties
     analyze_channel_properties(channel_response, config, result_dir)
+    
+    # New analyses
+    try:
+        # Analyze RIS effectiveness
+        ris_gain = analyze_ris_effectiveness(channel_response, result_dir)
+        print(f"RIS Gain: {ris_gain:.2f}x")
+        
+        # Analyze blockage statistics
+        los_ratio = analyze_blockage_statistics(channel_response, result_dir)
+        print(f"LOS Ratio: {los_ratio:.2%}")
+        
+        # Plot AGV trajectories
+        if hasattr(channel_gen, 'positions_history'):
+            plot_agv_trajectories(channel_gen, result_dir)
+            print("AGV trajectories plotted successfully")
+    except Exception as e:
+        print(f"Error in additional analyses: {str(e)}")
     
     # Save channel statistics
     save_channel_stats(channel_response, config, result_dir)
