@@ -21,9 +21,8 @@ def setup_scene(config):
         num_cols=4,
         vertical_spacing=0.5*3e8/28e9,  # Half wavelength at 28 GHz
         horizontal_spacing=0.5*3e8/28e9,
-        pattern="tr38901",
-        polarization="V",  # Changed from "dual" to "V" for vertical polarization
-        # or use "H" for horizontal, "VH" for dual polarization, or "cross" for cross polarization
+        pattern="tr38901",  # This is a valid pattern
+        polarization="VH"   # Using dual polarization for base station
     )
     
     # Configure AGV antenna array (1x1)
@@ -32,8 +31,8 @@ def setup_scene(config):
         num_cols=1,
         vertical_spacing=0.5*3e8/28e9,
         horizontal_spacing=0.5*3e8/28e9,
-        pattern="omni",
-        polarization="V",  # Changed to use valid polarization value
+        pattern="iso",      # Changed from "omni" to "iso" for isotropic pattern
+        polarization="V"    # Using vertical polarization for AGV
     )
     
     # Add base station
