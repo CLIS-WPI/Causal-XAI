@@ -6,6 +6,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 from datetime import datetime
+import traceback  # Add this import
 from mpl_toolkits.mplot3d import Axes3D
 from sionna.rt import load_scene, PlanarArray, Transmitter, Receiver, RIS, SceneObject
 
@@ -21,7 +22,8 @@ def setup_scene(config):
         vertical_spacing=0.5*3e8/28e9,  # Half wavelength at 28 GHz
         horizontal_spacing=0.5*3e8/28e9,
         pattern="tr38901",
-        polarization="dual"
+        polarization="V",  # Changed from "dual" to "V" for vertical polarization
+        # or use "H" for horizontal, "VH" for dual polarization, or "cross" for cross polarization
     )
     
     # Configure AGV antenna array (1x1)
@@ -31,7 +33,7 @@ def setup_scene(config):
         vertical_spacing=0.5*3e8/28e9,
         horizontal_spacing=0.5*3e8/28e9,
         pattern="omni",
-        polarization="single"
+        polarization="V",  # Changed to use valid polarization value
     )
     
     # Add base station
