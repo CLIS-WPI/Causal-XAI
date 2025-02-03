@@ -32,7 +32,7 @@ def setup_scene(config):
         num_cols=1,
         vertical_spacing=0.5*3e8/28e9,
         horizontal_spacing=0.5*3e8/28e9,
-        pattern="iso",      # Changed from "omni" to "iso" for isotropic pattern
+        pattern="iso",      # Using isotropic pattern
         polarization="V"    # Using vertical polarization for AGV
     )
     
@@ -50,7 +50,7 @@ def setup_scene(config):
         position=[10.0, 19.5, 2.5],  # North wall
         orientation=[0.0, 0.0, 0.0],
         num_rows=8,
-        num_cols=8,
+        num_cols=8
     )
     scene.add(ris)
     
@@ -62,15 +62,30 @@ def setup_scene(config):
         [5.0, 15.0, 0.0],
         [15.0, 15.0, 0.0]
     ]
-    
+
+    # First create a metal material for the shelves
+    from sionna.rt import RadioMaterial
+    metal_material = RadioMaterial(
+        name="shelf_metal",
+        relative_permittivity=1.0,
+        conductivity=1e7  # High conductivity for metal
+    )
+    scene.add(metal_material)
+
+    # Create and add shelves
     for i, position in enumerate(shelf_positions):
+        # Create shelf without position first
         shelf = SceneObject(
             name=f"shelf_{i}",
-            position=position,
-            size=[2.0, 1.0, 4.0],  # Length x Width x Height
-            material="metal"
+            orientation=[0.0, 0.0, 0.0]
         )
-        scene.add(shelf)
+        # Set the scene property
+        shelf.scene = scene
+        # Now we can set position and material
+        shelf.position = position
+        shelf.radio_material = "shelf_metal"
+        # Add to scene's objects dictionary
+        scene._scene_objects[shelf.name] = shelf
     
     # Add initial AGV positions
     initial_positions = [
@@ -78,6 +93,7 @@ def setup_scene(config):
         [8.0, 15.0, 0.5]    # AGV2
     ]
     
+    # Add receivers (AGVs)
     for i, pos in enumerate(initial_positions):
         rx = Receiver(
             name=f"agv_{i}",
