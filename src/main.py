@@ -8,6 +8,7 @@ import numpy as np
 from datetime import datetime
 from mpl_toolkits.mplot3d import Axes3D
 from sionna.rt import load_scene, PlanarArray, Transmitter, Receiver
+from sionna.rt import Scene, Transmitter, Receiver, RIS, SceneObject
 
 def setup_scene(config):
     """

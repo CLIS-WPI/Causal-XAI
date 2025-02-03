@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 import sionna
 from sionna.channel import tr38901
-from sionna.rt import Scene, Transmitter, Receiver, RIS, Cuboid
+from sionna.rt import Scene, Transmitter, Receiver, RIS, SceneObject
 from sionna.channel.tr38901 import IndoorFactory, PanelArray
 
 class SmartFactoryChannel:
