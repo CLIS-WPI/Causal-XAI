@@ -55,13 +55,20 @@ def setup_scene(config):
     scene.add(ris)
     
     # First create a metal material for the shelves
-    from sionna.rt import RadioMaterial
+    from sionna.rt import RadioMaterial, Box
     metal_material = RadioMaterial(
         name="shelf_metal",
         relative_permittivity=1.0,
         conductivity=1e7  # High conductivity for metal
     )
     scene.add(metal_material)
+    
+    # Define shelf dimensions
+    shelf_dimensions = {
+        'length': 2.0,  # x-dimension in meters
+        'width': 1.0,   # y-dimension in meters
+        'height': 4.0   # z-dimension in meters
+    }
     
     # Add metallic shelves with fixed positions
     shelf_positions = [
@@ -72,18 +79,27 @@ def setup_scene(config):
         [15.0, 15.0, 0.0]
     ]
 
-    # Create and add shelves
+    # Create and add shelves using Box primitive
     for i, position in enumerate(shelf_positions):
-        shelf = SceneObject(
-            name=f"shelf_{i}-shelf_metal",  # Include material in name
+        # Calculate center position (Box uses center position)
+        center_position = [
+            position[0],
+            position[1],
+            position[2] + shelf_dimensions['height']/2  # Adjust z for center position
+        ]
+        
+        # Create shelf using Box primitive
+        shelf = Box(
+            name=f"shelf_{i}-shelf_metal",  # Include material suffix
+            length=shelf_dimensions['length'],
+            width=shelf_dimensions['width'],
+            height=shelf_dimensions['height'],
+            center=center_position,
             orientation=[0.0, 0.0, 0.0]
         )
-        # Set the scene property first
-        shelf.scene = scene
-        # Now set the position
-        shelf.position = position
-        # Add to scene's objects dictionary
-        scene._scene_objects[shelf.name] = shelf
+        
+        # Add shelf to scene
+        scene.add(shelf)
     
     # Add initial AGV positions
     initial_positions = [
