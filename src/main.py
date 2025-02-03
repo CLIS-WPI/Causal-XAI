@@ -9,6 +9,7 @@ from datetime import datetime
 import traceback  # Add this import
 from mpl_toolkits.mplot3d import Axes3D
 from sionna.rt import load_scene, PlanarArray, Transmitter, Receiver, RIS, SceneObject
+import mitsuba as mi
 
 def setup_scene(config):
     """Set up the smart factory simulation scene"""
@@ -55,7 +56,7 @@ def setup_scene(config):
     scene.add(ris)
     
     # First create a metal material for the shelves
-    from sionna.rt import RadioMaterial, Box
+    from sionna.rt import RadioMaterial
     metal_material = RadioMaterial(
         name="shelf_metal",
         relative_permittivity=1.0,
@@ -67,36 +68,45 @@ def setup_scene(config):
     shelf_dimensions = {
         'length': 2.0,  # x-dimension in meters
         'width': 1.0,   # y-dimension in meters
-        'height': 4.0   # z-dimension in meters
+        'height': 3.0   # z-dimension in meters
     }
     
     # Add metallic shelves with fixed positions
     shelf_positions = [
-        [5.0, 5.0, 0.0],
-        [15.0, 5.0, 0.0],
-        [10.0, 10.0, 0.0],
-        [5.0, 15.0, 0.0],
-        [15.0, 15.0, 0.0]
+        [5.0, 5.0, shelf_dimensions['height']/2],    # Adjust z-position to half height
+        [15.0, 5.0, shelf_dimensions['height']/2],
+        [10.0, 10.0, shelf_dimensions['height']/2],
+        [5.0, 15.0, shelf_dimensions['height']/2],
+        [15.0, 15.0, shelf_dimensions['height']/2]
     ]
 
-    # Create and add shelves using Box primitive
+    # Create and add shelves using SceneObject
     for i, position in enumerate(shelf_positions):
-        # Calculate center position (Box uses center position)
-        center_position = [
-            position[0],
-            position[1],
-            position[2] + shelf_dimensions['height']/2  # Adjust z for center position
-        ]
-        
-        # Create shelf using Box primitive
-        shelf = Box(
-            name=f"shelf_{i}-shelf_metal",  # Include material suffix
-            length=shelf_dimensions['length'],
-            width=shelf_dimensions['width'],
-            height=shelf_dimensions['height'],
-            center=center_position,
-            orientation=[0.0, 0.0, 0.0]
+        # Create transform that combines translation and scaling
+        transform = (
+            mi.ScalarTransform4f.translate(position) @
+            mi.ScalarTransform4f.scale([
+                shelf_dimensions['length'],
+                shelf_dimensions['width'],
+                shelf_dimensions['height']
+            ])
         )
+        
+        # Create shelf with proper dimensions
+        shelf = SceneObject(
+            name=f"shelf_{i}",
+            orientation=[0.0, 0.0, 0.0],
+            mi_shape=mi.load_dict({
+                'type': 'cube',
+                'to_world': transform
+            })
+        )
+        
+        # First add shelf to scene
+        scene.add(shelf)
+        
+        # Then set the radio material
+        shelf.radio_material = "shelf_metal"
         
         # Add shelf to scene
         scene.add(shelf)
