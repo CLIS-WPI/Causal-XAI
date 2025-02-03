@@ -1,15 +1,14 @@
 import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
-from sionna.rt import Scene, PlanarArray, Antenna
+from mpl_toolkits.mplot3d import Axes3D
+from sionna.rt import Scene, PlanarArray, Antenna, RIS
 from sionna.rt.previewer import InteractiveDisplay
 from sionna.rt import load_scene
-# Create an empty scene
 
-scene = load_scene("__empty__")
 class ChannelAnalyzer:
     """
-    A class for analyzing and visualizing wireless channels in Sionna.
+    A class for analyzing and visualizing wireless channels in Smart Factory scenarios.
     """
     def __init__(self, scene, resolution=(1024, 768), fov=45):
         """
@@ -18,7 +17,7 @@ class ChannelAnalyzer:
         Parameters:
         -----------
         scene : sionna.rt.Scene
-            The scene to analyze
+            The smart factory scene to analyze
         resolution : tuple
             Display resolution (width, height)
         fov : float 
@@ -31,13 +30,13 @@ class ChannelAnalyzer:
 
     def visualize_scene(self):
         """
-        Create a static visualization of the scene using matplotlib
+        Create a static visualization of the smart factory scene using matplotlib
         """
         fig = plt.figure(figsize=(12, 8))
         ax = fig.add_subplot(111, projection='3d')
         
-        # Get room dimensions from config
-        room_dims = [20.0, 20.0, 5.0]  # Default dimensions
+        # Get room dimensions
+        room_dims = [20.0, 20.0, 5.0]  # Smart factory dimensions
         
         # Create wireframe for room boundaries
         x = np.array([0, room_dims[0]])
@@ -51,17 +50,37 @@ class ChannelAnalyzer:
                 ax.plot3D([x[i], x[i]], [y[0], y[1]], [z[j], z[j]], 'gray', alpha=0.5)
                 ax.plot3D([x[i], x[i]], [y[j], y[j]], [z[0], z[1]], 'gray', alpha=0.5)
         
-        # Plot transmitters if any exist
+        # Plot transmitters (Base Station)
         if hasattr(self.scene, 'transmitters'):
             for tx_name, tx in self.scene.transmitters.items():
                 pos = tx.position.numpy()
-                ax.scatter(pos[0], pos[1], pos[2], c='red', marker='^', s=100, label=f'TX: {tx_name}')
+                ax.scatter(pos[0], pos[1], pos[2], c='red', marker='^', s=100, 
+                         label=f'BS: {tx_name}')
         
-        # Plot receivers if any exist
+        # Plot receivers (AGVs)
         if hasattr(self.scene, 'receivers'):
             for rx_name, rx in self.scene.receivers.items():
                 pos = rx.position.numpy()
-                ax.scatter(pos[0], pos[1], pos[2], c='blue', marker='o', s=100, label=f'RX: {rx_name}')
+                ax.scatter(pos[0], pos[1], pos[2], c='blue', marker='o', s=100, 
+                         label=f'AGV: {rx_name}')
+        
+        # Plot RIS elements
+        if hasattr(self.scene, 'ris'):
+            for ris_name, ris in self.scene.ris.items():
+                pos = ris.position.numpy()
+                ax.scatter(pos[0], pos[1], pos[2], c='green', marker='s', s=100, 
+                         label=f'RIS: {ris_name}')
+                
+                # Plot RIS panel outline
+                self._plot_ris_panel(ax, ris)
+        
+        # Plot shelves
+        if hasattr(self.scene, 'objects'):
+            for obj_name, obj in self.scene.objects.items():
+                if 'shelf' in obj_name:
+                    pos = obj.position.numpy()
+                    size = obj.size.numpy()
+                    self._plot_shelf(ax, pos, size)
         
         # Set labels and title
         ax.set_xlabel('X (m)')
@@ -80,118 +99,89 @@ class ChannelAnalyzer:
         ax.set_zlim([0, room_dims[2]])
         
         # Set equal aspect ratio
-        ax.set_box_aspect([1, 1, 0.5])  # Adjust the last number to change vertical stretch
+        ax.set_box_aspect([1, 1, 0.5])
         
         return fig
 
-    def plot_channel_matrix(self, channel_matrix):
-        """
-        Visualize the channel matrix magnitude.
+    def _plot_ris_panel(self, ax, ris):
+        """Plot RIS panel outline"""
+        pos = ris.position.numpy()
+        num_rows = ris.num_rows
+        num_cols = ris.num_cols
+        spacing = ris.element_spacing.numpy()
         
-        Parameters:
-        -----------
-        channel_matrix : tf.Tensor
-            Complex channel matrix
-        """
-        # Convert to magnitude in dB
-        magnitude_db = 20 * np.log10(np.abs(channel_matrix))
+        width = num_cols * spacing
+        height = num_rows * spacing
         
-        plt.figure(figsize=(10, 8))
-        plt.imshow(magnitude_db, aspect='auto', cmap='viridis')
-        plt.colorbar(label='Magnitude (dB)')
-        plt.title('Channel Matrix Magnitude')
-        plt.xlabel('Receive Antenna')
-        plt.ylabel('Transmit Antenna')
-        plt.show()
+        # Plot RIS panel outline
+        x = [pos[0] - width/2, pos[0] + width/2, pos[0] + width/2, pos[0] - width/2, pos[0] - width/2]
+        y = [pos[1], pos[1], pos[1], pos[1], pos[1]]
+        z = [pos[2] - height/2, pos[2] - height/2, pos[2] + height/2, pos[2] + height/2, pos[2] - height/2]
+        
+        ax.plot3D(x, y, z, 'g--', alpha=0.5)
 
-    def plot_path_gains(self, paths):
-        """
-        Visualize path gains distribution.
+    def _plot_shelf(self, ax, pos, size):
+        """Plot shelf as a wireframe box"""
+        x = pos[0]
+        y = pos[1]
+        z = pos[2]
+        dx, dy, dz = size
         
-        Parameters:
-        -----------
-        paths : sionna.rt.Paths
-            Paths object containing path information
-        """
-        gains_db = 10 * np.log10(np.abs(paths.a))
+        # Define vertices
+        vertices = np.array([
+            [x, y, z], [x+dx, y, z], [x+dx, y+dy, z], [x, y+dy, z],
+            [x, y, z+dz], [x+dx, y, z+dz], [x+dx, y+dy, z+dz], [x, y+dy, z+dz]
+        ])
         
-        plt.figure(figsize=(10, 6))
-        plt.hist(gains_db.flatten(), bins=50)
-        plt.title('Path Gains Distribution')
-        plt.xlabel('Path Gain (dB)')
-        plt.ylabel('Count')
-        plt.grid(True)
-        plt.show()
+        # Define edges
+        edges = [
+            [0,1], [1,2], [2,3], [3,0],
+            [4,5], [5,6], [6,7], [7,4],
+            [0,4], [1,5], [2,6], [3,7]
+        ]
+        
+        # Plot edges
+        for edge in edges:
+            ax.plot3D(
+                vertices[edge, 0],
+                vertices[edge, 1],
+                vertices[edge, 2],
+                'brown',
+                alpha=0.5
+            )
 
-    def plot_delay_spread(self, paths):
+    def analyze_channel_with_ris(self, channel_response):
         """
-        Visualize delay spread of paths.
+        Analyze channel characteristics with RIS effects.
         
         Parameters:
         -----------
-        paths : sionna.rt.Paths
-            Paths object containing path information
+        channel_response : dict
+            Dictionary containing channel responses with and without RIS
         """
-        delays = paths.tau
+        h_with_ris = channel_response['h_with_ris']
+        h_without_ris = channel_response['h_without_ris']
         
-        plt.figure(figsize=(10, 6))
-        plt.hist(delays.flatten(), bins=50)
-        plt.title('Path Delay Distribution')
-        plt.xlabel('Delay (s)')
-        plt.ylabel('Count')
-        plt.grid(True)
-        plt.show()
+        # Calculate RIS gain
+        ris_gain = tf.reduce_mean(tf.abs(h_with_ris)**2) / tf.reduce_mean(tf.abs(h_without_ris)**2)
+        
+        plt.figure(figsize=(12, 6))
+        
+        # Plot channel magnitude with RIS
+        plt.subplot(121)
+        plt.imshow(tf.abs(h_with_ris[0]).numpy(), aspect='auto')
+        plt.colorbar(label='Magnitude')
+        plt.title('Channel with RIS')
+        
+        # Plot channel magnitude without RIS
+        plt.subplot(122)
+        plt.imshow(tf.abs(h_without_ris[0]).numpy(), aspect='auto')
+        plt.colorbar(label='Magnitude')
+        plt.title('Channel without RIS')
+        
+        plt.suptitle(f'RIS Gain: {float(ris_gain):.2f}x')
+        plt.tight_layout()
+        
+        return ris_gain
 
-    def analyze_channel(self, paths):
-        """
-        Perform comprehensive channel analysis.
-        
-        Parameters:
-        -----------
-        paths : sionna.rt.Paths
-            Paths object to analyze
-        """
-        print("Channel Analysis Summary:")
-        print("-----------------------")
-        
-        # Number of paths
-        print(f"Total number of paths: {paths.n_paths}")
-        
-        # Path types statistics
-        if hasattr(paths, 'types'):
-            unique_types, counts = np.unique(paths.types, return_counts=True)
-            print("\nPath Types Distribution:")
-            for t, c in zip(unique_types, counts):
-                print(f"{t}: {c}")
-        
-        # Average path gain
-        avg_gain_db = 10 * np.log10(np.mean(np.abs(paths.a)))
-        print(f"\nAverage path gain: {avg_gain_db:.2f} dB")
-        
-        # Delay spread
-        delay_spread = np.std(paths.tau)
-        print(f"RMS delay spread: {delay_spread*1e9:.2f} ns")
-        
-        # Visualizations
-        self.plot_path_gains(paths)
-        self.plot_delay_spread(paths)
-
-    def plot_coverage_map(self, coverage_map, tx_index=0):
-        """
-        Visualize coverage map for a specific transmitter.
-        
-        Parameters:
-        -----------
-        coverage_map : sionna.rt.CoverageMap
-            Coverage map to visualize
-        tx_index : int
-            Index of transmitter to show coverage for
-        """
-        if self._preview is None:
-            self.visualize_scene()
-            
-        self._preview.plot_coverage_map(
-            coverage_map,
-            tx=tx_index,
-            db_scale=True
-        )
+    # ... (keep other existing methods) ...
