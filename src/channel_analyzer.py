@@ -184,4 +184,114 @@ class ChannelAnalyzer:
         
         return ris_gain
 
-    # ... (keep other existing methods) ...
+    def plot_channel_matrix(self, channel_matrix):
+        """
+        Visualize the channel matrix magnitude.
+        
+        Parameters:
+        -----------
+        channel_matrix : tf.Tensor
+            Complex channel matrix
+        """
+        # Convert to magnitude in dB
+        magnitude_db = 20 * np.log10(np.abs(channel_matrix))
+        
+        plt.figure(figsize=(10, 8))
+        plt.imshow(magnitude_db, aspect='auto', cmap='viridis')
+        plt.colorbar(label='Magnitude (dB)')
+        plt.title('Channel Matrix Magnitude')
+        plt.xlabel('Receive Antenna')
+        plt.ylabel('Transmit Antenna')
+        plt.show()
+
+    def plot_path_gains(self, paths):
+        """
+        Visualize path gains distribution.
+        
+        Parameters:
+        -----------
+        paths : sionna.rt.Paths
+            Paths object containing path information
+        """
+        gains_db = 10 * np.log10(np.abs(paths.a))
+        
+        plt.figure(figsize=(10, 6))
+        plt.hist(gains_db.flatten(), bins=50)
+        plt.title('Path Gains Distribution')
+        plt.xlabel('Path Gain (dB)')
+        plt.ylabel('Count')
+        plt.grid(True)
+        plt.show()
+
+    def plot_delay_spread(self, paths):
+        """
+        Visualize delay spread of paths.
+        
+        Parameters:
+        -----------
+        paths : sionna.rt.Paths
+            Paths object containing path information
+        """
+        delays = paths.tau
+        
+        plt.figure(figsize=(10, 6))
+        plt.hist(delays.flatten(), bins=50)
+        plt.title('Path Delay Distribution')
+        plt.xlabel('Delay (s)')
+        plt.ylabel('Count')
+        plt.grid(True)
+        plt.show()
+
+    def analyze_channel(self, paths):
+        """
+        Perform comprehensive channel analysis.
+        
+        Parameters:
+        -----------
+        paths : sionna.rt.Paths
+            Paths object to analyze
+        """
+        print("Channel Analysis Summary:")
+        print("-----------------------")
+        
+        # Number of paths
+        print(f"Total number of paths: {paths.n_paths}")
+        
+        # Path types statistics
+        if hasattr(paths, 'types'):
+            unique_types, counts = np.unique(paths.types, return_counts=True)
+            print("\nPath Types Distribution:")
+            for t, c in zip(unique_types, counts):
+                print(f"{t}: {c}")
+        
+        # Average path gain
+        avg_gain_db = 10 * np.log10(np.mean(np.abs(paths.a)))
+        print(f"\nAverage path gain: {avg_gain_db:.2f} dB")
+        
+        # Delay spread
+        delay_spread = np.std(paths.tau)
+        print(f"RMS delay spread: {delay_spread*1e9:.2f} ns")
+        
+        # Visualizations
+        self.plot_path_gains(paths)
+        self.plot_delay_spread(paths)
+
+    def plot_coverage_map(self, coverage_map, tx_index=0):
+        """
+        Visualize coverage map for a specific transmitter.
+        
+        Parameters:
+        -----------
+        coverage_map : sionna.rt.CoverageMap
+            Coverage map to visualize
+        tx_index : int
+            Index of transmitter to show coverage for
+        """
+        if self._preview is None:
+            self.visualize_scene()
+            
+        self._preview.plot_coverage_map(
+            coverage_map,
+            tx=tx_index,
+            db_scale=True
+        )
