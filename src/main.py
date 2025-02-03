@@ -7,8 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from datetime import datetime
 from mpl_toolkits.mplot3d import Axes3D
-from sionna.rt import load_scene, PlanarArray, Transmitter, Receiver
-from sionna.rt import Scene, Transmitter, Receiver, RIS, SceneObject
+from sionna.rt import load_scene, PlanarArray, Transmitter, Receiver, RIS, SceneObject
 
 def setup_scene(config):
     """Set up the smart factory simulation scene"""
@@ -54,15 +53,16 @@ def setup_scene(config):
     )
     scene.add(ris)
     
-    # Add metallic shelves
-    for i in range(5):
-        position = tf.random.uniform(
-            shape=[3],
-            minval=[5.0, 5.0, 0.0],
-            maxval=[15.0, 15.0, 0.0]
-        )
-        position = tf.concat([position[:2], tf.constant([2.0])], axis=0)  # Fixed height
-        
+    # Add metallic shelves with fixed positions
+    shelf_positions = [
+        [5.0, 5.0, 0.0],
+        [15.0, 5.0, 0.0],
+        [10.0, 10.0, 0.0],
+        [5.0, 15.0, 0.0],
+        [15.0, 15.0, 0.0]
+    ]
+    
+    for i, position in enumerate(shelf_positions):
         shelf = SceneObject(
             name=f"shelf_{i}",
             position=position,
@@ -126,73 +126,111 @@ def save_channel_stats(channel_response, config, result_dir):
         f.write(f"Analysis timestamp: {datetime.now()}\n")
 
 def analyze_channel_properties(channel_response, config, result_dir):
-    """Analyze and plot channel properties"""
+    """Analyze and plot channel properties for smart factory scenario"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
-    # Plot channel magnitude
-    plt.figure(figsize=(10, 6))
-    h = channel_response['h']
-    print(f"Channel response shape: {h.shape}")  # Debug print
-    
-    # Properly reshape the channel response for visualization
-    h_mag = tf.abs(h)
-    # Reduce across all dimensions except the first and last
     try:
-        h_2d = tf.reduce_mean(h_mag, axis=list(range(1, len(h.shape)-1)))
-        h_2d = h_2d.numpy()
+        # 1. Channel Magnitude Analysis
+        plt.figure(figsize=(12, 8))
+        h = channel_response['h']
+        print(f"Channel response shape: {h.shape}")
+        
+        # Properly reshape and normalize the channel response
+        h_mag = tf.abs(h)
+        h_mag_normalized = h_mag / tf.reduce_max(h_mag)  # Normalize for better visualization
+        
+        try:
+            # Reduce dimensions while preserving time and spatial information
+            h_2d = tf.reduce_mean(h_mag_normalized, axis=[1, 2])  # Average over antennas
+            h_2d = h_2d.numpy()
+        except Exception as e:
+            print(f"Error in channel magnitude calculation: {e}")
+            h_2d = tf.reduce_mean(h_mag_normalized, axis=-1).numpy()
+        
+        plt.subplot(2, 2, 1)
+        im = plt.imshow(h_2d, aspect='auto', cmap='viridis')
+        plt.colorbar(im, label='Normalized Magnitude')
+        plt.title(f'Channel Magnitude\n({config.scenario} scenario)')
+        plt.xlabel('Time Steps')
+        plt.ylabel('AGV Index')
+        
+        # 2. Path Delay Analysis
+        plt.subplot(2, 2, 2)
+        delays_ns = channel_response['tau'].numpy().flatten() * 1e9  # Convert to ns
+        valid_delays = delays_ns[~np.isnan(delays_ns)]
+        if len(valid_delays) > 0:
+            plt.hist(valid_delays, bins=min(50, len(valid_delays)), 
+                    density=True, color='blue', alpha=0.7)
+            plt.axvline(np.mean(valid_delays), color='red', linestyle='--', 
+                    label=f'Mean: {np.mean(valid_delays):.2f} ns')
+            plt.title('Path Delay Distribution')
+            plt.xlabel('Delay (ns)')
+            plt.ylabel('Density')
+            plt.legend()
+        
+        # 3. LoS/NLoS Analysis
+        plt.subplot(2, 2, 3)
+        los_data = channel_response['los_condition'].numpy().flatten()
+        los_data = los_data.astype(np.int32)
+        
+        # Calculate percentages
+        los_percent = np.mean(los_data) * 100
+        nlos_percent = (1 - np.mean(los_data)) * 100
+        
+        plt.bar(['NLoS', 'LoS'], [nlos_percent, los_percent], 
+                color=['red', 'green'], alpha=0.7)
+        plt.title('LoS/NLoS Distribution')
+        plt.ylabel('Percentage (%)')
+        for i, v in enumerate([nlos_percent, los_percent]):
+            plt.text(i, v + 1, f'{v:.1f}%', ha='center')
+        
+        # 4. Power Delay Profile
+        plt.subplot(2, 2, 4)
+        try:
+            # Calculate power delay profile
+            h_power = tf.reduce_mean(tf.abs(h)**2, axis=[0,1,2])  # Average over batch and antennas
+            h_power = h_power.numpy()
+            h_power_db = 10 * np.log10(np.maximum(h_power, 1e-10))
+            
+            # Plot with enhanced visualization
+            plt.plot(range(len(h_power)), h_power_db, 'b-', linewidth=2)
+            plt.fill_between(range(len(h_power)), h_power_db, 
+                        min(h_power_db), alpha=0.3, color='blue')
+            plt.title('Power Delay Profile')
+            plt.xlabel('Path Index')
+            plt.ylabel('Average Power (dB)')
+            plt.grid(True, alpha=0.3)
+            
+            # Add RMS delay spread
+            rms_delay = np.sqrt(np.average((range(len(h_power)))**2, weights=h_power))
+            plt.axvline(rms_delay, color='red', linestyle='--', 
+                    label=f'RMS Delay: {rms_delay:.2f}')
+            plt.legend()
+            
+        except Exception as e:
+            print(f"Error in power delay profile calculation: {e}")
+        
+        # Adjust layout and save
+        plt.tight_layout()
+        plt.savefig(os.path.join(result_dir, f'channel_analysis_{timestamp}.png'), 
+                dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        # 5. Save numerical results
+        results_file = os.path.join(result_dir, f'channel_analysis_{timestamp}.txt')
+        with open(results_file, 'w') as f:
+            f.write("Smart Factory Channel Analysis Results\n")
+            f.write("=====================================\n")
+            f.write(f"Average Channel Magnitude: {tf.reduce_mean(h_mag).numpy():.4f}\n")
+            f.write(f"Channel Magnitude Std Dev: {tf.math.reduce_std(h_mag).numpy():.4f}\n")
+            f.write(f"Mean Path Delay: {np.mean(valid_delays):.2f} ns\n")
+            f.write(f"RMS Delay Spread: {rms_delay:.2f}\n")
+            f.write(f"LoS Probability: {los_percent:.1f}%\n")
+            f.write(f"NLoS Probability: {nlos_percent:.1f}%\n")
+            
     except Exception as e:
-        print(f"Error in channel magnitude calculation: {e}")
-        h_2d = tf.reduce_mean(h_mag, axis=-1).numpy()  # Fallback to simpler reduction
-    
-    plt.imshow(h_2d, aspect='auto')
-    plt.colorbar(label='Average Magnitude')
-    plt.title(f'Channel Magnitude ({config.scenario} scenario)')
-    plt.xlabel('Time Steps')
-    plt.ylabel('Batch')
-    plt.savefig(os.path.join(result_dir, f'channel_magnitude_{timestamp}.png'))
-    plt.close()
-    
-    # Plot delay distribution
-    plt.figure(figsize=(10, 6))
-    delays_ns = channel_response['tau'].numpy().flatten() * 1e9  # Convert to ns
-    valid_delays = delays_ns[~np.isnan(delays_ns)]
-    if len(valid_delays) > 0:
-        plt.hist(valid_delays, bins=min(50, len(valid_delays)), density=True)
-        plt.title('Path Delay Distribution')
-        plt.xlabel('Delay (ns)')
-        plt.ylabel('Density')
-        plt.savefig(os.path.join(result_dir, f'delay_distribution_{timestamp}.png'))
-    plt.close()
-    
-    # Plot LoS condition distribution
-    plt.figure(figsize=(10, 6))
-    los_data = channel_response['los_condition'].numpy().flatten()
-    # Explicitly convert boolean data to integers before plotting
-    los_data = los_data.astype(np.int32)
-    plt.hist(los_data, bins=[-0.5, 0.5, 1.5], rwidth=0.8)  # Use explicit bin edges
-    plt.xticks([0, 1], ['NLoS', 'LoS'])
-    plt.title('LoS/NLoS Distribution')
-    plt.xlabel('Channel State')
-    plt.ylabel('Count')
-    plt.savefig(os.path.join(result_dir, f'los_distribution_{timestamp}.png'))
-    plt.close()
-    
-    # Power delay profile
-    plt.figure(figsize=(10, 6))
-    try:
-        # Average power over all dimensions except paths
-        h_power = tf.reduce_mean(tf.abs(h)**2, axis=[0,1,2,3,4])  
-        h_power = h_power.numpy()
-        h_power_db = 10 * np.log10(np.maximum(h_power, 1e-10))  # Use maximum for numerical stability
-        plt.plot(range(len(h_power)), h_power_db)
-        plt.title('Power Delay Profile')
-        plt.xlabel('Path Index')
-        plt.ylabel('Average Power (dB)')
-        plt.grid(True)
-        plt.savefig(os.path.join(result_dir, f'power_delay_profile_{timestamp}.png'))
-    except Exception as e:
-        print(f"Error in power delay profile calculation: {e}")
-    plt.close()
+        print(f"Error in channel analysis: {str(e)}")
+        traceback.print_exc()
 
 def analyze_ris_effectiveness(channel_response, result_dir):
     """Analyze RIS effectiveness by comparing channels with/without RIS"""
