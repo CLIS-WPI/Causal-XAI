@@ -11,45 +11,77 @@ from sionna.rt import load_scene, PlanarArray, Transmitter, Receiver
 from sionna.rt import Scene, Transmitter, Receiver, RIS, SceneObject
 
 def setup_scene(config):
-    """
-    Set up the simulation scene based on configuration
-    """
+    """Set up the smart factory simulation scene"""
     # Create empty scene
     scene = load_scene("__empty__")
     
-    # Configure antenna arrays
+    # Configure BS antenna array (16x4 UPA at 28 GHz)
     scene.tx_array = PlanarArray(
-        num_rows=config.bs_array[0],
-        num_cols=config.bs_array[1],
-        vertical_spacing=0.7,
-        horizontal_spacing=0.5,
+        num_rows=16,
+        num_cols=4,
+        vertical_spacing=0.5*3e8/28e9,  # Half wavelength at 28 GHz
+        horizontal_spacing=0.5*3e8/28e9,
         pattern="tr38901",
-        polarization="VH"
+        polarization="dual"
     )
     
+    # Configure AGV antenna array (1x1)
     scene.rx_array = PlanarArray(
         num_rows=1,
         num_cols=1,
-        vertical_spacing=0.5,
-        horizontal_spacing=0.5,
-        pattern="dipole",
-        polarization="cross"
+        vertical_spacing=0.5*3e8/28e9,
+        horizontal_spacing=0.5*3e8/28e9,
+        pattern="omni",
+        polarization="single"
     )
     
-    # Add transmitter (base station)
+    # Add base station
     tx = Transmitter(
         name="bs",
-        position=config.bs_position,
-        orientation=config.bs_orientation
+        position=[10.0, 0.5, 4.5],  # Ceiling mounted
+        orientation=[0.0, 0.0, 0.0]
     )
     scene.add(tx)
     
-    # Add receivers (AGVs)
-    for i in range(config.num_agvs):
+    # Add RIS
+    ris = RIS(
+        name="ris",
+        position=[10.0, 19.5, 2.5],  # North wall
+        orientation=[0.0, 0.0, 0.0],
+        num_rows=8,
+        num_cols=8,
+        element_spacing=0.5*3e8/28e9  # Half wavelength at 28 GHz
+    )
+    scene.add(ris)
+    
+    # Add metallic shelves
+    for i in range(5):
+        position = tf.random.uniform(
+            shape=[3],
+            minval=[5.0, 5.0, 0.0],
+            maxval=[15.0, 15.0, 0.0]
+        )
+        position = tf.concat([position[:2], tf.constant([2.0])], axis=0)  # Fixed height
+        
+        shelf = SceneObject(
+            name=f"shelf_{i}",
+            position=position,
+            size=[2.0, 1.0, 4.0],  # Length x Width x Height
+            material="metal"
+        )
+        scene.add(shelf)
+    
+    # Add initial AGV positions
+    initial_positions = [
+        [12.0, 5.0, 0.5],   # AGV1
+        [8.0, 15.0, 0.5]    # AGV2
+    ]
+    
+    for i, pos in enumerate(initial_positions):
         rx = Receiver(
             name=f"agv_{i}",
-            position=[10.0 + i*2, 10.0, config.agv_height],  # Example positions
-            orientation=[0, 0, 0]
+            position=pos,
+            orientation=[0.0, 0.0, 0.0]
         )
         scene.add(rx)
     
@@ -242,51 +274,59 @@ def main():
     # Create channel generator with scene
     channel_gen = SmartFactoryChannel(config, scene_provided=True)
     
-    # Set up the scene in channel generator if it has a setup method
-    if hasattr(channel_gen, 'setup_scene'):
-        channel_gen.setup_scene(scene)
-    
-    # Generate channel
-    channel_response = channel_gen.generate_channel()
+    # Generate channel for multiple time steps
+    channel_responses = []
+    for t in range(config.num_time_steps):
+        # Update AGV positions if needed
+        if hasattr(channel_gen, 'update_agv_positions'):
+            channel_gen.update_agv_positions(t)
+        
+        # Generate channel response
+        channel_response = channel_gen.generate_channel()
+        channel_responses.append(channel_response)
     
     # Ensure result directory exists
     result_dir = ensure_result_dir()
     
-    # Analyze scene if available
-    if hasattr(channel_gen, 'scene'):
-        analyzer = ChannelAnalyzer(channel_gen.scene)
-        try:
-            fig = analyzer.visualize_scene()
-            scene_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            fig_path = os.path.join(result_dir, f'scene_3d_{scene_timestamp}.png')
-            fig.savefig(fig_path, dpi=300, bbox_inches='tight')
-            plt.close(fig)
-            print(f"Scene visualization saved to: {fig_path}")
-        except Exception as e:
-            print(f"Error visualizing scene: {str(e)}")
+    # Analyze scene
+    analyzer = ChannelAnalyzer(scene)
     
-    # Analyze channel properties
-    analyze_channel_properties(channel_response, config, result_dir)
-    
-    # New analyses
+    # Visualize scene
     try:
-        # Analyze RIS effectiveness
-        ris_gain = analyze_ris_effectiveness(channel_response, result_dir)
-        print(f"RIS Gain: {ris_gain:.2f}x")
+        fig = analyzer.visualize_scene()
+        scene_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        fig_path = os.path.join(result_dir, f'factory_scene_3d_{scene_timestamp}.png')
+        fig.savefig(fig_path, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        print(f"Scene visualization saved to: {fig_path}")
         
-        # Analyze blockage statistics
-        los_ratio = analyze_blockage_statistics(channel_response, result_dir)
-        print(f"LOS Ratio: {los_ratio:.2%}")
+        # Analyze channel properties for each time step
+        for t, channel_response in enumerate(channel_responses):
+            print(f"\nAnalyzing time step {t+1}/{len(channel_responses)}")
+            
+            # Basic channel analysis
+            analyze_channel_properties(channel_response, config, result_dir)
+            
+            # RIS effectiveness analysis
+            if 'h_with_ris' in channel_response and 'h_without_ris' in channel_response:
+                ris_gain = analyze_ris_effectiveness(channel_response, result_dir)
+                print(f"Time step {t+1}: RIS Gain = {ris_gain:.2f}x")
+            
+            # Blockage analysis
+            if 'los_condition' in channel_response:
+                los_ratio = analyze_blockage_statistics(channel_response, result_dir)
+                print(f"Time step {t+1}: LOS Ratio = {los_ratio:.2%}")
         
         # Plot AGV trajectories
         if hasattr(channel_gen, 'positions_history'):
             plot_agv_trajectories(channel_gen, result_dir)
             print("AGV trajectories plotted successfully")
+        
+        # Save final channel statistics
+        save_channel_stats(channel_responses[-1], config, result_dir)
+        
     except Exception as e:
-        print(f"Error in additional analyses: {str(e)}")
-    
-    # Save channel statistics
-    save_channel_stats(channel_response, config, result_dir)
+        print(f"Error in analysis pipeline: {str(e)}")
     
     print(f"Analysis complete. Results saved in {result_dir}")
 
