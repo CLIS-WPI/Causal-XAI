@@ -14,6 +14,7 @@ def setup_scene(config):
     """Set up the smart factory simulation scene"""
     # Create empty scene
     scene = load_scene("__empty__")
+    scene.frequency = 28e9  # Set to 28 GHz
     
     # Configure BS antenna array (16x4 UPA at 28 GHz)
     scene.tx_array = PlanarArray(
@@ -50,7 +51,6 @@ def setup_scene(config):
         orientation=[0.0, 0.0, 0.0],
         num_rows=8,
         num_cols=8,
-        element_spacing=0.5*3e8/28e9  # Half wavelength at 28 GHz
     )
     scene.add(ris)
     
