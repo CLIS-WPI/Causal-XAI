@@ -25,7 +25,7 @@ class SmartFactoryChannel:
             num_cols_per_panel=4,
             polarization='dual',
             polarization_type='cross',
-            antenna_pattern='tr38901',
+            antenna_pattern='38.901',  # Changed from 'tr38901' to '38.901'
             carrier_frequency=28e9
         )
         
@@ -41,6 +41,8 @@ class SmartFactoryChannel:
         
         # Initialize UMi channel model (as alternative to IndoorFactory)
         self.channel_model = UMi(
+            carrier_frequency=28e9,  # Using the same 28 GHz frequency as defined elsewhere
+            o2i_model="low",        # Using low-loss model for indoor-outdoor penetration
             ut_array=self.agv_array,
             bs_array=self.bs_array,
             direction='downlink',
