@@ -4,6 +4,7 @@ import sionna
 from sionna.channel import tr38901
 from sionna.rt import Scene, Transmitter, Receiver, RIS, SceneObject
 from sionna.channel.tr38901 import PanelArray, UMi  # Using UMi as alternative to IndoorFactory
+from .main import setup_scene
 
 class SmartFactoryChannel:
     """Smart Factory Channel Generator using Sionna"""
@@ -18,7 +19,11 @@ class SmartFactoryChannel:
         if not scene_provided:
             self.scene = Scene()
             self._setup_scene()
-        
+        else:
+            # When scene is provided, we need to get it from somewhere
+            # Add this line to store the scene that was set up in main.py
+            self.scene = setup_scene(config)  # Get the scene from setup_scene function
+            
         # Initialize BS antenna array (16x4 UPA at 28 GHz)
         self.bs_array = PanelArray(
             num_rows_per_panel=16,

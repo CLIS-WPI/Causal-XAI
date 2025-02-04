@@ -346,7 +346,8 @@ def main():
     scene = setup_scene(config)
     
     # Create channel generator with scene
-    channel_gen = SmartFactoryChannel(config, scene_provided=True)
+    channel_gen = SmartFactoryChannel(config, scene=scene)
+    channel_gen.scene = scene  # Explicitly set the scene
     
     # Generate channel for multiple time steps
     channel_responses = []
