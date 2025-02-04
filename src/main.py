@@ -58,42 +58,60 @@ def analyze_channel_properties(channel_response, config, result_dir):
         # 1. Channel Magnitude Analysis
         plt.figure(figsize=(12, 8))
         h = channel_response['h']
-        print(f"Channel response shape: {h.shape}")
+        print(f"Initial channel response shape: {h.shape}")
         
         # Properly reshape and normalize the channel response
-        h_mag = tf.abs(h)  # Get magnitude of complex channel response
-        h_mag_normalized = h_mag / tf.reduce_max(h_mag)  # Normalize by maximum value
+        h_mag = tf.abs(h)
+        print(f"Channel magnitude shape: {h_mag.shape}")
+        h_mag_normalized = h_mag / tf.reduce_max(h_mag)
+        print(f"Normalized magnitude shape: {h_mag_normalized.shape}")
         
         try:
-            # For shape (1, 2, 1, 1, 128, 23, 10)
-            # First reduce over batch, extra dims, and last dim
-            h_2d = tf.reduce_mean(h_mag_normalized, axis=[0, 2, 3, -1])  # Shape becomes (2, 128, 23)
+            print("Starting dimension reduction...")
+            # Remove batch dimension first
+            h_reduced = tf.squeeze(h_mag_normalized, axis=0)
+            print(f"After removing batch dimension: {h_reduced.shape}")
             
-            # Reshape to 2D by combining first two dimensions 
-            h_2d = tf.reshape(h_2d, [2 * 128, 23])  # Shape becomes (256, 23)
+            # Remove singleton dimensions
+            h_reduced = tf.squeeze(h_reduced, axis=[1, 2])
+            print(f"After removing singleton dimensions: {h_reduced.shape}")
+            
+            # Average over the last dimension (paths)
+            h_2d = tf.reduce_mean(h_reduced, axis=-1)
+            print(f"After averaging over paths: {h_2d.shape}")
+            
+            # Reshape to combine first two dimensions if needed
+            if len(h_2d.shape) > 2:
+                first_dim = tf.reduce_prod(h_2d.shape[:-1])
+                h_2d = tf.reshape(h_2d, [first_dim, h_2d.shape[-1]])
+                print(f"After final reshape: {h_2d.shape}")
+            
             h_2d = h_2d.numpy()
+            print(f"Final numpy array shape: {h_2d.shape}")
             
         except Exception as e:
-            print(f"Error in channel magnitude calculation: {e}")
-            # Fallback reshape if needed
-            h_2d = tf.reduce_mean(h_mag_normalized, axis=[0, 2, 3, -1]).numpy()
-            h_2d = np.reshape(h_2d, [-1, h_2d.shape[-1]])
+            print(f"Error during dimension reduction: {e}")
+            print("Attempting fallback method...")
+            try:
+                # Fallback method
+                h_2d = tf.reduce_mean(h_mag_normalized, axis=[0, 2, 3, -1]).numpy()
+                print(f"Fallback shape before reshape: {h_2d.shape}")
+                h_2d = np.reshape(h_2d, [-1, h_2d.shape[-1]])
+                print(f"Fallback final shape: {h_2d.shape}")
+            except Exception as e:
+                print(f"Fallback method failed: {e}")
+                raise
 
+        print("Starting plotting...")
         plt.subplot(2, 2, 1)
+        print(f"Shape being passed to imshow: {h_2d.shape}")
         im = plt.imshow(h_2d, aspect='auto', cmap='viridis')
         plt.colorbar(im, label='Normalized Magnitude')
         plt.title(f'Channel Magnitude\n({config.scenario} scenario)')
         plt.xlabel('OFDM Symbol')
         plt.ylabel('Receiver-Time Index')
-        print("Channel magnitude plot complete")
+        print("First plot complete")
 
-        plt.subplot(2, 2, 1)
-        im = plt.imshow(h_2d, aspect='auto', cmap='viridis')
-        plt.colorbar(im, label='Normalized Magnitude')
-        plt.title(f'Channel Magnitude\n({config.scenario} scenario)')
-        plt.xlabel('Receiver Index')
-        plt.ylabel('OFDM Symbol')
-        
         # 2. Path Delay Analysis
         plt.subplot(2, 2, 2)
         delays_ns = channel_response['tau'].numpy().flatten() * 1e9  # Convert to ns
