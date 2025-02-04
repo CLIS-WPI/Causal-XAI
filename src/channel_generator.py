@@ -186,8 +186,12 @@ class SmartFactoryChannel:
         # Calculate path delays
         tau = paths.tau
         
-        # Get LOS/NLOS conditions
-        los_condition = paths.los_condition
+        # Determine LOS condition based on path existence
+        # If there's at least one direct path between BS and AGV, consider it LOS
+        los_condition = tf.cast(
+            tf.reduce_any(tf.not_equal(paths.tau, float('inf')), axis=-1),
+            tf.bool
+        )
         
         return {
             'h': h[0],  # First element of tuple contains channel coefficients
