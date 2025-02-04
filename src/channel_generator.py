@@ -5,7 +5,7 @@ from sionna.channel import tr38901
 from sionna.rt import Scene, Transmitter, Receiver, RIS, SceneObject
 from sionna.channel.tr38901 import PanelArray, UMi  # Using UMi as alternative to IndoorFactory
 from scene_setup import setup_scene
-from sionna.channel.tr38901 import TDL
+from sionna.channel.tr38901 import UMi
 import shap
 from dowhy import CausalModel
 import networkx as nx
@@ -49,20 +49,18 @@ class SmartFactoryChannel:
             carrier_frequency=28e9
         )
         
-        # In __init__ method, replace the UMi channel model with:
-        #CDL is gone → You must use TDL from sionna.channel.tr38901.
-        self.channel_model = TDL(
-            model="C",                    # CDL-C model for dense multipath
-            delay_spread=100e-9,          # 100ns delay spread for factory environment
+
+        self.channel_model = UMi(
             carrier_frequency=28e9,       # 28 GHz carrier frequency
-            #ut_array=self.agv_array,      # AGV antenna array
-            #bs_array=self.bs_array,       # Base station antenna array
-            #direction='downlink',         # Downlink transmission
-            dtype=config.dtype,           # Data type from config
-            #enable_pathloss=True,         # Enable path loss modeling
-            #enable_shadow_fading=True,    # Enable shadow fading
-            min_speed=0.0,               # Minimum speed for Doppler (static/slow AGVs)
-            max_speed=0.83               # Maximum speed 3 km/h = 0.83 m/s
+            o2i_model='low',              # Indoor propagation model
+            ut_array=self.agv_array,      # AGV antenna array
+            bs_array=self.bs_array,       # Base station antenna array
+            direction='downlink',         # Downlink transmission
+            enable_pathloss=True,         # Enable path loss modeling
+            enable_shadow_fading=True,    # Enable shadow fading
+            #min_speed=0.0,                # Minimum speed for Doppler
+            #max_speed=0.83,               # Maximum speed 3 km/h = 0.83 m/s
+            dtype=config.dtype            # Data type from config
         )
         
         # Initialize AGV positions and velocities
