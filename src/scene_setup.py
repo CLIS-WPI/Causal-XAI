@@ -36,7 +36,7 @@ def setup_scene(config):
     )
     scene.add(tx)
     
-    # Add RIS
+    # Add RIS with only required parameters
     ris = RIS(
         name="ris",
         position=[10.0, 19.5, 2.5],  
@@ -44,10 +44,22 @@ def setup_scene(config):
         num_rows=8,
         num_cols=8
     )
+    
+    # Set RIS array properties after creation
+    wavelength = 3e8/28e9  # Wavelength at 28 GHz
+    ris_array = PlanarArray(
+        num_rows=8,
+        num_cols=8,
+        vertical_spacing=0.5*wavelength,  # Half wavelength spacing
+        horizontal_spacing=0.5*wavelength,
+        pattern="iso",
+        polarization="V"
+    )
     scene.add(ris)
     
+    # Rest of the function remains the same...
+    
     # First create a metal material for the shelves
-    from sionna.rt import RadioMaterial
     metal_material = RadioMaterial(
         name="shelf_metal",
         relative_permittivity=1.0,
@@ -64,38 +76,27 @@ def setup_scene(config):
     
     # Add metallic shelves with fixed positions
     shelf_positions = [
-        [5.0, 5.0, shelf_dimensions['height']/2],    # Adjust z-position to half height
+        [5.0, 5.0, shelf_dimensions['height']/2],    
         [15.0, 5.0, shelf_dimensions['height']/2],
         [10.0, 10.0, shelf_dimensions['height']/2],
         [5.0, 15.0, shelf_dimensions['height']/2],
         [15.0, 15.0, shelf_dimensions['height']/2]
     ]
 
-        # Create and add shelves using Transmitter objects
+    # Create and add shelves
     for i, position in enumerate(shelf_positions):
-        # Create a metal box for each shelf using a Transmitter as a placeholder
         shelf = Transmitter(
             name=f"shelf_{i}",
             position=position,
             orientation=[0.0, 0.0, 0.0]
         )
-        
-        # Add the shelf to the scene once
         scene.add(shelf)
-        
-        # Set the radio material
         shelf.radio_material = "shelf_metal"
-        
-        # Set physical dimensions for the shelf
         shelf.size = [
             shelf_dimensions['length'],
             shelf_dimensions['width'], 
             shelf_dimensions['height']
         ]
-
-        
-        # Add shelf to scene
-        scene.add(shelf)
     
     # Add initial AGV positions
     initial_positions = [
