@@ -5,7 +5,6 @@ from sionna.channel import tr38901
 from sionna.rt import Scene, Transmitter, Receiver, RIS, SceneObject
 from sionna.channel.tr38901 import PanelArray, UMi  # Using UMi as alternative to IndoorFactory
 from scene_setup import setup_scene
-from sionna.channel import CDL
 from sionna.channel.tr38901 import CDL
 import shap
 from dowhy import CausalModel
