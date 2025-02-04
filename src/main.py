@@ -58,49 +58,67 @@ def analyze_channel_properties(channel_response, config, result_dir):
         # 1. Channel Magnitude Analysis
         plt.figure(figsize=(12, 8))
         h = channel_response['h']
-        print(f"Initial channel response shape: {h.shape}")
+        print(f"[DEBUG] Initial channel response shape: {h.shape}")
         
-        # Properly reshape and normalize the channel response
-        h_mag = tf.abs(h)  # Get magnitude of complex channel response
-        print(f"Channel magnitude shape: {h_mag.shape}")
-        h_mag_normalized = h_mag / tf.reduce_max(h_mag)  # Normalize by maximum value
-        print(f"Normalized magnitude shape: {h_mag_normalized.shape}")
+        # Get magnitude of the complex channel response and normalize it
+        h_mag = tf.abs(h)
+        print(f"[DEBUG] Channel magnitude shape: {h_mag.shape}")
+        h_mag_normalized = h_mag / tf.reduce_max(h_mag)
+        print(f"[DEBUG] Normalized magnitude shape: {h_mag_normalized.shape}")
         
         try:
-            print("Starting dimension reduction...")
-            # Remove batch dimension first
+            print("[DEBUG] Starting dimension reduction...")
+            # Remove batch dimension (axis 0)
             h_reduced = tf.squeeze(h_mag_normalized, axis=0)
-            print(f"After removing batch dimension: {h_reduced.shape}")
+            print(f"[DEBUG] After removing batch dimension: {h_reduced.shape}")
             
-            # Remove singleton dimensions and combine antenna dimensions
-            h_reduced = tf.squeeze(h_reduced, axis=[1, 2])  # Remove singleton dimensions
-            print(f"After removing singleton dimensions: {h_reduced.shape}")
+            # Remove singleton dimensions from axes 1 and 2
+            h_reduced = tf.squeeze(h_reduced, axis=[1, 2])
+            print(f"[DEBUG] After removing singleton dimensions: {h_reduced.shape}")
             
             # Average over the paths dimension (last dimension)
-            h_2d = tf.reduce_mean(h_reduced, axis=-1)  # Average over paths
-            print(f"After averaging over paths: {h_2d.shape}")
+            h_2d = tf.reduce_mean(h_reduced, axis=-1)
+            print(f"[DEBUG] After averaging over paths: {h_2d.shape}")
             
-            # Average over the antenna dimension (first dimension) to get a 2D representation
-            h_2d = tf.reduce_mean(h_2d, axis=0)  # Average over antennas
-            print(f"After averaging over antennas: {h_2d.shape}")
+            # Average over the AGV (antenna) dimension (first dimension)
+            h_2d = tf.reduce_mean(h_2d, axis=0)
+            print(f"[DEBUG] After averaging over antennas: {h_2d.shape}")
             
+            # Convert to numpy array
             h_2d = h_2d.numpy()
-            print(f"Final numpy array shape: {h_2d.shape}")
+            print(f"[DEBUG] Converted to numpy, shape: {h_2d.shape}")
+            
+            # Final squeeze to remove any leftover singleton dimensions
+            h_2d = np.squeeze(h_2d)
+            print(f"[DEBUG] Final numpy array shape after squeeze: {h_2d.shape}")
             
         except Exception as e:
-            print(f"Error during dimension reduction: {e}")
-            print("Attempting fallback method...")
+            print(f"[ERROR] Error during dimension reduction: {e}")
+            print("[DEBUG] Attempting fallback method...")
             try:
-                # Fallback method - simpler reduction
+                # Fallback method: reduce over multiple axes at once
                 h_2d = tf.reduce_mean(h_mag_normalized, axis=[0, 1, 2, -1]).numpy()
-                print(f"Fallback shape: {h_2d.shape}")
+                h_2d = np.squeeze(h_2d)
+                print(f"[DEBUG] Fallback shape: {h_2d.shape}")
             except Exception as e:
-                print(f"Fallback method failed: {e}")
+                print(f"[ERROR] Fallback method failed: {e}")
                 raise
 
-        print("Starting plotting...")
+        print("[DEBUG] Starting plotting...")
         plt.subplot(2, 2, 1)
-        print(f"Shape being passed to imshow: {h_2d.shape}")
+        print(f"[DEBUG] Shape being passed to imshow before check: {h_2d.shape}")
+        
+        # Final check: if the image data is not 2D, squeeze extra dimensions
+        if h_2d.ndim != 2:
+            print(f"[WARNING] Final image data has {h_2d.ndim} dimensions, expected 2. Squeezing extra dimensions...")
+            h_2d = np.squeeze(h_2d)
+            print(f"[DEBUG] Shape after extra squeeze: {h_2d.shape}")
+        
+        # At this point, h_2d should be 2D
+        if h_2d.ndim != 2:
+            print(f"[ERROR] Final image data shape is still invalid: {h_2d.shape}")
+            raise ValueError(f"Cannot convert channel magnitude to 2D image; got shape {h_2d.shape}")
+        
         im = plt.imshow(h_2d, aspect='auto', cmap='viridis')
         plt.colorbar(im, label='Normalized Magnitude')
         plt.title(f'Channel Magnitude\n({config.scenario} scenario)')
@@ -112,10 +130,10 @@ def analyze_channel_properties(channel_response, config, result_dir):
         delays_ns = channel_response['tau'].numpy().flatten() * 1e9  # Convert to ns
         valid_delays = delays_ns[~np.isnan(delays_ns)]
         if len(valid_delays) > 0:
-            plt.hist(valid_delays, bins=min(50, len(valid_delays)), 
+            plt.hist(valid_delays, bins=min(50, len(valid_delays)),
                     density=True, color='blue', alpha=0.7)
-            plt.axvline(np.mean(valid_delays), color='red', linestyle='--', 
-                    label=f'Mean: {np.mean(valid_delays):.2f} ns')
+            plt.axvline(np.mean(valid_delays), color='red', linestyle='--',
+                        label=f'Mean: {np.mean(valid_delays):.2f} ns')
             plt.title('Path Delay Distribution')
             plt.xlabel('Delay (ns)')
             plt.ylabel('Density')
@@ -123,13 +141,10 @@ def analyze_channel_properties(channel_response, config, result_dir):
         
         # 3. LoS/NLoS Analysis
         plt.subplot(2, 2, 3)
-        los_data = channel_response['los_condition'].numpy().flatten()
-        los_data = los_data.astype(np.int32)
-        
+        los_data = channel_response['los_condition'].numpy().flatten().astype(np.int32)
         los_percent = np.mean(los_data) * 100
         nlos_percent = (1 - np.mean(los_data)) * 100
-        
-        plt.bar(['NLoS', 'LoS'], [nlos_percent, los_percent], 
+        plt.bar(['NLoS', 'LoS'], [nlos_percent, los_percent],
                 color=['red', 'green'], alpha=0.7)
         plt.title('LoS/NLoS Distribution')
         plt.ylabel('Percentage (%)')
@@ -139,37 +154,30 @@ def analyze_channel_properties(channel_response, config, result_dir):
         # 4. Power Delay Profile
         plt.subplot(2, 2, 4)
         try:
-            # Reshape h for power calculation
-            h_reshaped = tf.reshape(h, [-1, h.shape[-1]])  # Flatten all but last dimension
-            h_power = tf.reduce_mean(tf.abs(h_reshaped)**2, axis=0)  # Average over all but path dimension
+            # Flatten all dimensions except the last one for power calculation
+            h_reshaped = tf.reshape(h, [-1, h.shape[-1]])
+            h_power = tf.reduce_mean(tf.abs(h_reshaped)**2, axis=0)
             h_power = h_power.numpy()
             h_power_db = 10 * np.log10(np.maximum(h_power, 1e-10))
-            
-            # Plot power delay profile
             x_axis = np.arange(len(h_power))
             plt.plot(x_axis, h_power_db, 'b-', linewidth=2)
-            plt.fill_between(x_axis, h_power_db, 
-                        np.min(h_power_db), alpha=0.3, color='blue')
-            
-            # Calculate RMS delay spread
+            plt.fill_between(x_axis, h_power_db, np.min(h_power_db),
+                            alpha=0.3, color='blue')
             rms_delay = np.sqrt(np.average(x_axis**2, weights=h_power))
-            plt.axvline(rms_delay, color='red', linestyle='--', 
-                    label=f'RMS Delay: {rms_delay:.2f}')
-            
+            plt.axvline(rms_delay, color='red', linestyle='--',
+                        label=f'RMS Delay: {rms_delay:.2f}')
             plt.title('Power Delay Profile')
             plt.xlabel('Path Index')
             plt.ylabel('Average Power (dB)')
             plt.grid(True, alpha=0.3)
             plt.legend()
-            
         except Exception as e:
-            print(f"Error in power delay profile calculation: {e}")
+            print(f"[ERROR] Error in power delay profile calculation: {e}")
             rms_delay = 0  # Default value if calculation fails
         
-        # Adjust layout and save
         plt.tight_layout()
-        plt.savefig(os.path.join(result_dir, f'channel_analysis_{timestamp}.png'), 
-                dpi=300, bbox_inches='tight')
+        plt.savefig(os.path.join(result_dir, f'channel_analysis_{timestamp}.png'),
+                    dpi=300, bbox_inches='tight')
         plt.close()
         
         # 5. Save numerical results
@@ -185,8 +193,10 @@ def analyze_channel_properties(channel_response, config, result_dir):
             f.write(f"NLoS Probability: {nlos_percent:.1f}%\n")
             
     except Exception as e:
-        print(f"Error in channel analysis: {str(e)}")
+        print(f"[ERROR] Error in channel analysis: {str(e)}")
         traceback.print_exc()
+
+
 
 def analyze_ris_effectiveness(channel_response, result_dir):
     """Analyze RIS effectiveness by comparing channels with/without RIS"""
@@ -195,16 +205,34 @@ def analyze_ris_effectiveness(channel_response, result_dir):
     h_with_ris = channel_response['h_with_ris']
     h_without_ris = channel_response['h_without_ris']
     
-    # Compute RIS gain (this can remain as is)
+    # Compute RIS gain
     gain_with_ris = tf.reduce_mean(tf.abs(h_with_ris)**2)
     gain_without_ris = tf.reduce_mean(tf.abs(h_without_ris)**2)
     ris_gain = float(gain_with_ris / gain_without_ris)
     
-    # Reduce dimensions to get 2D images for plotting
-    h_with_ris_img = tf.reduce_mean(tf.abs(h_with_ris), axis=[0, 1, 2, 5])  # shape (128, 23)
-    h_without_ris_img = tf.reduce_mean(tf.abs(h_without_ris), axis=[0, 1, 2, 5])  # shape (128, 23)
+    print(f"[DEBUG] h_with_ris original shape: {h_with_ris.shape}")
+    print(f"[DEBUG] h_without_ris original shape: {h_without_ris.shape}")
     
-    # Plot comparison
+    # Sequentially reduce h_with_ris to a 2D image.
+    temp = tf.reduce_mean(tf.abs(h_with_ris), axis=0)
+    print(f"[DEBUG] After reducing axis 0: {temp.shape}")  # Expected: (1, 1, 128, 23, 10)
+    temp = tf.reduce_mean(temp, axis=0)
+    print(f"[DEBUG] After reducing next axis: {temp.shape}")  # Expected: (1, 128, 23, 10)
+    temp = tf.reduce_mean(temp, axis=0)
+    print(f"[DEBUG] After reducing third axis: {temp.shape}")  # Expected: (128, 23, 10)
+    h_with_ris_img = tf.reduce_mean(temp, axis=-1)
+    print(f"[DEBUG] Final h_with_ris_img shape: {h_with_ris_img.shape}")  # Expected: (128, 23)
+    
+    # Similarly reduce h_without_ris to 2D.
+    temp2 = tf.reduce_mean(tf.abs(h_without_ris), axis=0)
+    print(f"[DEBUG] After reducing axis 0 for h_without_ris: {temp2.shape}")
+    temp2 = tf.reduce_mean(temp2, axis=0)
+    print(f"[DEBUG] After reducing next axis for h_without_ris: {temp2.shape}")
+    temp2 = tf.reduce_mean(temp2, axis=0)
+    print(f"[DEBUG] After reducing third axis for h_without_ris: {temp2.shape}")
+    h_without_ris_img = tf.reduce_mean(temp2, axis=-1)
+    print(f"[DEBUG] Final h_without_ris_img shape: {h_without_ris_img.shape}")  # Expected: (128, 23)
+    
     plt.figure(figsize=(10, 6))
     
     plt.subplot(1, 2, 1)
@@ -222,6 +250,7 @@ def analyze_ris_effectiveness(channel_response, result_dir):
     plt.close()
     
     return ris_gain
+
 
 
 def analyze_blockage_statistics(channel_response, result_dir):
