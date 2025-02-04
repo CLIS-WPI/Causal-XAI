@@ -341,10 +341,15 @@ def main():
     analyzer = ChannelAnalyzer(scene)
     
     # Visualize scene
+    # In the main function, before saving the scene visualization:
     try:
         fig = analyzer.visualize_scene()
         scene_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         fig_path = os.path.join(result_dir, f'factory_scene_3d_{scene_timestamp}.png')
+        
+        # Create the directory if it doesn't exist
+        os.makedirs(os.path.dirname(fig_path), exist_ok=True)
+        
         fig.savefig(fig_path, dpi=300, bbox_inches='tight')
         plt.close(fig)
         print(f"Scene visualization saved to: {fig_path}")
