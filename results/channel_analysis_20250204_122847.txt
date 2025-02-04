@@ -1,8 +1,0 @@
-Smart Factory Channel Analysis Results
-=====================================
-Average Channel Magnitude: 0.0003
-Channel Magnitude Std Dev: 0.0006
-Mean Path Delay: -820512768.00 ns
-RMS Delay Spread: 5.25
-LoS Probability: 100.0%
-NLoS Probability: 0.0%

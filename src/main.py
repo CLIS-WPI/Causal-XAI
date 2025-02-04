@@ -196,8 +196,6 @@ def analyze_channel_properties(channel_response, config, result_dir):
         print(f"[ERROR] Error in channel analysis: {str(e)}")
         traceback.print_exc()
 
-
-
 def analyze_ris_effectiveness(channel_response, result_dir):
     """Analyze RIS effectiveness by comparing channels with/without RIS"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
