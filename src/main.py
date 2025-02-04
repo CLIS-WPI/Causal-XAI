@@ -61,9 +61,9 @@ def analyze_channel_properties(channel_response, config, result_dir):
         print(f"Initial channel response shape: {h.shape}")
         
         # Properly reshape and normalize the channel response
-        h_mag = tf.abs(h)
+        h_mag = tf.abs(h)  # Get magnitude of complex channel response
         print(f"Channel magnitude shape: {h_mag.shape}")
-        h_mag_normalized = h_mag / tf.reduce_max(h_mag)
+        h_mag_normalized = h_mag / tf.reduce_max(h_mag)  # Normalize by maximum value
         print(f"Normalized magnitude shape: {h_mag_normalized.shape}")
         
         try:
@@ -72,19 +72,17 @@ def analyze_channel_properties(channel_response, config, result_dir):
             h_reduced = tf.squeeze(h_mag_normalized, axis=0)
             print(f"After removing batch dimension: {h_reduced.shape}")
             
-            # Remove singleton dimensions
-            h_reduced = tf.squeeze(h_reduced, axis=[1, 2])
+            # Remove singleton dimensions and combine antenna dimensions
+            h_reduced = tf.squeeze(h_reduced, axis=[1, 2])  # Remove singleton dimensions
             print(f"After removing singleton dimensions: {h_reduced.shape}")
             
-            # Average over the last dimension (paths)
-            h_2d = tf.reduce_mean(h_reduced, axis=-1)
+            # Average over the paths dimension (last dimension)
+            h_2d = tf.reduce_mean(h_reduced, axis=-1)  # Average over paths
             print(f"After averaging over paths: {h_2d.shape}")
             
-            # Reshape to combine first two dimensions if needed
-            if len(h_2d.shape) > 2:
-                first_dim = tf.reduce_prod(h_2d.shape[:-1])
-                h_2d = tf.reshape(h_2d, [first_dim, h_2d.shape[-1]])
-                print(f"After final reshape: {h_2d.shape}")
+            # Average over the antenna dimension (first dimension) to get a 2D representation
+            h_2d = tf.reduce_mean(h_2d, axis=0)  # Average over antennas
+            print(f"After averaging over antennas: {h_2d.shape}")
             
             h_2d = h_2d.numpy()
             print(f"Final numpy array shape: {h_2d.shape}")
@@ -93,11 +91,9 @@ def analyze_channel_properties(channel_response, config, result_dir):
             print(f"Error during dimension reduction: {e}")
             print("Attempting fallback method...")
             try:
-                # Fallback method
-                h_2d = tf.reduce_mean(h_mag_normalized, axis=[0, 2, 3, -1]).numpy()
-                print(f"Fallback shape before reshape: {h_2d.shape}")
-                h_2d = np.reshape(h_2d, [-1, h_2d.shape[-1]])
-                print(f"Fallback final shape: {h_2d.shape}")
+                # Fallback method - simpler reduction
+                h_2d = tf.reduce_mean(h_mag_normalized, axis=[0, 1, 2, -1]).numpy()
+                print(f"Fallback shape: {h_2d.shape}")
             except Exception as e:
                 print(f"Fallback method failed: {e}")
                 raise
@@ -109,8 +105,7 @@ def analyze_channel_properties(channel_response, config, result_dir):
         plt.colorbar(im, label='Normalized Magnitude')
         plt.title(f'Channel Magnitude\n({config.scenario} scenario)')
         plt.xlabel('OFDM Symbol')
-        plt.ylabel('Receiver-Time Index')
-        print("First plot complete")
+        plt.ylabel('Subcarrier Index')
 
         # 2. Path Delay Analysis
         plt.subplot(2, 2, 2)
@@ -200,28 +195,34 @@ def analyze_ris_effectiveness(channel_response, result_dir):
     h_with_ris = channel_response['h_with_ris']
     h_without_ris = channel_response['h_without_ris']
     
-    # Compute RIS gain
+    # Compute RIS gain (this can remain as is)
     gain_with_ris = tf.reduce_mean(tf.abs(h_with_ris)**2)
     gain_without_ris = tf.reduce_mean(tf.abs(h_without_ris)**2)
     ris_gain = float(gain_with_ris / gain_without_ris)
     
+    # Reduce dimensions to get 2D images for plotting
+    h_with_ris_img = tf.reduce_mean(tf.abs(h_with_ris), axis=[0, 1, 2, 5])  # shape (128, 23)
+    h_without_ris_img = tf.reduce_mean(tf.abs(h_without_ris), axis=[0, 1, 2, 5])  # shape (128, 23)
+    
     # Plot comparison
     plt.figure(figsize=(10, 6))
+    
     plt.subplot(1, 2, 1)
-    plt.imshow(tf.abs(h_with_ris[0]).numpy())
+    im1 = plt.imshow(h_with_ris_img.numpy(), aspect='auto', cmap='viridis')
     plt.title('Channel with RIS')
-    plt.colorbar(label='Magnitude')
+    plt.colorbar(im1, label='Magnitude')
     
     plt.subplot(1, 2, 2)
-    plt.imshow(tf.abs(h_without_ris[0]).numpy())
+    im2 = plt.imshow(h_without_ris_img.numpy(), aspect='auto', cmap='viridis')
     plt.title('Channel without RIS')
-    plt.colorbar(label='Magnitude')
+    plt.colorbar(im2, label='Magnitude')
     
     plt.suptitle(f'RIS Gain: {ris_gain:.2f}x')
     plt.savefig(os.path.join(result_dir, f'ris_effectiveness_{timestamp}.png'))
     plt.close()
     
     return ris_gain
+
 
 def analyze_blockage_statistics(channel_response, result_dir):
     """Analyze and visualize blockage statistics"""
