@@ -298,6 +298,7 @@ def main():
     
     # Initialize configuration
     config = SmartFactoryConfig()
+    channel_gen = SmartFactoryChannel(config, scene=scene)
     
     # Setup scene
     scene = setup_scene(config)

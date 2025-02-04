@@ -155,6 +155,94 @@ class SmartFactoryChannel:
         self.agv_positions = new_positions
         return new_positions
 
+    def save_csi_dataset(self, filepath, num_samples=None):
+        """
+        Save the complete CSI dataset to an HDF5 file.
+        
+        Args:
+            filepath: Path where the HDF5 file will be saved
+            num_samples: Number of channel samples to generate and save (optional, uses config.num_time_steps if not specified)
+        """
+        import h5py
+        
+        # Use config value if num_samples not specified
+        if num_samples is None:
+            num_samples = self.config.num_time_steps
+        
+        with h5py.File(filepath, 'w') as f:
+            # Create groups for different components
+            csi_group = f.create_group('csi_data')
+            config_group = f.create_group('config')
+            
+            # Initialize lists to store data
+            channel_data = []
+            path_delays = []
+            los_conditions = []
+            agv_positions = []
+            
+            # Generate and collect samples
+            for _ in range(num_samples):
+                sample = self.generate_channel()
+                
+                channel_data.append(sample['h'].numpy())
+                path_delays.append(sample['tau'].numpy())
+                los_conditions.append(sample['los_condition'].numpy())
+                agv_positions.append(sample['agv_positions'].numpy())
+            
+            # Convert lists to numpy arrays and save
+            csi_group.create_dataset('channel_matrices', data=np.array(channel_data))
+            csi_group.create_dataset('path_delays', data=np.array(path_delays))
+            csi_group.create_dataset('los_conditions', data=np.array(los_conditions))
+            csi_group.create_dataset('agv_positions', data=np.array(agv_positions))
+            
+            # Save all configuration parameters
+            for key, value in vars(self.config).items():
+                if isinstance(value, (int, float, str, list)):
+                    config_group.attrs[key] = value
+                elif isinstance(value, tf.dtypes.DType):
+                    config_group.attrs[key] = str(value)
+                    
+            # Save specific configuration parameters that might be needed for analysis
+            config_group.attrs['num_agvs'] = self.config.num_agvs
+            config_group.attrs['num_time_steps'] = self.config.num_time_steps
+            config_group.attrs['sampling_frequency'] = self.config.sampling_frequency
+            config_group.attrs['carrier_frequency'] = self.config.carrier_frequency
+            config_group.attrs['bs_array'] = self.config.bs_array
+            config_group.attrs['ris_elements'] = self.config.ris_elements
+            config_group.attrs['room_dimensions'] = self.config.room_dim
+            config_group.attrs['scenario'] = self.config.scenario
+            config_group.attrs['model'] = self.config.model
+
+    def load_csi_dataset(self, filepath):
+        """
+        Load the CSI dataset from an HDF5 file.
+        
+        Args:
+            filepath: Path to the HDF5 file containing the saved dataset
+            
+        Returns:
+            dict: Dictionary containing the loaded dataset and configuration
+        """
+        import h5py
+        
+        with h5py.File(filepath, 'r') as f:
+            # Load CSI data
+            data = {
+                'channel_matrices': f['csi_data/channel_matrices'][:],
+                'path_delays': f['csi_data/path_delays'][:],
+                'los_conditions': f['csi_data/los_conditions'][:],
+                'agv_positions': f['csi_data/agv_positions'][:]
+            }
+            
+            # Load configuration parameters
+            config = {}
+            for key in f['config'].attrs.keys():
+                config[key] = f['config'].attrs[key]
+                
+            data['config'] = config
+            
+        return data
+
     def generate_channel(self):
         """Generate channel matrices for the smart factory scenario"""
         # Update AGV positions
