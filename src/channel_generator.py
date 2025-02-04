@@ -718,11 +718,18 @@ class SmartFactoryChannel:
             }
         }
         
-        # Add explainability components
+        # Add causal analysis
+        causal_analysis = self.perform_causal_analysis(channel_response)
+        
+        # Add energy metrics
+        energy_metrics = self.compute_energy_metrics(channel_response)
+        
+        # Update channel response with new metrics
         channel_response.update({
+            'causal_analysis': causal_analysis,
+            'energy_metrics': energy_metrics,
             'explanation_metadata': self.get_explanation_metadata(),
             'shap_analysis': self.compute_channel_shap_values(channel_response),
-            'causal_analysis': self.generate_causal_analysis(channel_response),
             'performance_metrics': {
                 'channel_capacity': {
                     'with_ris': channel_quality_with_ris,
