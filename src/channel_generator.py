@@ -4,7 +4,7 @@ import sionna
 from sionna.channel import tr38901
 from sionna.rt import Scene, Transmitter, Receiver, RIS, SceneObject
 from sionna.channel.tr38901 import PanelArray, UMi  # Using UMi as alternative to IndoorFactory
-from .main import setup_scene
+from main import setup_scene
 
 class SmartFactoryChannel:
     """Smart Factory Channel Generator using Sionna"""
