@@ -70,11 +70,8 @@ def setup_scene(config):
         orientation=[0.0, 0.0, 0.0],
         num_rows=8,
         num_cols=8,
-        vertical_spacing=0.5*wavelength,    # Changed from element_spacing
-        horizontal_spacing=0.5*wavelength,  # Added horizontal spacing
         dtype=tf.complex64
     )
-
     scene.add(ris)
     
     # Configure RIS phase profile to reflect signals from BS to first AGV

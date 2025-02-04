@@ -55,21 +55,21 @@ class ChannelAnalyzer:
             for tx_name, tx in self.scene.transmitters.items():
                 pos = tx.position.numpy()
                 ax.scatter(pos[0], pos[1], pos[2], c='red', marker='^', s=100, 
-                         label=f'BS: {tx_name}')
+                        label=f'BS: {tx_name}')
         
         # Plot receivers (AGVs)
         if hasattr(self.scene, 'receivers'):
             for rx_name, rx in self.scene.receivers.items():
                 pos = rx.position.numpy()
                 ax.scatter(pos[0], pos[1], pos[2], c='blue', marker='o', s=100, 
-                         label=f'AGV: {rx_name}')
+                        label=f'AGV: {rx_name}')
         
         # Plot RIS elements
         if hasattr(self.scene, 'ris'):
             for ris_name, ris in self.scene.ris.items():
                 pos = ris.position.numpy()
                 ax.scatter(pos[0], pos[1], pos[2], c='green', marker='s', s=100, 
-                         label=f'RIS: {ris_name}')
+                        label=f'RIS: {ris_name}')
                 
                 # Plot RIS panel outline
                 self._plot_ris_panel(ax, ris)
@@ -108,7 +108,8 @@ class ChannelAnalyzer:
         pos = ris.position.numpy()
         num_rows = ris.num_rows
         num_cols = ris.num_cols
-        spacing = ris.element_spacing.numpy()
+        # Use ris.spacing instead of ris.element_spacing
+        spacing = ris.spacing.numpy()  # This is the correct property to use
         
         width = num_cols * spacing
         height = num_rows * spacing
