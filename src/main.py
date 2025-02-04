@@ -1,12 +1,13 @@
 from config import SmartFactoryConfig
 from channel_generator import SmartFactoryChannel
 from channel_analyzer import ChannelAnalyzer
+from scene_setup import setup_scene  
 import tensorflow as tf
 import os
 import matplotlib.pyplot as plt
 import numpy as np
 from datetime import datetime
-import traceback  # Add this import
+import traceback
 from mpl_toolkits.mplot3d import Axes3D
 from sionna.rt import load_scene, PlanarArray, Transmitter, Receiver, RIS, SceneObject
 import mitsuba as mi
