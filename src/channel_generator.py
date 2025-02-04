@@ -5,6 +5,9 @@ from sionna.channel import tr38901
 from sionna.rt import Scene, Transmitter, Receiver, RIS, SceneObject
 from sionna.channel.tr38901 import PanelArray, UMi  # Using UMi as alternative to IndoorFactory
 from scene_setup import setup_scene
+from sionna.channel import CDL
+from sionna.channel.tr38901 import CDL
+import shap
 
 class SmartFactoryChannel:
     """Smart Factory Channel Generator using Sionna"""
@@ -44,16 +47,19 @@ class SmartFactoryChannel:
             carrier_frequency=28e9
         )
         
-        # Initialize UMi channel model (as alternative to IndoorFactory)
-        self.channel_model = UMi(
-            carrier_frequency=28e9,  # Using the same 28 GHz frequency as defined elsewhere
-            o2i_model="low",        # Using low-loss model for indoor-outdoor penetration
-            ut_array=self.agv_array,
-            bs_array=self.bs_array,
-            direction='downlink',
-            dtype=config.dtype,
-            enable_pathloss=True,
-            enable_shadow_fading=True
+        # In __init__ method, replace the UMi channel model with:
+        self.channel_model = CDL(
+            model="C",                    # CDL-C model for dense multipath
+            delay_spread=100e-9,          # 100ns delay spread for factory environment
+            carrier_frequency=28e9,       # 28 GHz carrier frequency
+            ut_array=self.agv_array,      # AGV antenna array
+            bs_array=self.bs_array,       # Base station antenna array
+            direction='downlink',         # Downlink transmission
+            dtype=config.dtype,           # Data type from config
+            enable_pathloss=True,         # Enable path loss modeling
+            enable_shadow_fading=True,    # Enable shadow fading
+            min_speed=0.0,               # Minimum speed for Doppler (static/slow AGVs)
+            max_speed=0.83               # Maximum speed 3 km/h = 0.83 m/s
         )
         
         # Initialize AGV positions and velocities
@@ -256,8 +262,257 @@ class SmartFactoryChannel:
             
         return data
 
+    def get_explanation_metadata(self):
+        """
+        Returns metadata for explainability analysis using SHAP/LIME and causal relationships.
+        
+        This method provides structured information about:
+        1. Feature importance and relationships for SHAP/LIME analysis
+        2. Causal graph structure showing relationships between components
+        3. Key factors affecting channel characteristics
+        
+        Returns:
+            dict: Dictionary containing explainability metadata
+        """
+        return {
+            # SHAP/LIME Feature Relationships
+            'feature_relationships': {
+                'channel_features': {
+                    'h_with_ris': {
+                        'description': 'Channel matrix with RIS effects',
+                        'dependencies': ['agv_positions', 'ris_config', 'los_condition'],
+                        'importance_factors': [
+                            'RIS reflection coefficients',
+                            'AGV-RIS distance',
+                            'RIS-BS distance'
+                        ]
+                    },
+                    'h_without_ris': {
+                        'description': 'Channel matrix without RIS',
+                        'dependencies': ['agv_positions', 'los_condition'],
+                        'importance_factors': [
+                            'Direct path loss',
+                            'Multipath components',
+                            'AGV-BS distance'
+                        ]
+                    }
+                },
+                'position_features': {
+                    'agv_positions': {
+                        'description': 'AGV positions affecting channel',
+                        'dependencies': ['waypoints', 'velocity'],
+                        'importance_factors': [
+                            'Distance to obstacles',
+                            'Movement patterns',
+                            'Height from ground'
+                        ]
+                    }
+                }
+            },
+            
+            # Causal Graph Structure
+            'causal_relationships': {
+                'nodes': [
+                    'AGV Position',
+                    'RIS Configuration',
+                    'Channel State',
+                    'Path Loss',
+                    'LOS Condition'
+                ],
+                'edges': [
+                    {
+                        'from': 'AGV Position',
+                        'to': 'Channel State',
+                        'type': 'direct',
+                        'description': 'AGV position directly affects channel characteristics'
+                    },
+                    {
+                        'from': 'RIS Configuration',
+                        'to': 'Channel State',
+                        'type': 'direct',
+                        'description': 'RIS configuration modifies channel properties'
+                    },
+                    {
+                        'from': 'AGV Position',
+                        'to': 'LOS Condition',
+                        'type': 'direct',
+                        'description': 'AGV position determines LOS availability'
+                    }
+                ]
+            },
+            
+            # Key Performance Indicators
+            'kpis': {
+                'channel_capacity': {
+                    'description': 'Channel capacity affected by RIS',
+                    'contributing_factors': [
+                        'SNR improvement from RIS',
+                        'Multipath diversity',
+                        'Interference reduction'
+                    ]
+                },
+                'path_loss': {
+                    'description': 'Path loss variations',
+                    'contributing_factors': [
+                        'Distance-dependent losses',
+                        'Shadowing effects',
+                        'RIS-aided path optimization'
+                    ]
+                }
+            }
+        }
+
+
+    def compute_channel_shap_values(self, channel_response):
+        """
+        Compute SHAP values for channel response analysis using DeepExplainer
+        """
+        # Prepare background data (use historical channel responses)
+        background_data = self._get_background_data()  # You need to implement this
+        
+        # Create explainer
+        explainer = shap.DeepExplainer(
+            model=self._get_channel_model(),  # You need to implement this
+            data=background_data
+        )
+        
+        # Compute SHAP values
+        channel_data = tf.stack([
+            channel_response['h_with_ris'],
+            channel_response['h_without_ris'],
+            tf.cast(channel_response['los_condition'], tf.float32)
+        ], axis=-1)
+        
+        shap_values = explainer.shap_values(channel_data)
+        
+        return {
+            'position_impact': {
+                'description': 'Impact of AGV positions on channel',
+                'values': shap_values[0],  # SHAP values for position impact
+                'interpretation': 'Shows how AGV positions affect channel quality'
+            },
+            'ris_impact': {
+                'description': 'Impact of RIS on channel',
+                'values': shap_values[1],  # SHAP values for RIS impact
+                'interpretation': 'Quantifies RIS contribution to channel improvement'
+            }
+        }
+
+    def _get_background_data(self):
+        """Helper method to get background data for SHAP analysis
+        
+        Returns:
+            tf.Tensor: Background data for SHAP analysis from historical channel responses
+        """
+        # Use position history to create background data
+        num_samples = min(100, len(self.positions_history[0]))  # Use up to 100 historical samples
+        
+        background_channels = []
+        for i in range(num_samples):
+            # Get historical positions for all AGVs
+            historical_positions = tf.constant(
+                [[self.positions_history[j][-(i+1)] for j in range(self.config.num_agvs)]],
+                dtype=tf.float32
+            )
+            
+            # Generate channel response for historical positions
+            bs_position = tf.constant([[[10.0, 0.5, 4.5]]], dtype=tf.float32)
+            
+            # Set topology for historical position
+            self.channel_model.set_topology(
+                ut_loc=historical_positions,
+                bs_loc=bs_position,
+                ut_orientations=tf.zeros([1, self.config.num_agvs, 3]),
+                bs_orientations=tf.zeros([1, 1, 3]),
+                ut_velocities=tf.zeros([1, self.config.num_agvs, 3]),
+                in_state=tf.zeros([1, self.config.num_agvs], dtype=tf.bool)
+            )
+            
+            # Compute paths and channel response
+            paths = self.scene.compute_paths(max_depth=3)
+            h = self.channel_model(
+                num_time_samples=1,
+                sampling_frequency=self.config.sampling_frequency,
+                paths=paths
+            )
+            
+            # Stack channel features
+            channel_features = tf.stack([
+                h[0],
+                tf.cast(tf.reduce_any(tf.not_equal(paths.tau, float('inf')), axis=-1), tf.float32),
+                tf.reshape(historical_positions, [-1])
+            ], axis=-1)
+            
+            background_channels.append(channel_features)
+        
+        return tf.stack(background_channels, axis=0)
+
+    def _get_channel_model(self):
+        """Helper method to get the channel model for SHAP analysis
+        
+        Returns:
+            callable: Simplified channel model function for SHAP analysis
+        """
+        def simplified_channel_model(inputs):
+            """Simplified channel model for SHAP analysis
+            
+            Args:
+                inputs: Channel features [channel_response, los_condition, positions]
+                
+            Returns:
+                tf.Tensor: Channel quality metric
+            """
+            channel_response = inputs[..., 0]
+            los_condition = inputs[..., 1]
+            positions = tf.reshape(inputs[..., 2:], [-1, self.config.num_agvs, 3])
+            
+            # Compute simplified channel quality metric
+            channel_quality = tf.abs(channel_response) * tf.cast(los_condition, tf.float32)
+            
+            # Add position-dependent effects
+            distance_effect = tf.reduce_mean(
+                tf.sqrt(tf.reduce_sum(tf.square(positions), axis=-1)),
+                axis=-1
+            )
+            
+            return channel_quality * tf.exp(-0.1 * distance_effect)
+        
+        return simplified_channel_model
+
+    def generate_causal_analysis(self, channel_data):
+        """
+        Generate causal analysis of channel characteristics.
+        
+        Args:
+            channel_data: Dictionary containing channel measurement data
+            
+        Returns:
+            dict: Causal analysis results
+        """
+        return {
+            'direct_effects': {
+                'ris_to_channel': {
+                    'effect_size': None,  # Add actual effect size calculation
+                    'confidence': None,  # Add confidence measure
+                    'description': 'Direct causal effect of RIS on channel quality'
+                },
+                'position_to_channel': {
+                    'effect_size': None,  # Add actual effect size calculation
+                    'confidence': None,  # Add confidence measure
+                    'description': 'Direct causal effect of AGV position on channel'
+                }
+            },
+            'indirect_effects': {
+                'position_via_los': {
+                    'effect_size': None,  # Add actual effect size calculation
+                    'path': ['AGV Position', 'LOS Condition', 'Channel Quality'],
+                    'description': 'Indirect effect through LOS condition'
+                }
+            }
+        }
+
     def generate_channel(self):
-        """Generate channel matrices with proper RIS modeling"""
+        """Generate channel matrices with proper RIS modeling and explainability data"""
         # Update AGV positions
         current_positions = self._update_agv_positions(self.config.num_time_steps)
         
@@ -297,7 +552,8 @@ class SmartFactoryChannel:
             paths=paths_without_ris
         )
         
-        return {
+        # Create base channel response dictionary
+        channel_response = {
             'h': h_with_ris[0],
             'tau': paths_with_ris.tau,
             'paths': paths_with_ris,
@@ -307,5 +563,36 @@ class SmartFactoryChannel:
             ),
             'agv_positions': current_positions,
             'h_with_ris': h_with_ris[0],
-            'h_without_ris': h_without_ris[0]  # Using proper ray-traced channel
+            'h_without_ris': h_without_ris[0]
         }
+        
+        # Add explainability metadata
+        channel_response['explanation_metadata'] = self.get_explanation_metadata()
+        
+        # Compute SHAP values for the channel response
+        channel_response['shap_analysis'] = self.compute_channel_shap_values(channel_response)
+        
+        # Generate causal analysis
+        channel_response['causal_analysis'] = self.generate_causal_analysis(channel_response)
+        
+        # Add performance metrics for explainability
+        channel_response['performance_metrics'] = {
+            'channel_capacity': {
+                'with_ris': tf.reduce_mean(tf.abs(h_with_ris[0])),
+                'without_ris': tf.reduce_mean(tf.abs(h_without_ris[0])),
+                'improvement': tf.reduce_mean(tf.abs(h_with_ris[0]) - tf.abs(h_without_ris[0]))
+            },
+            'path_loss': {
+                'with_ris': tf.reduce_mean(paths_with_ris.tau),
+                'without_ris': tf.reduce_mean(paths_without_ris.tau)
+            }
+        }
+        
+        # Add feature importance scores
+        channel_response['feature_importance'] = {
+            'position_impact': tf.reduce_mean(tf.abs(current_positions)),
+            'ris_impact': tf.reduce_mean(tf.abs(h_with_ris[0] - h_without_ris[0])),
+            'los_impact': tf.reduce_mean(tf.cast(channel_response['los_condition'], tf.float32))
+        }
+        
+        return channel_response
