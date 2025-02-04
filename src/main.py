@@ -145,7 +145,11 @@ def analyze_channel_properties(channel_response, config, result_dir):
         
         # 3. LoS/NLoS Analysis
         plt.subplot(2, 2, 3)
-        los_data = channel_response['los_condition'].numpy().flatten().astype(np.int32)
+        los_condition = channel_response['los_condition']
+        if isinstance(los_condition, tf.Tensor):
+            los_data = los_condition.numpy().flatten().astype(np.int32)
+        else:
+            los_data = los_condition.flatten().astype(np.int32)
         los_percent = np.mean(los_data) * 100
         nlos_percent = (1 - np.mean(los_data)) * 100
         plt.bar(['NLoS', 'LoS'], [nlos_percent, los_percent],

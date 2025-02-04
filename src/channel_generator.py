@@ -123,37 +123,50 @@ class SmartFactoryChannel:
             dtype=tf.float32
         )
 
+    def _generate_agv_waypoints(self):
+        """Generate predefined waypoints for each AGV"""
+        return [
+            # AGV1: Loop around shelves
+            [[12.0, 5.0], [12.0, 15.0], [8.0, 15.0], [8.0, 5.0]],
+            # AGV2: Cross-diagonal
+            [[8.0, 15.0], [12.0, 5.0], [15.0, 8.0], [5.0, 12.0]]
+        ]
+
     def _update_agv_positions(self, time_step):
-        """Update AGV positions with collision avoidance"""
+        """Update AGV positions using waypoint-based movement"""
+        if not hasattr(self, 'waypoints'):
+            self.waypoints = self._generate_agv_waypoints()
+            self.current_waypoint_indices = [0] * self.config.num_agvs
+            
         dt = 1.0  # 1 second intervals
+        speed = 0.83  # 3 km/h in m/s
         
-        # Calculate new positions
-        new_positions = self.agv_positions + self.agv_velocities * dt
-        
-        # Implement basic collision avoidance with shelves
+        new_positions = []
         for i in range(self.config.num_agvs):
-            for shelf in range(5):
-                shelf_pos = self.scene.get(f"shelf_{shelf}").position
-                distance = tf.norm(new_positions[i, :2] - shelf_pos[:2])
-                
-                # If too close to shelf, adjust velocity
-                if distance < 1.5:  # 1.5m safety margin
-                    self.agv_velocities = self._generate_agv_velocities()
-                    new_positions = self.agv_positions + self.agv_velocities * dt
+            current_pos = self.agv_positions[i]
+            target_waypoint = self.waypoints[i][self.current_waypoint_indices[i]]
+            
+            # Calculate direction vector to next waypoint
+            direction = np.array(target_waypoint) - current_pos[:2]
+            distance = np.linalg.norm(direction)
+            
+            if distance < speed * dt:  # Reached waypoint
+                self.current_waypoint_indices[i] = (self.current_waypoint_indices[i] + 1) % len(self.waypoints[i])
+                new_pos = np.array([*target_waypoint, 0.5])  # 0.5m height
+            else:
+                # Move towards waypoint
+                direction = direction / distance
+                new_pos = current_pos + np.array([*direction * speed * dt, 0.0])
+            
+            new_positions.append(new_pos)
         
-        # Ensure AGVs stay within room boundaries
-        new_positions = tf.clip_by_value(
-            new_positions,
-            [0.0, 0.0, 0.5],
-            [20.0, 20.0, 0.5]
-        )
+        self.agv_positions = tf.constant(new_positions, dtype=tf.float32)
         
         # Update positions history
         for i in range(self.config.num_agvs):
-            self.positions_history[i].append(new_positions[i].numpy())
+            self.positions_history[i].append(self.agv_positions[i].numpy())
         
-        self.agv_positions = new_positions
-        return new_positions
+        return self.agv_positions
 
     def save_csi_dataset(self, filepath, num_samples=None):
         """
@@ -244,49 +257,55 @@ class SmartFactoryChannel:
         return data
 
     def generate_channel(self):
-        """Generate channel matrices for the smart factory scenario"""
+        """Generate channel matrices with proper RIS modeling"""
         # Update AGV positions
         current_positions = self._update_agv_positions(self.config.num_time_steps)
         
-        # Add batch dimension to positions and reshape tensors correctly
-        current_positions = tf.expand_dims(current_positions, axis=0)  # [1, num_agvs, 3]
-        bs_position = tf.constant([[[10.0, 0.5, 4.5]]], dtype=tf.float32)  # [1, 1, 3]
+        # Add batch dimension to positions
+        current_positions = tf.expand_dims(current_positions, axis=0)
+        bs_position = tf.constant([[[10.0, 0.5, 4.5]]], dtype=tf.float32)
         
-        # Set the topology for the channel model
+        # Set topology
         self.channel_model.set_topology(
-            ut_loc=current_positions,  # [batch=1, num_agvs, 3]
-            bs_loc=bs_position,  # [batch=1, num_bs=1, 3]
-            ut_orientations=tf.zeros([1, self.config.num_agvs, 3]),  # [batch=1, num_agvs, 3]
-            bs_orientations=tf.zeros([1, 1, 3]),  # [batch=1, num_bs=1, 3]
-            ut_velocities=tf.expand_dims(self.agv_velocities, axis=0),  # [batch=1, num_agvs, 3]
-            in_state=tf.zeros([1, self.config.num_agvs], dtype=tf.bool)  # [batch=1, num_agvs]
+            ut_loc=current_positions,
+            bs_loc=bs_position,
+            ut_orientations=tf.zeros([1, self.config.num_agvs, 3]),
+            bs_orientations=tf.zeros([1, 1, 3]),
+            ut_velocities=tf.zeros([1, self.config.num_agvs, 3]),  # Zero velocity for waypoint movement
+            in_state=tf.zeros([1, self.config.num_agvs], dtype=tf.bool)
         )
         
-        # Generate paths including RIS reflections
-        paths = self.scene.compute_paths(max_depth=3)
+        # Generate paths with RIS
+        paths_with_ris = self.scene.compute_paths(max_depth=3)
         
-        # Generate channel matrices with required parameters
-        h = self.channel_model(
+        # Generate paths without RIS by temporarily removing it
+        ris = self.scene.get("ris")
+        self.scene.remove("ris")
+        paths_without_ris = self.scene.compute_paths(max_depth=1)
+        self.scene.add(ris)
+        
+        # Generate channel matrices
+        h_with_ris = self.channel_model(
             num_time_samples=self.config.num_time_steps,
-            sampling_frequency=self.config.sampling_frequency
+            sampling_frequency=self.config.sampling_frequency,
+            paths=paths_with_ris
         )
         
-        # Calculate path delays
-        tau = paths.tau
-        
-        # Determine LOS condition based on path existence
-        # If there's at least one direct path between BS and AGV, consider it LOS
-        los_condition = tf.cast(
-            tf.reduce_any(tf.not_equal(paths.tau, float('inf')), axis=-1),
-            tf.bool
+        h_without_ris = self.channel_model(
+            num_time_samples=self.config.num_time_steps,
+            sampling_frequency=self.config.sampling_frequency,
+            paths=paths_without_ris
         )
         
         return {
-            'h': h[0],  # First element of tuple contains channel coefficients
-            'tau': tau,
-            'paths': paths,
-            'los_condition': los_condition,
+            'h': h_with_ris[0],
+            'tau': paths_with_ris.tau,
+            'paths': paths_with_ris,
+            'los_condition': tf.cast(
+                tf.reduce_any(tf.not_equal(paths_with_ris.tau, float('inf')), axis=-1),
+                tf.bool
+            ),
             'agv_positions': current_positions,
-            'h_with_ris': h[0],  # Include RIS effect
-            'h_without_ris': h[0] * 0.5  # Simulate channel without RIS (simplified)
+            'h_with_ris': h_with_ris[0],
+            'h_without_ris': h_without_ris[0]  # Using proper ray-traced channel
         }
