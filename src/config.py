@@ -39,3 +39,14 @@ class SmartFactoryConfig:
         # Additional parameters needed for scene setup
         self.num_tx = 1  # Number of transmitters
         self.num_rx = 2  # Number of receivers (AGVs)
+
+        # Add beam configuration parameters
+        self.num_beams = 64  # Number of beams in codebook
+        self.xai_pruning_factor = 0.3  # Default pruning factor (30% reduction)
+
+        # Add parameters for causal analysis
+        self.causal_variables = {
+            'agv_position': True,
+            'los_condition': True,
+            'beam_choice': True
+        }
