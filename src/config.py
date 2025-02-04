@@ -5,6 +5,7 @@ class SmartFactoryConfig:
     def __init__(self):
         self.num_time_steps = 100
         self.sampling_frequency = 1000  # in Hz
+        self.num_agvs = 2  # Number of AGVs
         # Room dimensions
         self.room_dim = [20.0, 20.0, 5.0]  # Length x Width x Height
         

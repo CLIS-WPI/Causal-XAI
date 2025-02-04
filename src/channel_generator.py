@@ -160,11 +160,24 @@ class SmartFactoryChannel:
         # Update AGV positions
         current_positions = self._update_agv_positions(self.config.num_time_steps)
         
+        # Add batch dimension to positions and reshape tensors correctly
+        current_positions = tf.expand_dims(current_positions, axis=0)  # [1, num_agvs, 3]
+        bs_position = tf.constant([[[10.0, 0.5, 4.5]]], dtype=tf.float32)  # [1, 1, 3]
+        
+        # Set the topology for the channel model
+        self.channel_model.set_topology(
+            ut_loc=current_positions,  # [batch=1, num_agvs, 3]
+            bs_loc=bs_position,  # [batch=1, num_bs=1, 3]
+            ut_orientations=tf.zeros([1, self.config.num_agvs, 3]),  # [batch=1, num_agvs, 3]
+            bs_orientations=tf.zeros([1, 1, 3]),  # [batch=1, num_bs=1, 3]
+            ut_velocities=tf.expand_dims(self.agv_velocities, axis=0),  # [batch=1, num_agvs, 3]
+            in_state=tf.zeros([1, self.config.num_agvs], dtype=tf.bool)  # [batch=1, num_agvs]
+        )
+        
         # Generate paths including RIS reflections
         paths = self.scene.compute_paths(max_depth=3)
         
-        # Generate channel matrices
-        # Add the required parameters from config
+        # Generate channel matrices with required parameters
         h = self.channel_model(
             num_time_samples=self.config.num_time_steps,
             sampling_frequency=self.config.sampling_frequency
@@ -177,11 +190,11 @@ class SmartFactoryChannel:
         los_condition = paths.los_condition
         
         return {
-            'h': h,
+            'h': h[0],  # First element of tuple contains channel coefficients
             'tau': tau,
             'paths': paths,
             'los_condition': los_condition,
             'agv_positions': current_positions,
-            'h_with_ris': h,  # Include RIS effect
-            'h_without_ris': h * 0.5  # Simulate channel without RIS (simplified)
+            'h_with_ris': h[0],  # Include RIS effect
+            'h_without_ris': h[0] * 0.5  # Simulate channel without RIS (simplified)
         }
