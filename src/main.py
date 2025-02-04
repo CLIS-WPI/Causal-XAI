@@ -127,7 +127,11 @@ def analyze_channel_properties(channel_response, config, result_dir):
 
         # 2. Path Delay Analysis
         plt.subplot(2, 2, 2)
-        delays_ns = channel_response['tau'].numpy().flatten() * 1e9  # Convert to ns
+        tau = channel_response['tau']
+        if isinstance(tau, tf.Tensor):
+            delays_ns = tau.numpy().flatten() * 1e9  # Convert to ns for TensorFlow tensor
+        else:
+            delays_ns = tau.flatten() * 1e9  # Convert to ns for numpy array
         valid_delays = delays_ns[~np.isnan(delays_ns)]
         if len(valid_delays) > 0:
             plt.hist(valid_delays, bins=min(50, len(valid_delays)),
