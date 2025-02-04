@@ -164,10 +164,7 @@ class SmartFactoryChannel:
         paths = self.scene.compute_paths(max_depth=3)
         
         # Generate channel matrices
-        h = self.channel_model(
-            num_time_steps=self.config.num_time_steps,
-            sampling_frequency=self.config.sampling_frequency
-        )
+        h = self.channel_model()
         
         # Calculate path delays
         tau = paths.tau
