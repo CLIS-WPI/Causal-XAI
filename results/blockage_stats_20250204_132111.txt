@@ -1,0 +1,2 @@
+LOS Ratio: 100.00%
+NLOS Ratio: 0.00%

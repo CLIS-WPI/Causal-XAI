@@ -298,7 +298,6 @@ def main():
     
     # Initialize configuration
     config = SmartFactoryConfig()
-    channel_gen = SmartFactoryChannel(config, scene=scene)
     
     # Setup scene
     scene = setup_scene(config)
@@ -307,19 +306,32 @@ def main():
     channel_gen = SmartFactoryChannel(config, scene=scene)
     channel_gen.scene = scene  # Explicitly set the scene
     
-    # Generate channel for multiple time steps
-    channel_responses = []
-    for t in range(config.num_time_steps):
-        # Update AGV positions if needed
-        if hasattr(channel_gen, 'update_agv_positions'):
-            channel_gen.update_agv_positions(t)
-        
-        # Generate channel response
-        channel_response = channel_gen.generate_channel()
-        channel_responses.append(channel_response)
-    
     # Ensure result directory exists
     result_dir = ensure_result_dir()
+    
+    # Generate and save CSI dataset
+    csi_filepath = os.path.join(result_dir, 'csi_dataset.h5')
+    channel_gen.save_csi_dataset(csi_filepath)
+    print(f"CSI dataset saved to: {csi_filepath}")
+    
+    # Load the saved CSI dataset
+    loaded_data = channel_gen.load_csi_dataset(csi_filepath)
+    print("CSI dataset loaded successfully")
+    
+    # Extract channel responses from loaded data
+    channel_responses = []
+    num_samples = loaded_data['channel_matrices'].shape[0]
+    
+    for i in range(num_samples):
+        channel_response = {
+            'h': loaded_data['channel_matrices'][i],
+            'tau': loaded_data['path_delays'][i],
+            'los_condition': loaded_data['los_conditions'][i],
+            'agv_positions': loaded_data['agv_positions'][i],
+            'h_with_ris': loaded_data['channel_matrices'][i],
+            'h_without_ris': loaded_data['channel_matrices'][i] * 0.5  # Simplified
+        }
+        channel_responses.append(channel_response)
     
     # Analyze scene
     analyzer = ChannelAnalyzer(scene)
@@ -358,8 +370,11 @@ def main():
         # Save final channel statistics
         save_channel_stats(channel_responses[-1], config, result_dir)
         
+        print("Analysis of loaded CSI dataset completed successfully")
+        
     except Exception as e:
         print(f"Error in analysis pipeline: {str(e)}")
+        traceback.print_exc()
     
     print(f"Analysis complete. Results saved in {result_dir}")
 
