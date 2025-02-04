@@ -8,6 +8,9 @@ from scene_setup import setup_scene
 from sionna.channel import CDL
 from sionna.channel.tr38901 import CDL
 import shap
+from dowhy import CausalModel
+import networkx as nx
+import pandas as pd
 
 class SmartFactoryChannel:
     """Smart Factory Channel Generator using Sionna"""
@@ -511,8 +514,102 @@ class SmartFactoryChannel:
             }
         }
 
+    def setup_causal_graph(self):
+        """Create causal graph for AGV→LOS→BeamChoice relationships"""
+        graph = nx.DiGraph([
+            ('AGV_Position', 'LOS_Condition'),
+            ('LOS_Condition', 'Channel_Quality'),
+            ('RIS_Config', 'Channel_Quality'),
+            ('AGV_Position', 'Channel_Quality')
+        ])
+        return graph
+
+    def perform_causal_analysis(self, channel_response):
+        """Perform causal analysis using DoWhy"""
+        # Prepare data for causal analysis
+        data = pd.DataFrame({
+            'agv_x': channel_response['agv_positions'][0, :, 0].numpy(),
+            'agv_y': channel_response['agv_positions'][0, :, 1].numpy(),
+            'los_condition': channel_response['los_condition'].numpy(),
+            'channel_quality_with_ris': channel_response['channel_quality']['with_ris'].numpy(),
+            'channel_quality_without_ris': channel_response['channel_quality']['without_ris'].numpy()
+        })
+        
+        # Create causal model
+        model = CausalModel(
+            data=data,
+            graph=self.setup_causal_graph(),
+            treatment=['agv_x', 'agv_y'],
+            outcome='channel_quality_with_ris'
+        )
+        
+        # Identify causal effect
+        identified_estimand = model.identify_effect()
+        
+        # Estimate effect
+        estimate = model.estimate_effect(identified_estimand,
+                                    method_name="backdoor.linear_regression")
+        
+        return {
+            'causal_effect': estimate.value,
+            'confidence_intervals': estimate.get_confidence_intervals(),
+            'treatment_variables': ['agv_x', 'agv_y'],
+            'outcome_variable': 'channel_quality_with_ris'
+        }
+    
+        #Causal analysis using DoWhy to understand relationships between AGV positions, LOS conditions, and channel quality
+        #Energy efficiency metrics including beam training overhead and RIS configuration energy
+        #XAI-guided beam pruning for energy optimization
+        #Comprehensive metrics in the channel response
+
+    def compute_energy_metrics(self, channel_response):
+        """Compute energy efficiency metrics"""
+        # Calculate baseline beam training overhead
+        baseline_scans = self.config.num_beams
+        
+        # Calculate optimized beam training using XAI-guided pruning
+        pruning_factor = self._compute_pruning_factor(channel_response)
+        optimized_scans = int(baseline_scans * (1 - pruning_factor))
+        
+        # Calculate energy consumption for different components
+        beam_training_energy = {
+            'baseline': baseline_scans * self.config.energy_per_beam_scan,
+            'optimized': optimized_scans * self.config.energy_per_beam_scan,
+            'savings': (baseline_scans - optimized_scans) * self.config.energy_per_beam_scan
+        }
+        
+        # Calculate RIS-related energy metrics
+        ris_energy = {
+            'configuration_overhead': self.config.ris_config_energy,
+            'improvement_factor': channel_response['channel_quality']['improvement']
+        }
+        
+        return {
+            'beam_training': beam_training_energy,
+            'ris_overhead': ris_energy,
+            'total_energy_savings': beam_training_energy['savings'] - ris_energy['configuration_overhead'],
+            'energy_efficiency': channel_response['channel_quality']['improvement'] / 
+                            (beam_training_energy['optimized'] + ris_energy['configuration_overhead'])
+        }
+
+    def _compute_pruning_factor(self, channel_response):
+        """Compute beam pruning factor based on XAI analysis"""
+        # Use SHAP values to determine which beams are most important
+        shap_analysis = channel_response['shap_analysis']
+        position_impact = tf.reduce_mean(tf.abs(shap_analysis['position_impact']['values']))
+        ris_impact = tf.reduce_mean(tf.abs(shap_analysis['ris_impact']['values']))
+        
+        # Calculate pruning factor based on feature importance
+        total_impact = position_impact + ris_impact
+        pruning_factor = tf.minimum(
+            0.5,  # Maximum 50% pruning
+            0.3 * (1 - position_impact / total_impact)  # More pruning when position impact is low
+        )
+        
+        return pruning_factor.numpy()
+
     def generate_channel(self):
-        """Generate channel matrices with proper RIS modeling and explainability data"""
+        """Generate channel matrices with proper RIS modeling and explainability data and ausal analysis and energy metrics"""
         # Update AGV positions
         current_positions = self._update_agv_positions(self.config.num_time_steps)
         

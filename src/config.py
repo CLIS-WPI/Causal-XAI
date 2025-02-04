@@ -44,6 +44,11 @@ class SmartFactoryConfig:
         self.num_beams = 64  # Number of beams in codebook
         self.xai_pruning_factor = 0.3  # Default pruning factor (30% reduction)
 
+        # Add energy-related parameters
+        self.energy_per_beam_scan = 0.1  # Energy consumption per beam scan in Joules
+        self.ris_config_energy = 0.5     # Energy consumption for RIS configuration
+        self.xai_pruning_threshold = 0.3  # Threshold for XAI-guided beam pruning
+        
         # Add parameters for causal analysis
         self.causal_variables = {
             'agv_position': True,
