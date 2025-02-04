@@ -5,7 +5,7 @@ from sionna.channel import tr38901
 from sionna.rt import Scene, Transmitter, Receiver, RIS, SceneObject
 from sionna.channel.tr38901 import PanelArray, UMi  # Using UMi as alternative to IndoorFactory
 from scene_setup import setup_scene
-from sionna.channel.tr38901 import CDL
+from sionna.channel.tr38901 import TDL
 import shap
 from dowhy import CausalModel
 import networkx as nx
@@ -50,13 +50,14 @@ class SmartFactoryChannel:
         )
         
         # In __init__ method, replace the UMi channel model with:
-        self.channel_model = CDL(
+        #CDL is gone → You must use TDL from sionna.channel.tr38901.
+        self.channel_model = TDL(
             model="C",                    # CDL-C model for dense multipath
             delay_spread=100e-9,          # 100ns delay spread for factory environment
             carrier_frequency=28e9,       # 28 GHz carrier frequency
-            ut_array=self.agv_array,      # AGV antenna array
-            bs_array=self.bs_array,       # Base station antenna array
-            direction='downlink',         # Downlink transmission
+            #ut_array=self.agv_array,      # AGV antenna array
+            #bs_array=self.bs_array,       # Base station antenna array
+            #direction='downlink',         # Downlink transmission
             dtype=config.dtype,           # Data type from config
             #enable_pathloss=True,         # Enable path loss modeling
             #enable_shadow_fading=True,    # Enable shadow fading
