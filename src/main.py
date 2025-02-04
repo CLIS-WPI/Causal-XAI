@@ -50,6 +50,21 @@ def save_channel_stats(channel_response, config, result_dir):
         
         f.write(f"Analysis timestamp: {datetime.now()}\n")
 
+        # sections for causal and energy metrics
+        if 'causal_analysis' in channel_response:
+            f.write("\nCausal Analysis Results:\n")
+            f.write("-----------------------\n")
+            causal_analysis = channel_response['causal_analysis']
+            f.write(f"Causal Effect: {causal_analysis.get('causal_effect', 'N/A')}\n")
+        
+        if 'energy_metrics' in channel_response:
+            f.write("\nEnergy Efficiency Metrics:\n")
+            f.write("------------------------\n")
+            energy_metrics = channel_response['energy_metrics']
+            f.write(f"Total Energy Savings: {energy_metrics.get('total_energy_savings', 'N/A')} J\n")
+            f.write(f"Energy Efficiency: {energy_metrics.get('energy_efficiency', 'N/A')}\n")
+
+
 def analyze_channel_properties(channel_response, config, result_dir):
     """Analyze and plot channel properties for smart factory scenario"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -299,6 +314,66 @@ def plot_agv_trajectories(channel_gen, result_dir):
     
     plt.savefig(os.path.join(result_dir, f'agv_trajectories_{timestamp}.png'))
     plt.close()
+def analyze_causal_relationships(channel_response, result_dir):
+    """Analyze and visualize causal relationships in channel response"""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # Extract causal analysis results
+    causal_analysis = channel_response.get('causal_analysis', {})
+    
+    # Save causal analysis results
+    causal_file = os.path.join(result_dir, f'causal_analysis_{timestamp}.txt')
+    with open(causal_file, 'w') as f:
+        f.write("Causal Analysis Results\n")
+        f.write("======================\n\n")
+        
+        if 'causal_effect' in causal_analysis:
+            f.write(f"Causal Effect: {causal_analysis['causal_effect']}\n")
+        if 'confidence_intervals' in causal_analysis:
+            f.write(f"Confidence Intervals: {causal_analysis['confidence_intervals']}\n")
+        if 'treatment_variables' in causal_analysis:
+            f.write(f"Treatment Variables: {causal_analysis['treatment_variables']}\n")
+        if 'outcome_variable' in causal_analysis:
+            f.write(f"Outcome Variable: {causal_analysis['outcome_variable']}\n")
+
+def analyze_energy_efficiency(channel_response, result_dir):
+    """Analyze and visualize energy efficiency metrics"""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # Extract energy metrics
+    energy_metrics = channel_response.get('energy_metrics', {})
+    
+    if energy_metrics:
+        # Create visualization
+        plt.figure(figsize=(10, 6))
+        
+        # Plot beam training energy comparison
+        if 'beam_training' in energy_metrics:
+            beam_metrics = energy_metrics['beam_training']
+            plt.subplot(1, 2, 1)
+            plt.bar(['Baseline', 'Optimized'], 
+                [beam_metrics['baseline'], beam_metrics['optimized']])
+            plt.title('Beam Training Energy Consumption')
+            plt.ylabel('Energy (J)')
+            
+        # Plot overall energy efficiency
+        plt.subplot(1, 2, 2)
+        if 'energy_efficiency' in energy_metrics:
+            plt.bar(['Energy Efficiency'], [energy_metrics['energy_efficiency']])
+            plt.title('Overall Energy Efficiency')
+            plt.ylabel('Channel Quality / Energy')
+        
+        plt.tight_layout()
+        plt.savefig(os.path.join(result_dir, f'energy_analysis_{timestamp}.png'))
+        plt.close()
+        
+        # Save numerical results
+        energy_file = os.path.join(result_dir, f'energy_metrics_{timestamp}.txt')
+        with open(energy_file, 'w') as f:
+            f.write("Energy Efficiency Metrics\n")
+            f.write("=======================\n\n")
+            for metric_name, value in energy_metrics.items():
+                f.write(f"{metric_name}: {value}\n")
 
 def main():
     # Set random seed for reproducibility
@@ -374,6 +449,17 @@ def main():
             if 'los_condition' in channel_response:
                 los_ratio = analyze_blockage_statistics(channel_response, result_dir)
                 print(f"Time step {t+1}: LOS Ratio = {los_ratio:.2%}")
+            
+            # New analyses
+            # Causal analysis
+            if 'causal_analysis' in channel_response:
+                analyze_causal_relationships(channel_response, result_dir)
+                print(f"Time step {t+1}: Causal analysis completed")
+            
+            # Energy efficiency analysis
+            if 'energy_metrics' in channel_response:
+                analyze_energy_efficiency(channel_response, result_dir)
+                print(f"Time step {t+1}: Energy efficiency analysis completed")
         
         # Plot AGV trajectories
         if hasattr(channel_gen, 'positions_history'):
