@@ -213,25 +213,30 @@ def analyze_ris_effectiveness(channel_response, result_dir):
     print(f"[DEBUG] h_with_ris original shape: {h_with_ris.shape}")
     print(f"[DEBUG] h_without_ris original shape: {h_without_ris.shape}")
     
-    # Sequentially reduce h_with_ris to a 2D image.
+    # Sequential reduction for h_with_ris
     temp = tf.reduce_mean(tf.abs(h_with_ris), axis=0)
-    print(f"[DEBUG] After reducing axis 0: {temp.shape}")  # Expected: (1, 1, 128, 23, 10)
+    print(f"[DEBUG] After reducing axis 0: {temp.shape}")  # Expected: (2,1,1,128,23,10)
     temp = tf.reduce_mean(temp, axis=0)
-    print(f"[DEBUG] After reducing next axis: {temp.shape}")  # Expected: (1, 128, 23, 10)
+    print(f"[DEBUG] After reducing next axis: {temp.shape}")  # Expected: (1,1,128,23,10)
     temp = tf.reduce_mean(temp, axis=0)
-    print(f"[DEBUG] After reducing third axis: {temp.shape}")  # Expected: (128, 23, 10)
+    print(f"[DEBUG] After reducing third axis: {temp.shape}")  # Expected: (1,128,23,10)
     h_with_ris_img = tf.reduce_mean(temp, axis=-1)
-    print(f"[DEBUG] Final h_with_ris_img shape: {h_with_ris_img.shape}")  # Expected: (128, 23)
+    print(f"[DEBUG] h_with_ris_img shape before squeeze: {h_with_ris_img.shape}")  # Expected: (1,128,23)
+    # Remove the extra singleton dimension (axis 0)
+    h_with_ris_img = tf.squeeze(h_with_ris_img, axis=0)
+    print(f"[DEBUG] Final h_with_ris_img shape: {h_with_ris_img.shape}")  # Expected: (128,23)
     
-    # Similarly reduce h_without_ris to 2D.
+    # Similarly for h_without_ris
     temp2 = tf.reduce_mean(tf.abs(h_without_ris), axis=0)
-    print(f"[DEBUG] After reducing axis 0 for h_without_ris: {temp2.shape}")
+    print(f"[DEBUG] h_without_ris shape after reducing axis 0: {temp2.shape}")
     temp2 = tf.reduce_mean(temp2, axis=0)
     print(f"[DEBUG] After reducing next axis for h_without_ris: {temp2.shape}")
     temp2 = tf.reduce_mean(temp2, axis=0)
     print(f"[DEBUG] After reducing third axis for h_without_ris: {temp2.shape}")
     h_without_ris_img = tf.reduce_mean(temp2, axis=-1)
-    print(f"[DEBUG] Final h_without_ris_img shape: {h_without_ris_img.shape}")  # Expected: (128, 23)
+    print(f"[DEBUG] h_without_ris_img shape before squeeze: {h_without_ris_img.shape}")
+    h_without_ris_img = tf.squeeze(h_without_ris_img, axis=0)
+    print(f"[DEBUG] Final h_without_ris_img shape: {h_without_ris_img.shape}")  # Expected: (128,23)
     
     plt.figure(figsize=(10, 6))
     
@@ -246,12 +251,11 @@ def analyze_ris_effectiveness(channel_response, result_dir):
     plt.colorbar(im2, label='Magnitude')
     
     plt.suptitle(f'RIS Gain: {ris_gain:.2f}x')
+    plt.tight_layout()
     plt.savefig(os.path.join(result_dir, f'ris_effectiveness_{timestamp}.png'))
     plt.close()
     
     return ris_gain
-
-
 
 def analyze_blockage_statistics(channel_response, result_dir):
     """Analyze and visualize blockage statistics"""
