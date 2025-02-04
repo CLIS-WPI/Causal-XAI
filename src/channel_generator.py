@@ -58,8 +58,8 @@ class SmartFactoryChannel:
             bs_array=self.bs_array,       # Base station antenna array
             direction='downlink',         # Downlink transmission
             dtype=config.dtype,           # Data type from config
-            enable_pathloss=True,         # Enable path loss modeling
-            enable_shadow_fading=True,    # Enable shadow fading
+            #enable_pathloss=True,         # Enable path loss modeling
+            #enable_shadow_fading=True,    # Enable shadow fading
             min_speed=0.0,               # Minimum speed for Doppler (static/slow AGVs)
             max_speed=0.83               # Maximum speed 3 km/h = 0.83 m/s
         )
