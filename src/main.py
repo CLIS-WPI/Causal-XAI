@@ -61,23 +61,38 @@ def analyze_channel_properties(channel_response, config, result_dir):
         print(f"Channel response shape: {h.shape}")
         
         # Properly reshape and normalize the channel response
-        h_mag = tf.abs(h)
-        h_mag_normalized = h_mag / tf.reduce_max(h_mag)  # Normalize for better visualization
+        h_mag = tf.abs(h)  # Get magnitude of complex channel response
+        h_mag_normalized = h_mag / tf.reduce_max(h_mag)  # Normalize by maximum value
         
         try:
-            # Reduce dimensions while preserving time and spatial information
-            h_2d = tf.reduce_mean(h_mag_normalized, axis=[1, 2])  # Average over antennas
+            # For shape (1, 2, 1, 1, 128, 23, 10)
+            # First reduce over batch, extra dims, and last dim
+            h_2d = tf.reduce_mean(h_mag_normalized, axis=[0, 2, 3, -1])  # Shape becomes (2, 128, 23)
+            
+            # Reshape to 2D by combining first two dimensions 
+            h_2d = tf.reshape(h_2d, [2 * 128, 23])  # Shape becomes (256, 23)
             h_2d = h_2d.numpy()
+            
         except Exception as e:
             print(f"Error in channel magnitude calculation: {e}")
-            h_2d = tf.reduce_mean(h_mag_normalized, axis=-1).numpy()
-        
+            # Fallback reshape if needed
+            h_2d = tf.reduce_mean(h_mag_normalized, axis=[0, 2, 3, -1]).numpy()
+            h_2d = np.reshape(h_2d, [-1, h_2d.shape[-1]])
+
         plt.subplot(2, 2, 1)
         im = plt.imshow(h_2d, aspect='auto', cmap='viridis')
         plt.colorbar(im, label='Normalized Magnitude')
         plt.title(f'Channel Magnitude\n({config.scenario} scenario)')
-        plt.xlabel('Time Steps')
-        plt.ylabel('AGV Index')
+        plt.xlabel('OFDM Symbol')
+        plt.ylabel('Receiver-Time Index')
+        print("Channel magnitude plot complete")
+
+        plt.subplot(2, 2, 1)
+        im = plt.imshow(h_2d, aspect='auto', cmap='viridis')
+        plt.colorbar(im, label='Normalized Magnitude')
+        plt.title(f'Channel Magnitude\n({config.scenario} scenario)')
+        plt.xlabel('Receiver Index')
+        plt.ylabel('OFDM Symbol')
         
         # 2. Path Delay Analysis
         plt.subplot(2, 2, 2)
@@ -98,7 +113,6 @@ def analyze_channel_properties(channel_response, config, result_dir):
         los_data = channel_response['los_condition'].numpy().flatten()
         los_data = los_data.astype(np.int32)
         
-        # Calculate percentages
         los_percent = np.mean(los_data) * 100
         nlos_percent = (1 - np.mean(los_data)) * 100
         
@@ -112,28 +126,32 @@ def analyze_channel_properties(channel_response, config, result_dir):
         # 4. Power Delay Profile
         plt.subplot(2, 2, 4)
         try:
-            # Calculate power delay profile
-            h_power = tf.reduce_mean(tf.abs(h)**2, axis=[0,1,2])  # Average over batch and antennas
+            # Reshape h for power calculation
+            h_reshaped = tf.reshape(h, [-1, h.shape[-1]])  # Flatten all but last dimension
+            h_power = tf.reduce_mean(tf.abs(h_reshaped)**2, axis=0)  # Average over all but path dimension
             h_power = h_power.numpy()
             h_power_db = 10 * np.log10(np.maximum(h_power, 1e-10))
             
-            # Plot with enhanced visualization
-            plt.plot(range(len(h_power)), h_power_db, 'b-', linewidth=2)
-            plt.fill_between(range(len(h_power)), h_power_db, 
-                        min(h_power_db), alpha=0.3, color='blue')
+            # Plot power delay profile
+            x_axis = np.arange(len(h_power))
+            plt.plot(x_axis, h_power_db, 'b-', linewidth=2)
+            plt.fill_between(x_axis, h_power_db, 
+                        np.min(h_power_db), alpha=0.3, color='blue')
+            
+            # Calculate RMS delay spread
+            rms_delay = np.sqrt(np.average(x_axis**2, weights=h_power))
+            plt.axvline(rms_delay, color='red', linestyle='--', 
+                    label=f'RMS Delay: {rms_delay:.2f}')
+            
             plt.title('Power Delay Profile')
             plt.xlabel('Path Index')
             plt.ylabel('Average Power (dB)')
             plt.grid(True, alpha=0.3)
-            
-            # Add RMS delay spread
-            rms_delay = np.sqrt(np.average((range(len(h_power)))**2, weights=h_power))
-            plt.axvline(rms_delay, color='red', linestyle='--', 
-                    label=f'RMS Delay: {rms_delay:.2f}')
             plt.legend()
             
         except Exception as e:
             print(f"Error in power delay profile calculation: {e}")
+            rms_delay = 0  # Default value if calculation fails
         
         # Adjust layout and save
         plt.tight_layout()
