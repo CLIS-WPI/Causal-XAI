@@ -165,7 +165,6 @@ class SmartFactoryChannel:
         
         # Generate channel matrices
         h = self.channel_model(
-            batch_size=self.config.batch_size,
             num_time_steps=self.config.num_time_steps,
             sampling_frequency=self.config.sampling_frequency
         )

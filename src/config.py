@@ -3,6 +3,8 @@ import tensorflow as tf
 class SmartFactoryConfig:
     """Configuration class for Smart Factory Channel Simulation"""
     def __init__(self):
+        self.num_time_steps = 100
+        self.sampling_frequency = 1000
         # Room dimensions
         self.room_dim = [20.0, 20.0, 5.0]  # Length x Width x Height
         
