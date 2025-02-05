@@ -12,7 +12,9 @@ from mpl_toolkits.mplot3d import Axes3D
 import sionna
 from sionna.rt import Scene, PlanarArray, Transmitter, Receiver, RIS, SceneObject
 import logging
-
+from validation import ChannelValidator
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress TF warnings
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN custom operations
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -28,6 +30,39 @@ def ensure_result_dir():
     result_dir = os.path.join(os.getcwd(), 'results')
     os.makedirs(result_dir, exist_ok=True)
     return result_dir
+
+def run_validation_pipeline(validator, channel_responses, channel_gen, config):
+    """Run validation checks before analysis"""
+    try:
+        logger.info("Starting validation pipeline...")
+        
+        # Get required data from channel generator
+        predicted_beams = channel_gen.get_predicted_beams()
+        optimal_beams = channel_gen.get_optimal_beams()
+        baseline_scans = channel_gen.get_baseline_scans()
+        xai_scans = channel_gen.get_xai_scans()
+        
+        # Run validation
+        validation_results = validator.run_full_validation(
+            channel_response=channel_responses[-1],
+            predicted_beams=predicted_beams,
+            optimal_beams=optimal_beams,
+            baseline_scans=baseline_scans,
+            xai_scans=xai_scans
+        )
+        
+        # Check validation results
+        all_passed = all(result[0] for result in validation_results.values())
+        if all_passed:
+            logger.info("All validation checks passed!")
+        else:
+            logger.warning("Some validation checks failed. Check validation report for details.")
+            
+        return validation_results, all_passed
+        
+    except Exception as e:
+        logger.error(f"Validation pipeline failed: {str(e)}")
+        raise
 
 def validate_config(config):
     """Validate configuration parameters"""
@@ -48,7 +83,7 @@ def validate_config(config):
     if config.sampling_frequency <= 0:
         raise ValueError("sampling_frequency must be positive")
     
-def save_channel_stats(channel_response, config, result_dir):
+def save_channel_stats(channel_response, config, result_dir, validation_results=None):
     """Save channel statistics and configuration to a text file"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     stats_file = os.path.join(result_dir, f'channel_stats_{timestamp}.txt')
@@ -93,7 +128,12 @@ def save_channel_stats(channel_response, config, result_dir):
             energy_metrics = channel_response['energy_metrics']
             f.write(f"Total Energy Savings: {energy_metrics.get('total_energy_savings', 'N/A')} J\n")
             f.write(f"Energy Efficiency: {energy_metrics.get('energy_efficiency', 'N/A')}\n")
-
+        if validation_results:
+            f.write("\nValidation Results:\n")
+            f.write("-----------------\n")
+            for metric, (passed, value) in validation_results.items():
+                status = "PASS" if passed else "FAIL"
+                f.write(f"{metric}: {status} (Value: {value:.3f})\n")
 
 def analyze_channel_properties(channel_response, config, result_dir):
     """Analyze and plot channel properties for smart factory scenario"""
@@ -498,7 +538,7 @@ def process_channel_responses(loaded_data):
     
     return channel_responses
 
-def run_analysis_pipeline(analyzer, channel_responses, channel_gen, config, result_dir):
+def run_analysis_pipeline(analyzer, channel_responses, channel_gen, config, result_dir, validation_results=None):
     """Run the complete analysis pipeline"""
     try:
         # 1. Visualize and save scene using ChannelAnalyzer
@@ -545,7 +585,7 @@ def run_analysis_pipeline(analyzer, channel_responses, channel_gen, config, resu
             logger.info("AGV trajectories plotted successfully")
 
         # 4. Save final statistics
-        save_channel_stats(channel_responses[-1], config, result_dir)
+        save_channel_stats(channel_responses[-1], config, result_dir, validation_results)
         logger.info("Final channel statistics saved")
 
     except Exception as e:
