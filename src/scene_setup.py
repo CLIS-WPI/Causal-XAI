@@ -51,30 +51,29 @@ def setup_scene(config):
     scene.add(concrete_material)
     
     # Add base station
+    # Add base station
     tx = Transmitter(
         name="bs",
         position=config.bs_position,
-        orientation=config.bs_orientation,
-        object_id=0
+        orientation=config.bs_orientation  # Remove object_id parameter
     )
     scene.add(tx)
-    tx.antenna = scene.tx_array  # Set antenna array after creation
-    
+    # Remove tx.antenna = scene.tx_array line since it's handled automatically
+
     # Define and add AGVs
     initial_positions = [
         [12.0, 5.0, config.agv_height],   # AGV1
         [8.0, 15.0, config.agv_height]    # AGV2
     ]
-    
+
     for i, pos in enumerate(initial_positions):
         rx = Receiver(
             name=f"agv_{i}",
             position=pos,
-            orientation=[0.0, 0.0, 0.0],
-            object_id=i+1
+            orientation=[0.0, 0.0, 0.0]  # Remove object_id parameter
         )
         scene.add(rx)
-        rx.antenna = scene.rx_array  # Set antenna array after creation
+        # Remove rx.antenna = scene.rx_array line since it's handled automatically
     
     # Add RIS with enhanced configuration
     ris = RIS(
@@ -83,9 +82,8 @@ def setup_scene(config):
         orientation=config.ris_orientation,
         num_rows=config.ris_elements[0],
         num_cols=config.ris_elements[1],
-        element_spacing=config.ris_spacing or 0.5*wavelength,
-        dtype=config.dtype,
-        object_id=len(initial_positions)+1
+        element_spacing=config.ris_spacing,  # Add element_spacing parameter
+        dtype=config.dtype
     )
     scene.add(ris)
     
