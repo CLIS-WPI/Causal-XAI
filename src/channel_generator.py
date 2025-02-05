@@ -2,15 +2,14 @@ import tensorflow as tf
 import numpy as np
 import sionna
 from sionna.channel import tr38901
-from sionna.rt import Scene, Transmitter, Receiver, RIS, SceneObject
-from sionna.channel.tr38901 import PanelArray, UMi  # Using UMi as alternative to IndoorFactory
 from scene_setup import setup_scene
 from sionna.channel.tr38901 import UMi
 import shap
 from dowhy import CausalModel
 import networkx as nx
 import pandas as pd
-
+from sionna.constants import SPEED_OF_LIGHT
+from sionna.rt import Scene, Transmitter, Receiver, RIS, SceneObject, PlanarArray, RadioMaterial
 class SmartFactoryChannel:
     """Smart Factory Channel Generator using Sionna"""
     
@@ -20,99 +19,56 @@ class SmartFactoryChannel:
         tf.random.set_seed(config.seed)
         self.positions_history = [[] for _ in range(config.num_agvs)]
         
-        # Initialize scene if not provided
+        # Initialize scene using setup_scene function
         if scene is None:
-            self.scene = Scene()
-            self._setup_scene()
+            self.scene = setup_scene(config)
         else:
-            # When scene is provided, we need to get it from somewhere
-            # Add this line to store the scene that was set up in main.py
-            self.scene = scene  # Get the scene from setup_scene function
-            
-        # Initialize BS antenna array (16x4 UPA at 28 GHz)
-        self.bs_array = PanelArray(
-            num_rows_per_panel=16,
-            num_cols_per_panel=4,
-            polarization='dual',
-            polarization_type='cross',
-            antenna_pattern='38.901',  # Changed from 'tr38901' to '38.901'
-            carrier_frequency=28e9
+            self.scene = scene
+        
+        # Configure antenna arrays using PlanarArray for ray tracing
+        self.bs_array = PlanarArray(
+            num_rows=config.bs_array[0],
+            num_cols=config.bs_array[1],
+            vertical_spacing=config.bs_array_spacing,
+            horizontal_spacing=config.bs_array_spacing,
+            pattern="tr38901",
+            polarization="VH"
         )
         
-        # Initialize AGV antenna array (1x1)
-        self.agv_array = PanelArray(
-            num_rows_per_panel=1,
-            num_cols_per_panel=1,
-            polarization='single',
-            polarization_type='V',
-            antenna_pattern='omni',
-            carrier_frequency=28e9
+        self.agv_array = PlanarArray(
+            num_rows=1,
+            num_cols=1,
+            vertical_spacing=config.agv_array_spacing,
+            horizontal_spacing=config.agv_array_spacing,
+            pattern="iso",
+            polarization="V"
         )
         
-
-        self.channel_model = UMi(
-            carrier_frequency=28e9,       # 28 GHz carrier frequency
-            o2i_model='low',              # Indoor propagation model
-            ut_array=self.agv_array,      # AGV antenna array
-            bs_array=self.bs_array,       # Base station antenna array
-            direction='downlink',         # Downlink transmission
-            enable_pathloss=True,         # Enable path loss modeling
-            enable_shadow_fading=True,    # Enable shadow fading
-            #min_speed=0.0,                # Minimum speed for Doppler
-            #max_speed=0.83,               # Maximum speed 3 km/h = 0.83 m/s
-            dtype=config.dtype            # Data type from config
-        )
+        # Remove UMi channel model as we're using ray tracing
+        # Initialize AGV positions and velocities
+        self.agv_positions = self._generate_initial_agv_positions()
+        self.agv_velocities = self._generate_agv_velocities()
         
         # Initialize AGV positions and velocities
         self.agv_positions = self._generate_initial_agv_positions()
         self.agv_velocities = self._generate_agv_velocities()
 
-    def _setup_scene(self):
-        """Set up the complete factory scene"""
-        # Add base station
-        bs = Transmitter(
-            name="bs",
-            position=[10.0, 0.5, 4.5],  # Ceiling mounted
-            orientation=[0.0, 0.0, 0.0]
-        )
-        self.scene.add(bs)
-        
-        # Add RIS
-        ris = RIS(
-            name="ris",
-            position=[10.0, 19.5, 2.5],  # North wall
-            orientation=[0.0, 0.0, 0.0],
-            num_rows=8,
-            num_cols=8,
-            element_spacing=0.5*3e8/28e9  # Half wavelength at 28 GHz
-        )
-        self.scene.add(ris)
-        
-        # Add metallic shelves with fixed positions
-        self._add_shelves()
-        
-        # Add initial AGV positions
-        self._add_agvs()
 
-    def _add_shelves(self):
-        """Add 5 metallic shelves with strategic positions"""
-        shelf_positions = [
-            [5.0, 5.0, 0.0],
-            [15.0, 5.0, 0.0],
-            [10.0, 10.0, 0.0],
-            [5.0, 15.0, 0.0],
-            [15.0, 15.0, 0.0]
-        ]
-        shelf_dims = [2.0, 1.0, 4.0]  # Length x Width x Height
-        
-        for i, position in enumerate(shelf_positions):
-            shelf = SceneObject(
-                name=f"shelf_{i}",
-                position=position,
-                size=shelf_dims,
-                material="metal"
-            )
-            self.scene.add(shelf)
+    def _update_ris_configuration(self, paths):
+        """Update RIS configuration based on path information"""
+        ris = self.scene.get("ris")
+        if ris is not None:
+            # Optimize RIS phases based on path information
+            optimal_phases = self._compute_optimal_ris_phases(paths)
+            ris.set_phases(optimal_phases)
+
+    def _compute_optimal_ris_phases(self, paths):
+        """Compute optimal RIS phases based on path information"""
+        # Implement RIS phase optimization logic here
+        # This is a placeholder - actual implementation needed
+        return tf.zeros([self.config.ris_elements[0], self.config.ris_elements[1]], 
+                    dtype=self.config.dtype)
+
 
     def _generate_initial_agv_positions(self):
         """Generate initial AGV positions"""
@@ -605,6 +561,17 @@ class SmartFactoryChannel:
         )
         
         return pruning_factor.numpy()
+
+    def _calculate_velocities(self, current_positions):
+        """Calculate AGV velocities based on position changes"""
+        agv_velocities = tf.zeros([1, self.config.num_agvs, 3], dtype=tf.float32)
+        if len(self.positions_history[0]) > 1:
+            prev_positions = tf.constant(
+                [[self.positions_history[j][-2] for j in range(self.config.num_agvs)]],
+                dtype=tf.float32
+            )
+            agv_velocities = (current_positions - prev_positions) / self.config.simulation['time_step']
+        return agv_velocities
 
     def generate_channel(self):
         """Generate channel matrices with proper RIS modeling and explainability data and ausal analysis and energy metrics"""
