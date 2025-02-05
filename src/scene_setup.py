@@ -59,7 +59,7 @@ def setup_scene(config):
     # Create room boundaries
     room_dims = config.room_dim
     
-    # Add floor
+    # Add floor using SceneObject
     floor = SceneObject(
         name="floor",
         position=[room_dims[0]/2, room_dims[1]/2, 0],
@@ -68,7 +68,7 @@ def setup_scene(config):
     )
     scene.add(floor)
     
-    # Add ceiling
+    # Add ceiling using SceneObject
     ceiling = SceneObject(
         name="ceiling",
         position=[room_dims[0]/2, room_dims[1]/2, room_dims[2]],
@@ -77,7 +77,7 @@ def setup_scene(config):
     )
     scene.add(ceiling)
     
-    # Add walls
+    # Add walls using SceneObject
     wall_specs = [
         ("wall_north", [room_dims[0], 0.2, room_dims[2]], [room_dims[0]/2, room_dims[1], room_dims[2]/2]),
         ("wall_south", [room_dims[0], 0.2, room_dims[2]], [room_dims[0]/2, 0, room_dims[2]/2]),
