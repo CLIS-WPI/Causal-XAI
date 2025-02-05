@@ -43,7 +43,7 @@ def setup_scene(config):
     print("[DEBUG] Starting scene setup...")
     
     try:
-        # 1. Initialize empty scene properly using Sionna's API
+        # 1. Initialize empty scene with proper configuration
         scene = load_scene("__empty__", dtype=config.dtype)
         
         # 2. Set basic properties
@@ -128,28 +128,28 @@ def setup_scene(config):
         scene.add(ris)
         print("[DEBUG] Radio devices added")
         
-        # 6. Add static objects
+        # 6. Add static objects - IMPORTANT: Create objects and add them to scene before setting positions
         print("[DEBUG] Adding scene objects...")
         room_dims = config.room_dim
         
-        # Add floor
+        # Create and add floor first
         floor = SceneObject(
             name="floor",
-            position=[room_dims[0]/2, room_dims[1]/2, 0],
-            size=[room_dims[0], room_dims[1], 0.2],
             radio_material=concrete
         )
-        scene.add(floor)
+        scene.add(floor)  # Add to scene before setting position
+        floor.position = [room_dims[0]/2, room_dims[1]/2, 0]
+        floor.size = [room_dims[0], room_dims[1], 0.2]
         print("[DEBUG] Floor added")
         
-        # Add ceiling
+        # Create and add ceiling
         ceiling = SceneObject(
             name="ceiling",
-            position=[room_dims[0]/2, room_dims[1]/2, room_dims[2]],
-            size=[room_dims[0], room_dims[1], 0.2],
             radio_material=concrete
         )
-        scene.add(ceiling)
+        scene.add(ceiling)  # Add to scene before setting position
+        ceiling.position = [room_dims[0]/2, room_dims[1]/2, room_dims[2]]
+        ceiling.size = [room_dims[0], room_dims[1], 0.2]
         print("[DEBUG] Ceiling added")
         
         # Add walls
@@ -163,11 +163,11 @@ def setup_scene(config):
         for name, size, pos in wall_specs:
             wall = SceneObject(
                 name=name,
-                position=pos,
-                size=size,
                 radio_material=concrete
             )
-            scene.add(wall)
+            scene.add(wall)  # Add to scene before setting position and size
+            wall.position = pos
+            wall.size = size
         print("[DEBUG] Walls added")
         
         # Add shelves
@@ -183,23 +183,12 @@ def setup_scene(config):
         for i, pos in enumerate(shelf_positions):
             shelf = SceneObject(
                 name=f"shelf_{i}",
-                position=pos,
-                size=shelf_dimensions,
                 radio_material=metal
             )
-            scene.add(shelf)
+            scene.add(shelf)  # Add to scene before setting position and size
+            shelf.position = pos
+            shelf.size = shelf_dimensions
         print("[DEBUG] Shelves added")
-        
-        # Configure RIS phase profile
-        bs_position = tf.constant([config.bs_position], dtype=tf.float32)
-        agv_positions = tf.constant(initial_positions, dtype=tf.float32)
-        
-        for agv_pos in agv_positions:
-            ris.phase_gradient_reflector(
-                sources=bs_position,
-                targets=tf.expand_dims(agv_pos, axis=0)
-            )
-        print("[DEBUG] RIS configured")
         
         print("[DEBUG] Scene setup completed successfully")
         return scene
