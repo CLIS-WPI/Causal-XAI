@@ -447,6 +447,7 @@ def analyze_energy_efficiency(channel_response, result_dir):
 
 def main():
     """Main execution function"""
+    result_dir = ensure_result_dir()
     try:
         logger.info("Starting Smart Factory Channel Analysis")
         
@@ -593,6 +594,6 @@ def run_analysis_pipeline(analyzer, channel_responses, channel_gen, config, resu
         raise
     finally:
         plt.close('all')
-        
+
 if __name__ == "__main__":
     main()        

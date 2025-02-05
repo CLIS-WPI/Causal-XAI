@@ -55,7 +55,7 @@ def setup_scene(config):
         name="bs",
         position=config.bs_position,
         orientation=config.bs_orientation,
-        array=scene.tx_array,  # Keep only this one, remove antenna_array
+        antenna_array=scene.tx_array,  # Use antenna_array instead of array
         object_id=0
     )
     scene.add(tx)
