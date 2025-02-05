@@ -593,3 +593,6 @@ def run_analysis_pipeline(analyzer, channel_responses, channel_gen, config, resu
         raise
     finally:
         plt.close('all')
+        
+if __name__ == "__main__":
+    main()        
