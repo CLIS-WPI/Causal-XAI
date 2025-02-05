@@ -737,87 +737,92 @@ class SmartFactoryChannel:
             optimal_phase = tf.reduce_mean(phase_shifts)
             ris.set_phases(optimal_phase * tf.ones(self.config.ris_elements))
         
-        # Generate paths with RIS using ray tracing configuration
-        paths_with_ris = self.scene.compute_paths(
-            max_depth=self.config.ray_tracing['max_depth'],
-            diffraction=self.config.ray_tracing['diffraction'],
-            scattering=self.config.ray_tracing['scattering']
-        )
-        
-        # Generate paths without RIS
-        if ris is not None:
-            self.scene.remove("ris")
-            paths_without_ris = self.scene.compute_paths(
+        try:
+            # Generate paths with RIS using ray tracing configuration
+            paths_with_ris = self.scene.compute_paths(
                 max_depth=self.config.ray_tracing['max_depth'],
                 diffraction=self.config.ray_tracing['diffraction'],
                 scattering=self.config.ray_tracing['scattering']
             )
-            self.scene.add(ris)
-        else:
-            paths_without_ris = paths_with_ris
-        
-        # Calculate channel matrices from paths
-        h_with_ris = paths_with_ris.field
-        h_without_ris = paths_without_ris.field
-        
-        # Calculate channel quality metrics
-        channel_quality_with_ris = tf.reduce_mean(tf.abs(h_with_ris))
-        channel_quality_without_ris = tf.reduce_mean(tf.abs(h_without_ris))
-        
-        # Create comprehensive channel response dictionary
-        channel_response = {
-            'h': h_with_ris,
-            'tau': paths_with_ris.tau,
-            'paths': paths_with_ris,
-            'los_condition': paths_with_ris.los,
-            'agv_positions': current_positions,
-            'agv_velocities': agv_velocities,
-            'h_with_ris': h_with_ris,
-            'h_without_ris': h_without_ris,
-            'channel_quality': {
-                'with_ris': channel_quality_with_ris,
-                'without_ris': channel_quality_without_ris,
-                'improvement': channel_quality_with_ris - channel_quality_without_ris
-            }
-        }
-        
-        # Add ray tracing specific metrics
-        channel_response['ray_tracing_metrics'] = {
-            'num_paths': paths_with_ris.num_paths,
-            'path_gains': paths_with_ris.gain,
-            'angles_of_arrival': paths_with_ris.theta_t,
-            'angles_of_departure': paths_with_ris.theta_r
-        }
-        
-        # Add causal analysis
-        causal_analysis = self.perform_causal_analysis(channel_response)
-        
-        # Add energy metrics
-        energy_metrics = self.compute_energy_metrics(channel_response)
-        
-        # Update channel response with analysis results
-        channel_response.update({
-            'causal_analysis': causal_analysis,
-            'energy_metrics': energy_metrics,
-            'explanation_metadata': self.get_explanation_metadata(),
-            'shap_analysis': self.compute_channel_shap_values(channel_response),
-            'performance_metrics': {
-                'channel_capacity': {
+            
+            # Generate paths without RIS
+            if ris is not None:
+                self.scene.remove("ris")
+                paths_without_ris = self.scene.compute_paths(
+                    max_depth=self.config.ray_tracing['max_depth'],
+                    diffraction=self.config.ray_tracing['diffraction'],
+                    scattering=self.config.ray_tracing['scattering']
+                )
+                self.scene.add(ris)
+            else:
+                paths_without_ris = paths_with_ris
+                
+            # Calculate channel matrices from paths
+            h_with_ris = self.channel_model(
+                num_time_samples=1,
+                sampling_frequency=self.config.sampling_frequency,
+                paths=paths_with_ris
+            )
+            
+            h_without_ris = self.channel_model(
+                num_time_samples=1,
+                sampling_frequency=self.config.sampling_frequency,
+                paths=paths_without_ris
+            )
+            
+            # Calculate channel quality metrics
+            channel_quality_with_ris = tf.reduce_mean(tf.abs(h_with_ris))
+            channel_quality_without_ris = tf.reduce_mean(tf.abs(h_without_ris))
+            
+            # Create comprehensive channel response dictionary
+            channel_response = {
+                'h': h_with_ris,
+                'tau': paths_with_ris.tau,
+                'paths': paths_with_ris,
+                'los_condition': paths_with_ris.los,
+                'agv_positions': current_positions,
+                'agv_velocities': agv_velocities,
+                'h_with_ris': h_with_ris,
+                'h_without_ris': h_without_ris,
+                'channel_quality': {
                     'with_ris': channel_quality_with_ris,
                     'without_ris': channel_quality_without_ris,
                     'improvement': channel_quality_with_ris - channel_quality_without_ris
-                },
-                'path_loss': {
-                    'with_ris': tf.reduce_mean(paths_with_ris.tau),
-                    'without_ris': tf.reduce_mean(paths_without_ris.tau)
                 }
-            },
-            'feature_importance': {
-                'position_impact': tf.reduce_mean(tf.abs(current_positions)),
-                'velocity_impact': tf.reduce_mean(tf.abs(agv_velocities)),
-                'ris_impact': tf.reduce_mean(tf.abs(h_with_ris - h_without_ris)),
-                'los_impact': tf.reduce_mean(tf.cast(paths_with_ris.los, tf.float32))
             }
-        })
-        
-        return channel_response
+            
+            # Add additional metrics and analysis
+            channel_response.update({
+                'ray_tracing_metrics': {
+                    'num_paths': paths_with_ris.num_paths,
+                    'path_gains': paths_with_ris.gain,
+                    'angles_of_arrival': paths_with_ris.theta_t,
+                    'angles_of_departure': paths_with_ris.theta_r
+                },
+                'causal_analysis': self.perform_causal_analysis(channel_response),
+                'energy_metrics': self.compute_energy_metrics(channel_response),
+                'explanation_metadata': self.get_explanation_metadata(),
+                'shap_analysis': self.compute_channel_shap_values(channel_response),
+                'performance_metrics': {
+                    'channel_capacity': {
+                        'with_ris': channel_quality_with_ris,
+                        'without_ris': channel_quality_without_ris,
+                        'improvement': channel_quality_with_ris - channel_quality_without_ris
+                    },
+                    'path_loss': {
+                        'with_ris': tf.reduce_mean(paths_with_ris.tau),
+                        'without_ris': tf.reduce_mean(paths_without_ris.tau)
+                    }
+                },
+                'feature_importance': {
+                    'position_impact': tf.reduce_mean(tf.abs(current_positions)),
+                    'velocity_impact': tf.reduce_mean(tf.abs(agv_velocities)),
+                    'ris_impact': tf.reduce_mean(tf.abs(h_with_ris - h_without_ris)),
+                    'los_impact': tf.reduce_mean(tf.cast(paths_with_ris.los, tf.float32))
+                }
+            })
+            
+            return channel_response
+            
+        except Exception as e:
+            raise RuntimeError(f"Error generating channel response: {str(e)}") from e
