@@ -1,7 +1,7 @@
 from config import SmartFactoryConfig
 from channel_generator import SmartFactoryChannel
 from channel_analyzer import ChannelAnalyzer
-from scene_setup import setup_scene  
+from scene_setup import setup_scene
 import tensorflow as tf
 import os
 import matplotlib.pyplot as plt
@@ -9,8 +9,19 @@ import numpy as np
 from datetime import datetime
 import traceback
 from mpl_toolkits.mplot3d import Axes3D
-from sionna.rt import load_scene, PlanarArray, Transmitter, Receiver, RIS, SceneObject
-import mitsuba as mi
+import sionna
+from sionna.rt import Scene, PlanarArray, Transmitter, Receiver, RIS, SceneObject
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Enable XLA compatibility
+sionna.config.xla_compat = True
 
 def ensure_result_dir():
     """Create result directory if it doesn't exist"""
@@ -18,6 +29,25 @@ def ensure_result_dir():
     os.makedirs(result_dir, exist_ok=True)
     return result_dir
 
+def validate_config(config):
+    """Validate configuration parameters"""
+    required_attrs = [
+        'carrier_frequency', 'sampling_frequency', 'num_time_steps',
+        'num_agvs', 'room_dim', 'bs_array', 'ris_elements'
+    ]
+    
+    missing_attrs = [attr for attr in required_attrs 
+                    if not hasattr(config, attr)]
+    
+    if missing_attrs:
+        raise ValueError(f"Missing required configuration attributes: {missing_attrs}")
+    
+    # Validate frequency parameters
+    if config.carrier_frequency <= 0:
+        raise ValueError("carrier_frequency must be positive")
+    if config.sampling_frequency <= 0:
+        raise ValueError("sampling_frequency must be positive")
+    
 def save_channel_stats(channel_response, config, result_dir):
     """Save channel statistics and configuration to a text file"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -376,32 +406,82 @@ def analyze_energy_efficiency(channel_response, result_dir):
                 f.write(f"{metric_name}: {value}\n")
 
 def main():
-    # Set random seed for reproducibility
-    tf.random.set_seed(42)
+    """Main execution function"""
+    try:
+        logger.info("Starting Smart Factory Channel Analysis")
+        
+        # Set random seed for reproducibility
+        seed = 42
+        tf.random.set_seed(seed)
+        np.random.seed(seed)
+        logger.info(f"Random seed set to {seed}")
+        
+        # Initialize and validate configuration
+        config = SmartFactoryConfig()
+        validate_config(config)
+        logger.info("Configuration initialized and validated")
+        
+        # Setup scene
+        try:
+            scene = setup_scene(config)
+            logger.info("Scene setup completed successfully")
+        except Exception as e:
+            logger.error(f"Failed to setup scene: {str(e)}")
+            raise
+        
+        # Create channel generator
+        try:
+            channel_gen = SmartFactoryChannel(config, scene=scene)
+            logger.info("Channel generator initialized")
+        except Exception as e:
+            logger.error(f"Failed to initialize channel generator: {str(e)}")
+            raise
+        
+        # Ensure result directory exists
+        result_dir = ensure_result_dir()
+        logger.info(f"Results will be saved to: {result_dir}")
+        
+        # Generate and save CSI dataset
+        try:
+            csi_filepath = os.path.join(result_dir, 'csi_dataset.h5')
+            channel_gen.save_csi_dataset(csi_filepath)
+            logger.info(f"CSI dataset saved to: {csi_filepath}")
+            
+            # Load and verify the saved dataset
+            loaded_data = channel_gen.load_csi_dataset(csi_filepath)
+            logger.info("CSI dataset loaded successfully")
+            
+            # Process channel responses
+            channel_responses = process_channel_responses(loaded_data)
+            logger.info(f"Processed {len(channel_responses)} channel responses")
+            
+            # Initialize analyzer
+            analyzer = ChannelAnalyzer(scene)
+            logger.info("Channel analyzer initialized")
+            
+            # Run analysis pipeline
+            run_analysis_pipeline(analyzer, channel_responses, channel_gen, 
+                                config, result_dir)
+            
+        except Exception as e:
+            logger.error(f"Error in analysis pipeline: {str(e)}")
+            traceback.print_exc()
+            raise
+        
+        logger.info("Analysis completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Fatal error in main execution: {str(e)}")
+        traceback.print_exc()
+        raise
     
-    # Initialize configuration
-    config = SmartFactoryConfig()
-    
-    # Setup scene
-    scene = setup_scene(config)
-    
-    # Create channel generator with scene
-    channel_gen = SmartFactoryChannel(config, scene=scene)
-    channel_gen.scene = scene  # Explicitly set the scene
-    
-    # Ensure result directory exists
-    result_dir = ensure_result_dir()
-    
-    # Generate and save CSI dataset
-    csi_filepath = os.path.join(result_dir, 'csi_dataset.h5')
-    channel_gen.save_csi_dataset(csi_filepath)
-    print(f"CSI dataset saved to: {csi_filepath}")
-    
-    # Load the saved CSI dataset
-    loaded_data = channel_gen.load_csi_dataset(csi_filepath)
-    print("CSI dataset loaded successfully")
-    
-    # Extract channel responses from loaded data
+    finally:
+        # Cleanup
+        plt.close('all')
+        logger.info(f"All results saved in {result_dir}")
+
+def process_channel_responses(loaded_data):
+    """Process loaded CSI data into channel responses"""
     channel_responses = []
     num_samples = loaded_data['channel_matrices'].shape[0]
     
@@ -412,70 +492,26 @@ def main():
             'los_condition': loaded_data['los_conditions'][i],
             'agv_positions': loaded_data['agv_positions'][i],
             'h_with_ris': loaded_data['channel_matrices'][i],
-            'h_without_ris': loaded_data['channel_matrices'][i] * 0.5  # Simplified
+            'h_without_ris': loaded_data['channel_matrices'][i] * 0.5
         }
         channel_responses.append(channel_response)
     
-    # Analyze scene
-    analyzer = ChannelAnalyzer(scene)
-    
-    # Visualize scene
-    # In the main function, before saving the scene visualization:
-    try:
-        fig = analyzer.visualize_scene()
-        scene_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        fig_path = os.path.join(result_dir, f'factory_scene_3d_{scene_timestamp}.png')
-        
-        # Create the directory if it doesn't exist
-        os.makedirs(os.path.dirname(fig_path), exist_ok=True)
-        
-        fig.savefig(fig_path, dpi=300, bbox_inches='tight')
-        plt.close(fig)
-        print(f"Scene visualization saved to: {fig_path}")
-        
-        # Analyze channel properties for each time step
-        for t, channel_response in enumerate(channel_responses):
-            print(f"\nAnalyzing time step {t+1}/{len(channel_responses)}")
-            
-            # Basic channel analysis
-            analyze_channel_properties(channel_response, config, result_dir)
-            
-            # RIS effectiveness analysis
-            if 'h_with_ris' in channel_response and 'h_without_ris' in channel_response:
-                ris_gain = analyze_ris_effectiveness(channel_response, result_dir)
-                print(f"Time step {t+1}: RIS Gain = {ris_gain:.2f}x")
-            
-            # Blockage analysis
-            if 'los_condition' in channel_response:
-                los_ratio = analyze_blockage_statistics(channel_response, result_dir)
-                print(f"Time step {t+1}: LOS Ratio = {los_ratio:.2%}")
-            
-            # New analyses
-            # Causal analysis
-            if 'causal_analysis' in channel_response:
-                analyze_causal_relationships(channel_response, result_dir)
-                print(f"Time step {t+1}: Causal analysis completed")
-            
-            # Energy efficiency analysis
-            if 'energy_metrics' in channel_response:
-                analyze_energy_efficiency(channel_response, result_dir)
-                print(f"Time step {t+1}: Energy efficiency analysis completed")
-        
-        # Plot AGV trajectories
-        if hasattr(channel_gen, 'positions_history'):
-            plot_agv_trajectories(channel_gen, result_dir)
-            print("AGV trajectories plotted successfully")
-        
-        # Save final channel statistics
-        save_channel_stats(channel_responses[-1], config, result_dir)
-        
-        print("Analysis of loaded CSI dataset completed successfully")
-        
-    except Exception as e:
-        print(f"Error in analysis pipeline: {str(e)}")
-        traceback.print_exc()
-    
-    print(f"Analysis complete. Results saved in {result_dir}")
+    return channel_responses
 
-if __name__ == "__main__":
-    main()
+def run_analysis_pipeline(analyzer, channel_responses, channel_gen, config, result_dir):
+    """Run the complete analysis pipeline"""
+    # Visualize scene
+    visualize_scene(analyzer, result_dir)
+    
+    # Analyze each time step
+    for t, channel_response in enumerate(channel_responses):
+        logger.info(f"Analyzing time step {t+1}/{len(channel_responses)}")
+        analyze_timestep(channel_response, config, result_dir, t+1)
+    
+    # Plot trajectories and save final statistics
+    if hasattr(channel_gen, 'positions_history'):
+        plot_agv_trajectories(channel_gen, result_dir)
+        logger.info("AGV trajectories plotted successfully")
+    
+    save_channel_stats(channel_responses[-1], config, result_dir)
+    logger.info("Final channel statistics saved")
