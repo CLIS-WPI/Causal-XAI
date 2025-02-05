@@ -574,13 +574,13 @@ class SmartFactoryChannel:
         return agv_velocities
 
     def generate_channel(self):
-        """Generate channel matrices with proper RIS modeling and explainability data and ausal analysis and energy metrics"""
+        """Generate channel matrices with proper RIS modeling, explainability data, causal analysis and energy metrics"""
         # Update AGV positions
         current_positions = self._update_agv_positions(self.config.num_time_steps)
         
         # Add batch dimension to positions
         current_positions = tf.expand_dims(current_positions, axis=0)
-        bs_position = tf.constant([[[10.0, 0.5, 4.5]]], dtype=tf.float32)
+        bs_position = tf.constant([self.config.bs_position], dtype=tf.float32)
         
         # Calculate AGV velocities based on position changes
         agv_velocities = tf.zeros([1, self.config.num_agvs, 3], dtype=tf.float32)
@@ -589,29 +589,25 @@ class SmartFactoryChannel:
                 [[self.positions_history[j][-2] for j in range(self.config.num_agvs)]],
                 dtype=tf.float32
             )
-            agv_velocities = (current_positions - prev_positions) / self.config.time_step
+            agv_velocities = (current_positions - prev_positions) / self.config.simulation['time_step']
         
-        # Set topology with updated velocities
-        self.channel_model.set_topology(
-            ut_loc=current_positions,
-            bs_loc=bs_position,
-            ut_orientations=tf.zeros([1, self.config.num_agvs, 3]),
-            bs_orientations=tf.zeros([1, 1, 3]),
-            ut_velocities=agv_velocities,
-            in_state=tf.zeros([1, self.config.num_agvs], dtype=tf.bool)
-        )
+        # Update AGV positions in the scene
+        for i in range(self.config.num_agvs):
+            agv = self.scene.get(f"agv_{i}")
+            if agv is not None:
+                agv.position = current_positions[0, i].numpy()
         
         # Update RIS configuration
         ris = self.scene.get("ris")
         if ris is not None:
-            # Calculate optimal RIS phases for each AGV
+            # Calculate optimal RIS phases for each AGV using the scene configuration
             phase_shifts = []
             for i in range(self.config.num_agvs):
                 agv_pos = current_positions[0, i]
-                bs_pos = bs_position[0, 0]
-                ris_pos = ris.position
+                bs_pos = bs_position[0]
+                ris_pos = tf.constant(self.config.ris_position, dtype=tf.float32)
                 
-                # Calculate angles for optimal reflection
+                # Calculate angles for optimal reflection using scene geometry
                 bs_to_ris = ris_pos - bs_pos
                 ris_to_agv = agv_pos - ris_pos
                 
@@ -619,68 +615,66 @@ class SmartFactoryChannel:
                 bs_to_ris = bs_to_ris / tf.norm(bs_to_ris)
                 ris_to_agv = ris_to_agv / tf.norm(ris_to_agv)
                 
-                # Calculate phase shift for this AGV
-                phase = tf.math.angle(
-                    tf.complex(bs_to_ris[0] * ris_to_agv[0], bs_to_ris[1] * ris_to_agv[1])
-                )
+                # Calculate optimal phase shift based on path difference
+                wavelength = SPEED_OF_LIGHT / self.config.carrier_frequency
+                path_difference = tf.norm(bs_to_ris) + tf.norm(ris_to_agv)
+                phase = 2 * np.pi * (path_difference / wavelength)
                 phase_shifts.append(phase)
             
-            # Set RIS phase configuration as average of individual optimal phases
-            ris.phase_shifts = tf.reduce_mean(phase_shifts)
+            # Set RIS phase configuration optimized for all AGVs
+            optimal_phase = tf.reduce_mean(phase_shifts)
+            ris.set_phases(optimal_phase * tf.ones(self.config.ris_elements))
         
-        # Generate paths with RIS
+        # Generate paths with RIS using ray tracing configuration
         paths_with_ris = self.scene.compute_paths(
-            max_depth=3,
-            diffraction=True,
-            scattering=True
+            max_depth=self.config.ray_tracing['max_depth'],
+            diffraction=self.config.ray_tracing['diffraction'],
+            scattering=self.config.ray_tracing['scattering']
         )
         
         # Generate paths without RIS
         if ris is not None:
             self.scene.remove("ris")
-        paths_without_ris = self.scene.compute_paths(
-            max_depth=1,
-            diffraction=True,
-            scattering=True
-        )
-        if ris is not None:
+            paths_without_ris = self.scene.compute_paths(
+                max_depth=self.config.ray_tracing['max_depth'],
+                diffraction=self.config.ray_tracing['diffraction'],
+                scattering=self.config.ray_tracing['scattering']
+            )
             self.scene.add(ris)
+        else:
+            paths_without_ris = paths_with_ris
         
-        # Generate channel matrices with proper sampling
-        h_with_ris = self.channel_model(
-            num_time_samples=self.config.num_time_steps,
-            sampling_frequency=self.config.sampling_frequency,
-            paths=paths_with_ris
-        )
-        
-        h_without_ris = self.channel_model(
-            num_time_samples=self.config.num_time_steps,
-            sampling_frequency=self.config.sampling_frequency,
-            paths=paths_without_ris
-        )
+        # Calculate channel matrices from paths
+        h_with_ris = paths_with_ris.field
+        h_without_ris = paths_without_ris.field
         
         # Calculate channel quality metrics
-        channel_quality_with_ris = tf.reduce_mean(tf.abs(h_with_ris[0]))
-        channel_quality_without_ris = tf.reduce_mean(tf.abs(h_without_ris[0]))
+        channel_quality_with_ris = tf.reduce_mean(tf.abs(h_with_ris))
+        channel_quality_without_ris = tf.reduce_mean(tf.abs(h_without_ris))
         
         # Create comprehensive channel response dictionary
         channel_response = {
-            'h': h_with_ris[0],
+            'h': h_with_ris,
             'tau': paths_with_ris.tau,
             'paths': paths_with_ris,
-            'los_condition': tf.cast(
-                tf.reduce_any(tf.not_equal(paths_with_ris.tau, float('inf')), axis=-1),
-                tf.bool
-            ),
+            'los_condition': paths_with_ris.los,
             'agv_positions': current_positions,
             'agv_velocities': agv_velocities,
-            'h_with_ris': h_with_ris[0],
-            'h_without_ris': h_without_ris[0],
+            'h_with_ris': h_with_ris,
+            'h_without_ris': h_without_ris,
             'channel_quality': {
                 'with_ris': channel_quality_with_ris,
                 'without_ris': channel_quality_without_ris,
                 'improvement': channel_quality_with_ris - channel_quality_without_ris
             }
+        }
+        
+        # Add ray tracing specific metrics
+        channel_response['ray_tracing_metrics'] = {
+            'num_paths': paths_with_ris.num_paths,
+            'path_gains': paths_with_ris.gain,
+            'angles_of_arrival': paths_with_ris.theta_t,
+            'angles_of_departure': paths_with_ris.theta_r
         }
         
         # Add causal analysis
@@ -689,7 +683,7 @@ class SmartFactoryChannel:
         # Add energy metrics
         energy_metrics = self.compute_energy_metrics(channel_response)
         
-        # Update channel response with new metrics
+        # Update channel response with analysis results
         channel_response.update({
             'causal_analysis': causal_analysis,
             'energy_metrics': energy_metrics,
@@ -709,8 +703,8 @@ class SmartFactoryChannel:
             'feature_importance': {
                 'position_impact': tf.reduce_mean(tf.abs(current_positions)),
                 'velocity_impact': tf.reduce_mean(tf.abs(agv_velocities)),
-                'ris_impact': tf.reduce_mean(tf.abs(h_with_ris[0] - h_without_ris[0])),
-                'los_impact': tf.reduce_mean(tf.cast(channel_response['los_condition'], tf.float32))
+                'ris_impact': tf.reduce_mean(tf.abs(h_with_ris - h_without_ris)),
+                'los_impact': tf.reduce_mean(tf.cast(paths_with_ris.los, tf.float32))
             }
         })
         
