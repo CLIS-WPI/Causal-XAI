@@ -82,11 +82,11 @@ def setup_scene(config):
         orientation=config.ris_orientation,
         num_rows=config.ris_elements[0],
         num_cols=config.ris_elements[1],
-        element_spacing=config.ris_spacing,  # Add element_spacing parameter
+        antenna_pattern="iso",  # Add antenna pattern
+        polarization="V",      # Add polarization
         dtype=config.dtype
     )
     scene.add(ris)
-    
     # Configure RIS phase profile with optimization
     bs_position = tf.constant([config.bs_position], dtype=tf.float32)
     agv_positions = tf.constant(initial_positions, dtype=tf.float32)
