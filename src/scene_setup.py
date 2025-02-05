@@ -98,18 +98,21 @@ def setup_scene(config):
             scene.add(rx)
         
         # Add RIS with enhanced configuration
-        ris = RIS(
-            name="ris",
-            position=config.ris_position,
-            orientation=config.ris_orientation,
-            num_rows=config.ris_elements[0],
-            num_cols=config.ris_elements[1],
-            num_modes=config.ris_modes,
-            spacing=config.ris_spacing,
-            dtype=config.dtype
-        )
-        scene.add(ris)
-        print("[DEBUG] Radio devices added")
+        try:
+            ris = RIS(
+                name="ris",
+                position=config.ris_position,
+                orientation=config.ris_orientation,
+                num_rows=config.ris_elements[0],
+                num_cols=config.ris_elements[1],
+                num_modes=config.ris_modes,
+                dtype=config.dtype
+            )
+            scene.add(ris)
+            print("[DEBUG] RIS added successfully")
+        except Exception as e:
+            print(f"[DEBUG] Error adding RIS: {str(e)}")
+            raise
         
         # 6. Add static objects using configuration
         print("[DEBUG] Adding scene objects...")
