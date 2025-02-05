@@ -9,40 +9,115 @@ import pandas as pd
 from sionna.constants import SPEED_OF_LIGHT
 from sionna.rt import Scene, Transmitter, Receiver, RIS, SceneObject, PlanarArray, RadioMaterial
 class SmartFactoryChannel:
-    """Smart Factory Channel Generator using Sionna"""
+    """Smart Factory Channel Generator using Sionna
+    
+    This class handles the generation and analysis of wireless channels
+    in a smart factory environment with two mobile AGVs and RIS elements.
+    
+    Args:
+        config: Configuration object containing simulation parameters
+        scene: Optional pre-configured Scene object. If None, creates new scene
+        
+    Attributes:
+        config: Simulation configuration
+        scene: Sionna ray tracing scene
+        positions_history: Historical AGV positions
+        agv_positions: Current AGV positions
+        bs_array: Base station antenna array
+        agv_array: AGV antenna array
+        channel_model: Ray tracing channel model
+    """
     
     def __init__(self, config, scene=None):
+        # Validate config
+        if not hasattr(config, 'num_agvs'):
+            raise ValueError("Config must specify num_agvs")
+        if not hasattr(config, 'seed'):
+            raise ValueError("Config must specify random seed")
+            
+        # Initialize basic attributes
         self.config = config
         sionna.config.xla_compat = True
         tf.random.set_seed(config.seed)
+        
+        # Initialize position tracking
         self.positions_history = [[] for _ in range(config.num_agvs)]
-        self.agv_positions = self._generate_initial_agv_positions()
+        try:
+            self.agv_positions = self._generate_initial_agv_positions()
+        except Exception as e:
+            raise RuntimeError("Failed to generate initial AGV positions") from e
 
-        # Initialize scene using setup_scene function
-        if scene is None:
-            self.scene = setup_scene(config)
-        else:
-            self.scene = scene
+        # Initialize scene
+        try:
+            if scene is None:
+                self.scene = setup_scene(config)
+            else:
+                self.scene = scene
+        except Exception as e:
+            raise RuntimeError("Failed to initialize scene") from e
         
-        # Configure antenna arrays using PlanarArray for ray tracing
-        self.bs_array = PlanarArray(
-            num_rows=config.bs_array[0],
-            num_cols=config.bs_array[1],
-            vertical_spacing=config.bs_array_spacing,
-            horizontal_spacing=config.bs_array_spacing,
-            pattern="tr38901",
-            polarization="VH"
-        )
+        # Configure antenna arrays
+        try:
+            self.bs_array = PlanarArray(
+                num_rows=config.bs_array[0],
+                num_cols=config.bs_array[1],
+                vertical_spacing=config.bs_array_spacing,
+                horizontal_spacing=config.bs_array_spacing,
+                pattern="tr38901",
+                polarization="VH"
+            )
+            
+            self.agv_array = PlanarArray(
+                num_rows=1,
+                num_cols=1,
+                vertical_spacing=config.agv_array_spacing,
+                horizontal_spacing=config.agv_array_spacing,
+                pattern="iso",
+                polarization="V"
+            )
+        except Exception as e:
+            raise RuntimeError("Failed to configure antenna arrays") from e
+            
+        # Initialize channel model
+        try:
+            self.channel_model = sionna.rt.ChannelModel(
+                scene=self.scene,
+                tx_array=self.bs_array,
+                rx_array=self.agv_array,
+                max_depth=config.ray_tracing.get('max_depth', 3),
+                dtype=config.dtype
+            )
+        except Exception as e:
+            raise RuntimeError("Failed to initialize channel model") from e
+            
+        # Validate critical configurations
+        self._validate_configuration()
+    
+    def _validate_configuration(self):
+        """Validate critical configuration parameters"""
+        required_attrs = [
+            'bs_array', 'bs_array_spacing', 
+            'agv_array_spacing', 'ray_tracing',
+            'sampling_frequency', 'carrier_frequency'
+        ]
         
-        self.agv_array = PlanarArray(
-            num_rows=1,
-            num_cols=1,
-            vertical_spacing=config.agv_array_spacing,
-            horizontal_spacing=config.agv_array_spacing,
-            pattern="iso",
-            polarization="V"
-        )
+        missing_attrs = [attr for attr in required_attrs 
+                        if not hasattr(self.config, attr)]
         
+        if missing_attrs:
+            raise ValueError(
+                f"Missing required configuration attributes: {missing_attrs}"
+            )
+            
+        # Validate array configurations
+        if len(self.config.bs_array) != 2:
+            raise ValueError("bs_array must specify [num_rows, num_cols]")
+            
+        # Validate frequency parameters
+        if self.config.carrier_frequency <= 0:
+            raise ValueError("carrier_frequency must be positive")
+        if self.config.sampling_frequency <= 0:
+            raise ValueError("sampling_frequency must be positive")
 
     def _generate_initial_agv_positions(self):
         """Generate initial AGV positions"""
@@ -61,12 +136,19 @@ class SmartFactoryChannel:
         ]
 
     def _update_agv_positions(self, time_step):
-        """Update AGV positions using waypoint-based movement"""
+        """Update AGV positions using waypoint-based movement
+        
+        Args:
+            time_step (float): Time step for position update in seconds
+            
+        Returns:
+            tf.Tensor: Updated AGV positions
+        """
         if not hasattr(self, 'waypoints'):
             self.waypoints = self._generate_agv_waypoints()
             self.current_waypoint_indices = [0] * self.config.num_agvs
-            
-        dt = 1.0  # 1 second intervals
+        
+        # Use time_step instead of fixed dt
         speed = 0.83  # 3 km/h in m/s
         
         new_positions = []
@@ -78,13 +160,13 @@ class SmartFactoryChannel:
             direction = np.array(target_waypoint) - current_pos[:2]
             distance = np.linalg.norm(direction)
             
-            if distance < speed * dt:  # Reached waypoint
+            if distance < speed * time_step:  # Reached waypoint
                 self.current_waypoint_indices[i] = (self.current_waypoint_indices[i] + 1) % len(self.waypoints[i])
-                new_pos = np.array([*target_waypoint, 0.5])  # 0.5m height
+                new_pos = np.array([*target_waypoint, 0.5])
             else:
-                # Move towards waypoint
+                # Move towards waypoint using time_step
                 direction = direction / distance
-                new_pos = current_pos + np.array([*direction * speed * dt, 0.0])
+                new_pos = current_pos + np.array([*direction * speed * time_step, 0.0])
             
             new_positions.append(new_pos)
         
@@ -323,51 +405,100 @@ class SmartFactoryChannel:
     def _get_background_data(self):
         """Helper method to get background data for SHAP analysis
         
+        This method processes historical position data to create background data
+        for SHAP analysis. It includes error handling for insufficient data and
+        handles channel response generation for each historical position.
+        
         Returns:
             tf.Tensor: Background data for SHAP analysis from historical channel responses
+            
+        Raises:
+            ValueError: If no historical data is available
+            ValueError: If insufficient samples for meaningful analysis
+            RuntimeError: If channel model is not properly initialized
         """
-        # Use position history to create background data
-        num_samples = min(100, len(self.positions_history[0]))  # Use up to 100 historical samples
+        # Check if history exists and has data
+        if not self.positions_history or not self.positions_history[0]:
+            raise ValueError("No historical data available for SHAP analysis")
         
-        background_channels = []
-        for i in range(num_samples):
-            # Get historical positions for all AGVs
-            historical_positions = tf.constant(
-                [[self.positions_history[j][-(i+1)] for j in range(self.config.num_agvs)]],
-                dtype=tf.float32
+        # Check minimum required samples
+        min_required_samples = 10
+        if len(self.positions_history[0]) < min_required_samples:
+            raise ValueError(
+                f"Insufficient samples for SHAP analysis. Found {len(self.positions_history[0])} "
+                f"samples, but need at least {min_required_samples}"
             )
-            
-            # Generate channel response for historical positions
-            bs_position = tf.constant([[[10.0, 0.5, 4.5]]], dtype=tf.float32)
-            
-            # Set topology for historical position
-            self.channel_model.set_topology(
-                ut_loc=historical_positions,
-                bs_loc=bs_position,
-                ut_orientations=tf.zeros([1, self.config.num_agvs, 3]),
-                bs_orientations=tf.zeros([1, 1, 3]),
-                ut_velocities=tf.zeros([1, self.config.num_agvs, 3]),
-                in_state=tf.zeros([1, self.config.num_agvs], dtype=tf.bool)
-            )
-            
-            # Compute paths and channel response
-            paths = self.scene.compute_paths(max_depth=3)
-            h = self.channel_model(
-                num_time_samples=1,
-                sampling_frequency=self.config.sampling_frequency,
-                paths=paths
-            )
-            
-            # Stack channel features
-            channel_features = tf.stack([
-                h[0],
-                tf.cast(tf.reduce_any(tf.not_equal(paths.tau, float('inf')), axis=-1), tf.float32),
-                tf.reshape(historical_positions, [-1])
-            ], axis=-1)
-            
-            background_channels.append(channel_features)
         
-        return tf.stack(background_channels, axis=0)
+        # Verify channel model initialization
+        if not hasattr(self, 'channel_model'):
+            raise RuntimeError("Channel model not initialized. Initialize in __init__")
+        
+        try:
+            # Use position history to create background data
+            num_samples = min(100, len(self.positions_history[0]))  # Use up to 100 historical samples
+            
+            background_channels = []
+            for i in range(num_samples):
+                try:
+                    # Get historical positions for all AGVs with error handling
+                    historical_positions = tf.constant(
+                        [[self.positions_history[j][-(i+1)] for j in range(self.config.num_agvs)]],
+                        dtype=tf.float32
+                    )
+                    
+                    # Generate channel response for historical positions
+                    bs_position = tf.constant([[[10.0, 0.5, 4.5]]], dtype=tf.float32)
+                    
+                    # Set topology for historical position
+                    self.channel_model.set_topology(
+                        ut_loc=historical_positions,
+                        bs_loc=bs_position,
+                        ut_orientations=tf.zeros([1, self.config.num_agvs, 3]),
+                        bs_orientations=tf.zeros([1, 1, 3]),
+                        ut_velocities=tf.zeros([1, self.config.num_agvs, 3]),
+                        in_state=tf.zeros([1, self.config.num_agvs], dtype=tf.bool)
+                    )
+                    
+                    # Compute paths and channel response with max_depth from config
+                    paths = self.scene.compute_paths(
+                        max_depth=self.config.ray_tracing.get('max_depth', 3)
+                    )
+                    
+                    # Generate channel response
+                    h = self.channel_model(
+                        num_time_samples=1,
+                        sampling_frequency=self.config.sampling_frequency,
+                        paths=paths
+                    )
+                    
+                    # Stack channel features with proper shape checking
+                    channel_features = tf.stack([
+                        h[0],  # Channel response
+                        # LOS condition indicator
+                        tf.cast(
+                            tf.reduce_any(tf.not_equal(paths.tau, float('inf')), 
+                            axis=-1), 
+                            tf.float32
+                        ),
+                        # Reshape positions with explicit shape
+                        tf.reshape(historical_positions, [-1])
+                    ], axis=-1)
+                    
+                    background_channels.append(channel_features)
+                    
+                except (IndexError, tf.errors.InvalidArgumentError) as e:
+                    print(f"Warning: Error processing sample {i}: {str(e)}")
+                    continue
+            
+            # Check if we have enough valid samples
+            if not background_channels:
+                raise ValueError("No valid background channels could be generated")
+                
+            # Stack all valid background channels
+            return tf.stack(background_channels, axis=0)
+            
+        except Exception as e:
+            raise RuntimeError(f"Error generating background data: {str(e)}") from e
 
     def _get_channel_model(self):
         """Helper method to get the channel model for SHAP analysis
@@ -512,7 +643,20 @@ class SmartFactoryChannel:
         }
 
     def _compute_pruning_factor(self, channel_response):
-        """Compute beam pruning factor based on XAI analysis"""
+        """Compute beam pruning factor based on XAI analysis
+        
+        Args:
+            channel_response (dict): Dictionary containing channel response data
+                including SHAP analysis results
+                
+        Returns:
+            float: Pruning factor between 0 and 0.5 indicating how much
+                beam pruning should be applied
+                
+        Note:
+            The pruning factor is calculated based on the relative importance
+            of position and RIS impacts from SHAP analysis
+        """
         # Use SHAP values to determine which beams are most important
         shap_analysis = channel_response['shap_analysis']
         position_impact = tf.reduce_mean(tf.abs(shap_analysis['position_impact']['values']))
