@@ -500,18 +500,56 @@ def process_channel_responses(loaded_data):
 
 def run_analysis_pipeline(analyzer, channel_responses, channel_gen, config, result_dir):
     """Run the complete analysis pipeline"""
-    # Visualize scene
-    visualize_scene(analyzer, result_dir)
-    
-    # Analyze each time step
-    for t, channel_response in enumerate(channel_responses):
-        logger.info(f"Analyzing time step {t+1}/{len(channel_responses)}")
-        analyze_timestep(channel_response, config, result_dir, t+1)
-    
-    # Plot trajectories and save final statistics
-    if hasattr(channel_gen, 'positions_history'):
-        plot_agv_trajectories(channel_gen, result_dir)
-        logger.info("AGV trajectories plotted successfully")
-    
-    save_channel_stats(channel_responses[-1], config, result_dir)
-    logger.info("Final channel statistics saved")
+    try:
+        # 1. Visualize and save scene using ChannelAnalyzer
+        fig = analyzer.visualize_scene()
+        scene_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        fig_path = os.path.join(result_dir, f'factory_scene_3d_{scene_timestamp}.png')
+        fig.savefig(fig_path, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        logger.info(f"Scene visualization saved to: {fig_path}")
+
+        # 2. Analyze each time step
+        for t, channel_response in enumerate(channel_responses):
+            logger.info(f"Analyzing time step {t+1}/{len(channel_responses)}")
+            
+            # Basic channel analysis
+            analyze_channel_properties(channel_response, config, result_dir)
+            
+            # RIS effectiveness analysis using ChannelAnalyzer
+            if 'h_with_ris' in channel_response and 'h_without_ris' in channel_response:
+                ris_gain = analyzer.analyze_channel_with_ris(channel_response)
+                logger.info(f"Time step {t+1}: RIS Gain = {ris_gain:.2f}x")
+            
+            # Channel matrix visualization using ChannelAnalyzer
+            if 'h' in channel_response:
+                matrix_path = os.path.join(result_dir, f'channel_matrix_t{t+1}.png')
+                analyzer.plot_channel_matrix(channel_response['h'])
+                plt.savefig(matrix_path)
+                plt.close()
+            
+            # Path analysis using ChannelAnalyzer methods
+            if 'paths' in channel_response:
+                analyzer.analyze_channel(channel_response['paths'])
+                analyzer.plot_path_gains(channel_response['paths'])
+                analyzer.plot_delay_spread(channel_response['paths'])
+            
+            # Additional analyses
+            analyze_blockage_statistics(channel_response, result_dir)
+            analyze_causal_relationships(channel_response, result_dir)
+            analyze_energy_efficiency(channel_response, result_dir)
+
+        # 3. Plot AGV trajectories
+        if hasattr(channel_gen, 'positions_history'):
+            plot_agv_trajectories(channel_gen, result_dir)
+            logger.info("AGV trajectories plotted successfully")
+
+        # 4. Save final statistics
+        save_channel_stats(channel_responses[-1], config, result_dir)
+        logger.info("Final channel statistics saved")
+
+    except Exception as e:
+        logger.error(f"Error in analysis pipeline: {str(e)}")
+        raise
+    finally:
+        plt.close('all')
