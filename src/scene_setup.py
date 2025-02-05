@@ -12,7 +12,6 @@ def setup_scene(config):
     wavelength = SPEED_OF_LIGHT/scene.frequency
     
     # First add all materials before adding any objects
-    # Create materials for scene objects
     metal_material = RadioMaterial(
         name="metal",
         relative_permittivity=complex(1.0, -1e7),
@@ -21,7 +20,6 @@ def setup_scene(config):
     )
     scene.add(metal_material)
     
-    # Add concrete material for walls
     concrete_material = RadioMaterial(
         name="concrete",
         relative_permittivity=complex(config.materials['walls'].get('permittivity', 4.5)),
@@ -31,7 +29,7 @@ def setup_scene(config):
     )
     scene.add(concrete_material)
     
-    # Configure antenna arrays before adding devices
+    # Configure antenna arrays
     scene.tx_array = PlanarArray(
         num_rows=config.bs_array[0],
         num_cols=config.bs_array[1],
@@ -57,60 +55,44 @@ def setup_scene(config):
         'scattering': config.ray_tracing['scattering']
     }
     
-    # Now add room boundaries first
+    # Create and add room boundaries
     room_dims = config.room_dim
-    walls = [
-        # Floor
-        SceneObject(
-            name="floor",
-            position=[room_dims[0]/2, room_dims[1]/2, 0],
-            size=[room_dims[0], room_dims[1], 0.2],
-            material="concrete"
-        ),
-        # Ceiling
-        SceneObject(
-            name="ceiling",
-            position=[room_dims[0]/2, room_dims[1]/2, room_dims[2]],
-            size=[room_dims[0], room_dims[1], 0.2],
-            material="concrete"
-        ),
-        # Walls
-        SceneObject(
-            name="wall_north",
-            position=[room_dims[0]/2, room_dims[1], room_dims[2]/2],
-            size=[room_dims[0], 0.2, room_dims[2]],
-            material="concrete"
-        ),
-        SceneObject(
-            name="wall_south",
-            position=[room_dims[0]/2, 0, room_dims[2]/2],
-            size=[room_dims[0], 0.2, room_dims[2]],
-            material="concrete"
-        ),
-        SceneObject(
-            name="wall_east",
-            position=[room_dims[0], room_dims[1]/2, room_dims[2]/2],
-            size=[0.2, room_dims[1], room_dims[2]],
-            material="concrete"
-        ),
-        SceneObject(
-            name="wall_west",
-            position=[0, room_dims[1]/2, room_dims[2]/2],
-            size=[0.2, room_dims[1], room_dims[2]],
-            material="concrete"
-        )
+    
+    # Create floor
+    floor = SceneObject(
+        name="floor",
+        size=[room_dims[0], room_dims[1], 0.2],
+        material="concrete"
+    )
+    scene.add(floor)
+    floor.position = [room_dims[0]/2, room_dims[1]/2, 0]
+    
+    # Create ceiling
+    ceiling = SceneObject(
+        name="ceiling",
+        size=[room_dims[0], room_dims[1], 0.2],
+        material="concrete"
+    )
+    scene.add(ceiling)
+    ceiling.position = [room_dims[0]/2, room_dims[1]/2, room_dims[2]]
+    
+    # Create walls
+    wall_specs = [
+        ("wall_north", [room_dims[0], 0.2, room_dims[2]], [room_dims[0]/2, room_dims[1], room_dims[2]/2]),
+        ("wall_south", [room_dims[0], 0.2, room_dims[2]], [room_dims[0]/2, 0, room_dims[2]/2]),
+        ("wall_east", [0.2, room_dims[1], room_dims[2]], [room_dims[0], room_dims[1]/2, room_dims[2]/2]),
+        ("wall_west", [0.2, room_dims[1], room_dims[2]], [0, room_dims[1]/2, room_dims[2]/2])
     ]
     
-    for wall in walls:
+    for name, size, pos in wall_specs:
+        wall = SceneObject(name=name, size=size, material="concrete")
         scene.add(wall)
+        wall.position = pos
     
     # Add base station
-    tx = Transmitter(
-        name="bs",
-        position=config.bs_position,
-        orientation=config.bs_orientation
-    )
+    tx = Transmitter(name="bs", orientation=config.bs_orientation)
     scene.add(tx)
+    tx.position = config.bs_position
     
     # Add AGVs
     initial_positions = [
@@ -119,17 +101,13 @@ def setup_scene(config):
     ]
     
     for i, pos in enumerate(initial_positions):
-        rx = Receiver(
-            name=f"agv_{i}",
-            position=pos,
-            orientation=[0.0, 0.0, 0.0]
-        )
+        rx = Receiver(name=f"agv_{i}", orientation=[0.0, 0.0, 0.0])
         scene.add(rx)
+        rx.position = pos
     
     # Add RIS
     ris = RIS(
         name="ris",
-        position=config.ris_position,
         orientation=config.ris_orientation,
         num_rows=config.ris_elements[0],
         num_cols=config.ris_elements[1],
@@ -137,8 +115,9 @@ def setup_scene(config):
         dtype=config.dtype
     )
     scene.add(ris)
+    ris.position = config.ris_position
     
-    # Finally add shelves
+    # Add shelves
     shelf_dimensions = config.scene_objects.get('shelf_dimensions', [2.0, 1.0, 3.0])
     shelf_positions = [
         [5.0, 5.0, shelf_dimensions[2]/2],
@@ -148,15 +127,15 @@ def setup_scene(config):
         [15.0, 15.0, shelf_dimensions[2]/2]
     ]
     
-    for i, position in enumerate(shelf_positions):
+    for i, pos in enumerate(shelf_positions):
         shelf = SceneObject(
             name=f"shelf_{i}",
-            position=position,
-            orientation=[0.0, 0.0, 0.0],
             size=shelf_dimensions,
-            material="metal"
+            material="metal",
+            orientation=[0.0, 0.0, 0.0]
         )
         scene.add(shelf)
+        shelf.position = pos
     
     # Configure RIS phase profile
     bs_position = tf.constant([config.bs_position], dtype=tf.float32)
