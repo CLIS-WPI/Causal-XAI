@@ -1,6 +1,7 @@
 # scene_setup.py
+# scene_setup.py
 import tensorflow as tf
-from sionna.rt import load_scene, PlanarArray, Transmitter, Receiver, RIS, RadioMaterial
+from sionna.rt import load_scene, PlanarArray, Transmitter, Receiver, RIS, RadioMaterial, SceneObject
 from sionna.constants import SPEED_OF_LIGHT
 
 def setup_scene(config):
@@ -32,21 +33,23 @@ def setup_scene(config):
         polarization="V"    
     )
     
-    # Add base station
-    tx = Transmitter(
-        name="bs",
-        position=[10.0, 0.5, 4.5],  
-        orientation=[0.0, 0.0, 0.0]
-    )
-    scene.add(tx)
-    
     # Create metal material for the shelves
     metal_material = RadioMaterial(
         name="metal",
-        relative_permittivity=1.0,
-        conductivity=1e7  # High conductivity for metal
+        relative_permittivity=complex(1.0, -1e7),  # Changed to complex permittivity
+        scattering_coefficient=0.1,
+        xpd_coefficient=10.0
     )
     scene.add(metal_material)
+    
+    # Add base station with object_id=0
+    tx = Transmitter(
+        name="bs",
+        position=[10.0, 0.5, 4.5],  
+        orientation=[0.0, 0.0, 0.0],
+        object_id=0
+    )
+    scene.add(tx)
     
     # Define initial AGV positions
     initial_positions = [
@@ -54,62 +57,59 @@ def setup_scene(config):
         [8.0, 15.0, 0.5]    # AGV2
     ]
     
-    # Add receivers (AGVs)
+    # Add receivers (AGVs) with sequential object_ids
     for i, pos in enumerate(initial_positions):
         rx = Receiver(
             name=f"agv_{i}",
             position=pos,
-            orientation=[0.0, 0.0, 0.0]
+            orientation=[0.0, 0.0, 0.0],
+            object_id=i+1  # Start from 1
         )
         scene.add(rx)
     
-    # Add RIS
+    # Add RIS with object_id after AGVs
     ris = RIS(
         name="ris",
         position=[10.0, 19.5, 2.5],
         orientation=[0.0, 0.0, 0.0],
         num_rows=8,
         num_cols=8,
-        dtype=tf.complex64
+        element_spacing=0.5*wavelength,
+        dtype=tf.complex64,
+        object_id=len(initial_positions)+1
     )
     scene.add(ris)
     
-    # Configure RIS phase profile to reflect signals from BS to first AGV
-    # Using only first AGV position to match expected shape [1, 3]
-    bs_position = tf.constant([[10.0, 0.5, 4.5]], dtype=tf.float32)  # Shape [1, 3]
-    agv_position = tf.constant([[12.0, 5.0, 0.5]], dtype=tf.float32)  # Shape [1, 3]
-    
     # Configure RIS phase profile
+    bs_position = tf.constant([[10.0, 0.5, 4.5]], dtype=tf.float32)
+    agv_position = tf.constant([[12.0, 5.0, 0.5]], dtype=tf.float32)
     ris.phase_gradient_reflector(sources=bs_position, targets=agv_position)
     
     # Add metallic shelves with fixed positions
-    shelf_dimensions = {
-        'length': 2.0,  # x-dimension in meters
-        'width': 1.0,   # y-dimension in meters
-        'height': 3.0   # z-dimension in meters
-    }
+    shelf_dimensions = [2.0, 1.0, 3.0]  # [length, width, height] in meters
     
     shelf_positions = [
-        [5.0, 5.0, shelf_dimensions['height']/2],    
-        [15.0, 5.0, shelf_dimensions['height']/2],
-        [10.0, 10.0, shelf_dimensions['height']/2],
-        [5.0, 15.0, shelf_dimensions['height']/2],
-        [15.0, 15.0, shelf_dimensions['height']/2]
+        [5.0, 5.0, shelf_dimensions[2]/2],    
+        [15.0, 5.0, shelf_dimensions[2]/2],
+        [10.0, 10.0, shelf_dimensions[2]/2],
+        [5.0, 15.0, shelf_dimensions[2]/2],
+        [15.0, 15.0, shelf_dimensions[2]/2]
     ]
 
-    # Create and add shelves
+    # Create and add shelves with sequential object_ids
+    start_shelf_id = len(initial_positions) + 2  # Start after BS, AGVs, and RIS
     for i, position in enumerate(shelf_positions):
-        shelf = Transmitter(
+        shelf = SceneObject(  # Changed from Transmitter to SceneObject
             name=f"shelf_{i}",
             position=position,
-            orientation=[0.0, 0.0, 0.0]
+            orientation=[0.0, 0.0, 0.0],
+            size=shelf_dimensions,
+            material="metal",
+            object_id=start_shelf_id + i
         )
         scene.add(shelf)
-        shelf.radio_material = "metal"
-        shelf.size = [
-            shelf_dimensions['length'],
-            shelf_dimensions['width'], 
-            shelf_dimensions['height']
-        ]
+    
+    # Verify scene configuration
+    scene._check_scene(check_materials=True)
     
     return scene
