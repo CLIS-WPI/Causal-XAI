@@ -4,21 +4,28 @@ from sionna.constants import SPEED_OF_LIGHT
 
 def setup_scene(config):
     """Set up the smart factory simulation scene with ray tracing configuration"""
-    # Create empty scene with ray tracing configuration
-    scene = load_scene("__empty__")
+    # 1. Validate dtype
+    if config.dtype not in (tf.complex64, tf.complex128):
+        raise ValueError("dtype must be tf.complex64 or tf.complex128")
+    
+    # 2. Load scene with proper dtype initialization
+    scene = load_scene("__empty__", dtype=config.dtype)
+    
+    # 3. Set frequency
     scene.frequency = config.carrier_frequency
     
-    # Calculate wavelength
+    # 4. Calculate wavelength
     wavelength = SPEED_OF_LIGHT/scene.frequency
     
-    # Configure antenna arrays first
+    # 5. Configure antenna arrays
     scene.tx_array = PlanarArray(
         num_rows=config.bs_array[0],
         num_cols=config.bs_array[1], 
         vertical_spacing=config.bs_array_spacing or 0.5*wavelength,
         horizontal_spacing=config.bs_array_spacing or 0.5*wavelength,
         pattern="tr38901",
-        polarization="VH"
+        polarization="VH",
+        dtype=config.dtype
     )
     
     scene.rx_array = PlanarArray(
@@ -27,17 +34,17 @@ def setup_scene(config):
         vertical_spacing=config.agv_array_spacing or 0.5*wavelength,
         horizontal_spacing=config.agv_array_spacing or 0.5*wavelength,
         pattern="iso",
-        polarization="V"
+        polarization="V",
+        dtype=config.dtype
     )
     
-    # Configure ray tracing parameters
-    scene.ray_tracing = {
-        'max_depth': config.ray_tracing['max_depth'],
-        'diffraction': config.ray_tracing['diffraction'],
-        'scattering': config.ray_tracing['scattering']
-    }
+    # 6. Set scene boundaries
+    scene.set_boundaries([
+        [0.0, 0.0, 0.0], 
+        [config.room_dim[0], config.room_dim[1], config.room_dim[2]]
+    ])
     
-    # First add all materials before adding any objects
+    # 7. Add materials
     metal = RadioMaterial(
         name="metal",
         relative_permittivity=complex(1.0, -1e7),
@@ -56,10 +63,30 @@ def setup_scene(config):
     )
     scene.add(concrete)
     
-    # Create room boundaries
-    room_dims = config.room_dim
+    # 8. Add base station
+    tx = Transmitter(
+        name="bs",
+        position=config.bs_position,
+        orientation=config.bs_orientation
+    )
+    scene.add(tx)
     
-    # Add floor using SceneObject
+    # 9. Add AGVs
+    initial_positions = [
+        [12.0, 5.0, config.agv_height],
+        [8.0, 15.0, config.agv_height]
+    ]
+    
+    for i, pos in enumerate(initial_positions):
+        rx = Receiver(
+            name=f"agv_{i}",
+            position=pos,
+            orientation=[0.0, 0.0, 0.0]
+        )
+        scene.add(rx)
+    
+    # 10. Add room objects
+    room_dims = config.room_dim
     floor = SceneObject(
         name="floor",
         position=[room_dims[0]/2, room_dims[1]/2, 0],
@@ -68,7 +95,6 @@ def setup_scene(config):
     )
     scene.add(floor)
     
-    # Add ceiling using SceneObject
     ceiling = SceneObject(
         name="ceiling",
         position=[room_dims[0]/2, room_dims[1]/2, room_dims[2]],
@@ -77,7 +103,7 @@ def setup_scene(config):
     )
     scene.add(ceiling)
     
-    # Add walls using SceneObject
+    # Add walls
     wall_specs = [
         ("wall_north", [room_dims[0], 0.2, room_dims[2]], [room_dims[0]/2, room_dims[1], room_dims[2]/2]),
         ("wall_south", [room_dims[0], 0.2, room_dims[2]], [room_dims[0]/2, 0, room_dims[2]/2]),
@@ -94,29 +120,7 @@ def setup_scene(config):
         )
         scene.add(wall)
     
-    # Add base station
-    tx = Transmitter(
-        name="bs",
-        position=config.bs_position,
-        orientation=config.bs_orientation
-    )
-    scene.add(tx)
-    
-    # Add AGVs
-    initial_positions = [
-        [12.0, 5.0, config.agv_height],
-        [8.0, 15.0, config.agv_height]
-    ]
-    
-    for i, pos in enumerate(initial_positions):
-        rx = Receiver(
-            name=f"agv_{i}",
-            position=pos,
-            orientation=[0.0, 0.0, 0.0]
-        )
-        scene.add(rx)
-    
-    # Add RIS
+    # 11. Add RIS
     ris = RIS(
         name="ris",
         position=config.ris_position,
@@ -128,7 +132,7 @@ def setup_scene(config):
     )
     scene.add(ris)
     
-    # Add shelves
+    # 12. Add shelves
     shelf_dimensions = config.scene_objects.get('shelf_dimensions', [2.0, 1.0, 3.0])
     shelf_positions = [
         [5.0, 5.0, shelf_dimensions[2]/2],
@@ -147,7 +151,7 @@ def setup_scene(config):
         )
         scene.add(shelf)
     
-    # Configure RIS phase profile
+    # 13. Configure RIS phase profile
     bs_position = tf.constant([config.bs_position], dtype=tf.float32)
     agv_positions = tf.constant(initial_positions, dtype=tf.float32)
     
