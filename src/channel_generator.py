@@ -1,9 +1,7 @@
 import tensorflow as tf
 import numpy as np
 import sionna
-from sionna.channel import tr38901
 from scene_setup import setup_scene
-from sionna.channel.tr38901 import UMi
 import shap
 from dowhy import CausalModel
 import networkx as nx
@@ -18,7 +16,8 @@ class SmartFactoryChannel:
         sionna.config.xla_compat = True
         tf.random.set_seed(config.seed)
         self.positions_history = [[] for _ in range(config.num_agvs)]
-        
+        self.agv_positions = self._generate_initial_agv_positions()
+
         # Initialize scene using setup_scene function
         if scene is None:
             self.scene = setup_scene(config)
@@ -44,31 +43,6 @@ class SmartFactoryChannel:
             polarization="V"
         )
         
-        # Remove UMi channel model as we're using ray tracing
-        # Initialize AGV positions and velocities
-        self.agv_positions = self._generate_initial_agv_positions()
-        self.agv_velocities = self._generate_agv_velocities()
-        
-        # Initialize AGV positions and velocities
-        self.agv_positions = self._generate_initial_agv_positions()
-        self.agv_velocities = self._generate_agv_velocities()
-
-
-    def _update_ris_configuration(self, paths):
-        """Update RIS configuration based on path information"""
-        ris = self.scene.get("ris")
-        if ris is not None:
-            # Optimize RIS phases based on path information
-            optimal_phases = self._compute_optimal_ris_phases(paths)
-            ris.set_phases(optimal_phases)
-
-    def _compute_optimal_ris_phases(self, paths):
-        """Compute optimal RIS phases based on path information"""
-        # Implement RIS phase optimization logic here
-        # This is a placeholder - actual implementation needed
-        return tf.zeros([self.config.ris_elements[0], self.config.ris_elements[1]], 
-                    dtype=self.config.dtype)
-
 
     def _generate_initial_agv_positions(self):
         """Generate initial AGV positions"""
@@ -76,15 +50,6 @@ class SmartFactoryChannel:
             [12.0, 5.0, 0.5],   # AGV1
             [8.0, 15.0, 0.5]    # AGV2
         ], dtype=tf.float32)
-
-    def _generate_agv_velocities(self):
-        """Generate velocities for AGVs (3 km/h = 0.83 m/s)"""
-        return tf.random.normal(
-            shape=[self.config.num_agvs, 3],
-            mean=0.0,
-            stddev=0.83,
-            dtype=tf.float32
-        )
 
     def _generate_agv_waypoints(self):
         """Generate predefined waypoints for each AGV"""
@@ -562,17 +527,6 @@ class SmartFactoryChannel:
         
         return pruning_factor.numpy()
 
-    def _calculate_velocities(self, current_positions):
-        """Calculate AGV velocities based on position changes"""
-        agv_velocities = tf.zeros([1, self.config.num_agvs, 3], dtype=tf.float32)
-        if len(self.positions_history[0]) > 1:
-            prev_positions = tf.constant(
-                [[self.positions_history[j][-2] for j in range(self.config.num_agvs)]],
-                dtype=tf.float32
-            )
-            agv_velocities = (current_positions - prev_positions) / self.config.simulation['time_step']
-        return agv_velocities
-
     def generate_channel(self):
         """Generate channel matrices with proper RIS modeling, explainability data, causal analysis and energy metrics"""
         # Update AGV positions
@@ -582,15 +536,7 @@ class SmartFactoryChannel:
         current_positions = tf.expand_dims(current_positions, axis=0)
         bs_position = tf.constant([self.config.bs_position], dtype=tf.float32)
         
-        # Calculate AGV velocities based on position changes
-        agv_velocities = tf.zeros([1, self.config.num_agvs, 3], dtype=tf.float32)
-        if len(self.positions_history[0]) > 1:
-            prev_positions = tf.constant(
-                [[self.positions_history[j][-2] for j in range(self.config.num_agvs)]],
-                dtype=tf.float32
-            )
-            agv_velocities = (current_positions - prev_positions) / self.config.simulation['time_step']
-        
+    
         # Update AGV positions in the scene
         for i in range(self.config.num_agvs):
             agv = self.scene.get(f"agv_{i}")
