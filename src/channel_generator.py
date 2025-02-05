@@ -672,15 +672,37 @@ class SmartFactoryChannel:
         return pruning_factor.numpy()
 
     def generate_channel(self):
-        """Generate channel matrices with proper RIS modeling, explainability data, causal analysis and energy metrics"""
-        # Update AGV positions
-        current_positions = self._update_agv_positions(self.config.num_time_steps)
+        """Generate channel matrices with proper RIS modeling, explainability data, causal analysis and energy metrics
+        
+        Returns:
+            dict: Comprehensive channel response including:
+                - Channel matrices (with/without RIS)
+                - Path information
+                - Channel quality metrics
+                - Causal analysis
+                - Energy metrics
+                - Feature importance
+                - Performance metrics
+        """
+        # Update AGV positions and calculate velocities
+        current_positions = self._update_agv_positions(self.config.time_step)
+        
+        # Calculate AGV velocities from position history
+        agv_velocities = tf.zeros_like(current_positions)  # Initialize with zeros
+        if len(self.positions_history[0]) > 1:
+            for i in range(self.config.num_agvs):
+                prev_pos = tf.constant(self.positions_history[i][-2], dtype=tf.float32)
+                curr_pos = tf.constant(self.positions_history[i][-1], dtype=tf.float32)
+                agv_velocities = tf.tensor_scatter_nd_update(
+                    agv_velocities,
+                    [[i]],
+                    [(curr_pos - prev_pos) / self.config.time_step]
+                )
         
         # Add batch dimension to positions
         current_positions = tf.expand_dims(current_positions, axis=0)
         bs_position = tf.constant([self.config.bs_position], dtype=tf.float32)
         
-    
         # Update AGV positions in the scene
         for i in range(self.config.num_agvs):
             agv = self.scene.get(f"agv_{i}")
