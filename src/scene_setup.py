@@ -21,29 +21,21 @@ def validate_scene(scene):
     
     if scene._dtype not in (tf.complex64, tf.complex128):
         raise ValueError("Invalid dtype")
-#######################################
+
 def init_empty_scene(dtype):
     """Initialize an empty scene with proper MI configuration"""
     print(f"[DEBUG] Initializing empty scene with dtype: {dtype}")
-    
-    # Initialize scene first
     scene = load_scene("__empty__", dtype=dtype)
-    
-    # Basic scene configuration is handled internally by Sionna
-    # No need to manually configure Mitsuba
-    
-    # Verify initialization
     validate_scene(scene)
     print("[DEBUG] Scene initialized successfully")
-    
     return scene
-#######################################
+
 def setup_scene(config):
     """Set up the smart factory simulation scene with ray tracing configuration"""
     print("[DEBUG] Starting scene setup...")
     
     try:
-        # 1. Initialize empty scene properly using Sionna's API
+        # 1. Initialize empty scene
         scene = load_scene("__empty__", dtype=config.dtype)
         
         # 2. Set basic properties
@@ -51,51 +43,44 @@ def setup_scene(config):
         wavelength = SPEED_OF_LIGHT/scene.frequency
         print(f"[DEBUG] Basic properties set. Frequency: {scene.frequency}, Wavelength: {wavelength}")
         
-        # 3. Add materials FIRST before any objects
-        metal = RadioMaterial(
-            name="metal",
-            relative_permittivity=complex(1.0, -1e7),
-            conductivity=1e7,
-            scattering_coefficient=0.1,
-            xpd_coefficient=10.0
-        )
-        scene.add(metal)
-        
-        concrete = RadioMaterial(
-            name="concrete",
-            relative_permittivity=complex(4.5),
-            conductivity=0.01,
-            scattering_coefficient=0.2,
-            xpd_coefficient=8.0
-        )
-        scene.add(concrete)
+        # 3. Add materials using the enhanced material configuration
+        for mat_name, mat_props in config.materials.items():
+            material = RadioMaterial(
+                name=mat_props['name'],
+                relative_permittivity=mat_props['relative_permittivity'],
+                conductivity=mat_props['conductivity'],
+                scattering_coefficient=mat_props['scattering_coefficient'],
+                xpd_coefficient=mat_props['xpd_coefficient']
+            )
+            scene.add(material)
         print("[DEBUG] Materials added successfully")
 
-        # 4. Configure antenna arrays (unchanged)
+        # 4. Configure antenna arrays with enhanced parameters
         print("[DEBUG] Setting up antenna arrays...")
         scene.tx_array = PlanarArray(
             num_rows=config.bs_array[0],
             num_cols=config.bs_array[1], 
-            vertical_spacing=config.bs_array_spacing or 0.5*wavelength,
-            horizontal_spacing=config.bs_array_spacing or 0.5*wavelength,
-            pattern="tr38901",
-            polarization="VH",
+            vertical_spacing=config.bs_array_spacing,
+            horizontal_spacing=config.bs_array_spacing,
+            pattern=config.bs_array_pattern,
+            polarization=config.bs_polarization,
             dtype=config.dtype
         )
         
         scene.rx_array = PlanarArray(
-            num_rows=1,
-            num_cols=1,
-            vertical_spacing=config.agv_array_spacing or 0.5*wavelength,
-            horizontal_spacing=config.agv_array_spacing or 0.5*wavelength,
-            pattern="iso",
-            polarization="V",
+            num_rows=config.agv_array[0],
+            num_cols=config.agv_array[1],
+            vertical_spacing=config.agv_array_spacing,
+            horizontal_spacing=config.agv_array_spacing,
+            pattern=config.agv_array_pattern,
+            polarization=config.agv_polarization,
             dtype=config.dtype
         )
         print("[DEBUG] Antenna arrays configured")
         
-        # 5. Add radio devices (unchanged)
+        # 5. Add radio devices with enhanced configuration
         print("[DEBUG] Adding radio devices...")
+        # Add base station
         tx = Transmitter(
             name="bs",
             position=config.bs_position,
@@ -103,96 +88,80 @@ def setup_scene(config):
         )
         scene.add(tx)
         
-        initial_positions = [
-            [12.0, 5.0, config.agv_height],
-            [8.0, 15.0, config.agv_height]
-        ]
-        
-        for i, pos in enumerate(initial_positions):
+        # Add AGVs
+        for i in range(config.num_agvs):
             rx = Receiver(
                 name=f"agv_{i}",
-                position=pos,
+                position=[12.0 - i*4.0, 5.0 + i*10.0, config.agv_height],  # Calculated positions
                 orientation=[0.0, 0.0, 0.0]
             )
             scene.add(rx)
         
+        # Add RIS with enhanced configuration
         ris = RIS(
             name="ris",
             position=config.ris_position,
             orientation=config.ris_orientation,
             num_rows=config.ris_elements[0],
             num_cols=config.ris_elements[1],
-            num_modes=1,
+            num_modes=config.ris_modes,
+            spacing=config.ris_spacing,
             dtype=config.dtype
         )
         scene.add(ris)
         print("[DEBUG] Radio devices added")
         
-        # 6. Add static objects as Transmitters instead of SceneObjects
+        # 6. Add static objects using configuration
         print("[DEBUG] Adding scene objects...")
-        room_dims = config.room_dim
-        
-        # Add floor
-        floor = Transmitter(
-            name="floor",
-            position=[room_dims[0]/2, room_dims[1]/2, 0],
-            orientation=[0.0, 0.0, 0.0]
-        )
-        scene.add(floor)
-        floor.radio_material = "concrete"
-        floor.size = [room_dims[0], room_dims[1], 0.2]
-        print("[DEBUG] Floor added")
-        
-        # Add ceiling
-        ceiling = Transmitter(
-            name="ceiling",
-            position=[room_dims[0]/2, room_dims[1]/2, room_dims[2]],
-            orientation=[0.0, 0.0, 0.0]
-        )
-        scene.add(ceiling)
-        ceiling.radio_material = "concrete"
-        ceiling.size = [room_dims[0], room_dims[1], 0.2]
-        print("[DEBUG] Ceiling added")
-        
-        # Add walls
-        wall_specs = [
-            ("wall_north", [room_dims[0], 0.2, room_dims[2]], [room_dims[0]/2, room_dims[1], room_dims[2]/2]),
-            ("wall_south", [room_dims[0], 0.2, room_dims[2]], [room_dims[0]/2, 0, room_dims[2]/2]),
-            ("wall_east", [0.2, room_dims[1], room_dims[2]], [room_dims[0], room_dims[1]/2, room_dims[2]/2]),
-            ("wall_west", [0.2, room_dims[1], room_dims[2]], [0, room_dims[1]/2, room_dims[2]/2])
-        ]
-        
-        for name, size, pos in wall_specs:
-            wall = Transmitter(
-                name=name,
-                position=pos,
+        if config.static_scene['walls']:
+            # Add floor
+            floor = Transmitter(
+                name="floor",
+                position=[config.room_dim[0]/2, config.room_dim[1]/2, 0],
                 orientation=[0.0, 0.0, 0.0]
             )
-            scene.add(wall)
-            wall.radio_material = "concrete"
-            wall.size = size
-        print("[DEBUG] Walls added")
+            scene.add(floor)
+            floor.radio_material = config.static_scene['material']
+            floor.size = [config.room_dim[0], config.room_dim[1], config.static_scene['wall_thickness']]
+            
+            # Add ceiling
+            ceiling = Transmitter(
+                name="ceiling",
+                position=[config.room_dim[0]/2, config.room_dim[1]/2, config.room_dim[2]],
+                orientation=[0.0, 0.0, 0.0]
+            )
+            scene.add(ceiling)
+            ceiling.radio_material = config.static_scene['material']
+            ceiling.size = [config.room_dim[0], config.room_dim[1], config.static_scene['wall_thickness']]
+            
+            # Add walls using the enhanced wall configuration
+            wall_specs = [
+                ("wall_north", [config.room_dim[0], config.static_scene['wall_thickness'], config.room_dim[2]], 
+                [config.room_dim[0]/2, config.room_dim[1], config.room_dim[2]/2]),
+                ("wall_south", [config.room_dim[0], config.static_scene['wall_thickness'], config.room_dim[2]], 
+                [config.room_dim[0]/2, 0, config.room_dim[2]/2]),
+                ("wall_east", [config.static_scene['wall_thickness'], config.room_dim[1], config.room_dim[2]], 
+                [config.room_dim[0], config.room_dim[1]/2, config.room_dim[2]/2]),
+                ("wall_west", [config.static_scene['wall_thickness'], config.room_dim[1], config.room_dim[2]], 
+                [0, config.room_dim[1]/2, config.room_dim[2]/2])
+            ]
+            
+            for name, size, pos in wall_specs:
+                wall = Transmitter(name=name, position=pos, orientation=[0.0, 0.0, 0.0])
+                scene.add(wall)
+                wall.radio_material = config.static_scene['material']
+                wall.size = size
         
-        # Add shelves
-        shelf_dimensions = config.scene_objects.get('shelf_dimensions', [2.0, 1.0, 3.0])
-        shelf_positions = [
-            [5.0, 5.0, shelf_dimensions[2]/2],
-            [15.0, 5.0, shelf_dimensions[2]/2],
-            [10.0, 10.0, shelf_dimensions[2]/2],
-            [5.0, 15.0, shelf_dimensions[2]/2],
-            [15.0, 15.0, shelf_dimensions[2]/2]
-        ]
-        
-        for i, pos in enumerate(shelf_positions):
+        # Add shelves using the enhanced scene objects configuration
+        for i, pos in enumerate(config.scene_objects['shelf_positions']):
             shelf = Transmitter(
                 name=f"shelf_{i}",
                 position=pos,
                 orientation=[0.0, 0.0, 0.0]
             )
             scene.add(shelf)
-            shelf.radio_material = "metal"
-            shelf.size = shelf_dimensions
-        print("[DEBUG] Shelves added")
+            shelf.radio_material = config.scene_objects['shelf_material']
+            shelf.size = config.scene_objects['shelf_dimensions']
         
         print("[DEBUG] Scene setup completed successfully")
         return scene
