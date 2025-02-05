@@ -75,18 +75,18 @@ def setup_scene(config):
         scene.add(rx)
         # Remove rx.antenna = scene.rx_array line since it's handled automatically
     
-    # Add RIS with enhanced configuration
+    # Add RIS with correct parameters
     ris = RIS(
         name="ris",
         position=config.ris_position,
         orientation=config.ris_orientation,
         num_rows=config.ris_elements[0],
         num_cols=config.ris_elements[1],
-        antenna_pattern="iso",  # Add antenna pattern
-        polarization="V",      # Add polarization
+        num_modes=1,  # Optional, defaults to 1
         dtype=config.dtype
     )
     scene.add(ris)
+    
     # Configure RIS phase profile with optimization
     bs_position = tf.constant([config.bs_position], dtype=tf.float32)
     agv_positions = tf.constant(initial_positions, dtype=tf.float32)
