@@ -6,21 +6,13 @@ def setup_scene(config):
     """Set up the smart factory simulation scene with ray tracing configuration"""
     # Create empty scene with ray tracing configuration
     scene = load_scene("__empty__")
-    
-    # First set the frequency - this is critical for scene initialization
     scene.frequency = config.carrier_frequency
     
     # Calculate wavelength
     wavelength = SPEED_OF_LIGHT/scene.frequency
     
-    # Configure ray tracing parameters early
-    scene.ray_tracing = {
-        'max_depth': config.ray_tracing['max_depth'],
-        'diffraction': config.ray_tracing['diffraction'],
-        'scattering': config.ray_tracing['scattering']
-    }
-    
-    # Create and add materials first
+    # First add all materials before adding any objects
+    # Create materials for scene objects
     metal_material = RadioMaterial(
         name="metal",
         relative_permittivity=complex(1.0, -1e7),
@@ -29,6 +21,7 @@ def setup_scene(config):
     )
     scene.add(metal_material)
     
+    # Add concrete material for walls
     concrete_material = RadioMaterial(
         name="concrete",
         relative_permittivity=complex(config.materials['walls'].get('permittivity', 4.5)),
@@ -38,7 +31,7 @@ def setup_scene(config):
     )
     scene.add(concrete_material)
     
-    # Configure antenna arrays
+    # Configure antenna arrays before adding devices
     scene.tx_array = PlanarArray(
         num_rows=config.bs_array[0],
         num_cols=config.bs_array[1],
@@ -57,21 +50,31 @@ def setup_scene(config):
         polarization="V"
     )
     
-    # Add room boundaries first
+    # Configure ray tracing parameters
+    scene.ray_tracing = {
+        'max_depth': config.ray_tracing['max_depth'],
+        'diffraction': config.ray_tracing['diffraction'],
+        'scattering': config.ray_tracing['scattering']
+    }
+    
+    # Now add room boundaries first
     room_dims = config.room_dim
     walls = [
+        # Floor
         SceneObject(
             name="floor",
             position=[room_dims[0]/2, room_dims[1]/2, 0],
             size=[room_dims[0], room_dims[1], 0.2],
             material="concrete"
         ),
+        # Ceiling
         SceneObject(
             name="ceiling",
             position=[room_dims[0]/2, room_dims[1]/2, room_dims[2]],
             size=[room_dims[0], room_dims[1], 0.2],
             material="concrete"
         ),
+        # Walls
         SceneObject(
             name="wall_north",
             position=[room_dims[0]/2, room_dims[1], room_dims[2]/2],
@@ -98,7 +101,6 @@ def setup_scene(config):
         )
     ]
     
-    # Add walls to scene
     for wall in walls:
         scene.add(wall)
     
@@ -136,7 +138,7 @@ def setup_scene(config):
     )
     scene.add(ris)
     
-    # Add shelves last
+    # Finally add shelves
     shelf_dimensions = config.scene_objects.get('shelf_dimensions', [2.0, 1.0, 3.0])
     shelf_positions = [
         [5.0, 5.0, shelf_dimensions[2]/2],
@@ -156,7 +158,7 @@ def setup_scene(config):
         )
         scene.add(shelf)
     
-    # Configure RIS phase profile after all objects are added
+    # Configure RIS phase profile
     bs_position = tf.constant([config.bs_position], dtype=tf.float32)
     agv_positions = tf.constant(initial_positions, dtype=tf.float32)
     
