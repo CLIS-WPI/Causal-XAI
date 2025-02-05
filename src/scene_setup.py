@@ -38,13 +38,7 @@ def setup_scene(config):
         dtype=config.dtype
     )
     
-    # 6. Set scene boundaries
-    scene.set_boundaries([
-        [0.0, 0.0, 0.0], 
-        [config.room_dim[0], config.room_dim[1], config.room_dim[2]]
-    ])
-    
-    # 7. Add materials
+    # 6. Add materials first
     metal = RadioMaterial(
         name="metal",
         relative_permittivity=complex(1.0, -1e7),
@@ -63,7 +57,7 @@ def setup_scene(config):
     )
     scene.add(concrete)
     
-    # 8. Add base station
+    # 7. Add base station
     tx = Transmitter(
         name="bs",
         position=config.bs_position,
@@ -71,7 +65,7 @@ def setup_scene(config):
     )
     scene.add(tx)
     
-    # 9. Add AGVs
+    # 8. Add AGVs
     initial_positions = [
         [12.0, 5.0, config.agv_height],
         [8.0, 15.0, config.agv_height]
@@ -85,8 +79,10 @@ def setup_scene(config):
         )
         scene.add(rx)
     
-    # 10. Add room objects
+    # 9. Add room objects (including boundaries)
     room_dims = config.room_dim
+    
+    # Floor
     floor = SceneObject(
         name="floor",
         position=[room_dims[0]/2, room_dims[1]/2, 0],
@@ -95,6 +91,7 @@ def setup_scene(config):
     )
     scene.add(floor)
     
+    # Ceiling
     ceiling = SceneObject(
         name="ceiling",
         position=[room_dims[0]/2, room_dims[1]/2, room_dims[2]],
@@ -103,7 +100,7 @@ def setup_scene(config):
     )
     scene.add(ceiling)
     
-    # Add walls
+    # Walls
     wall_specs = [
         ("wall_north", [room_dims[0], 0.2, room_dims[2]], [room_dims[0]/2, room_dims[1], room_dims[2]/2]),
         ("wall_south", [room_dims[0], 0.2, room_dims[2]], [room_dims[0]/2, 0, room_dims[2]/2]),
@@ -120,7 +117,7 @@ def setup_scene(config):
         )
         scene.add(wall)
     
-    # 11. Add RIS
+    # 10. Add RIS
     ris = RIS(
         name="ris",
         position=config.ris_position,
@@ -132,7 +129,7 @@ def setup_scene(config):
     )
     scene.add(ris)
     
-    # 12. Add shelves
+    # 11. Add shelves
     shelf_dimensions = config.scene_objects.get('shelf_dimensions', [2.0, 1.0, 3.0])
     shelf_positions = [
         [5.0, 5.0, shelf_dimensions[2]/2],
@@ -151,7 +148,7 @@ def setup_scene(config):
         )
         scene.add(shelf)
     
-    # 13. Configure RIS phase profile
+    # 12. Configure RIS phase profile
     bs_position = tf.constant([config.bs_position], dtype=tf.float32)
     agv_positions = tf.constant(initial_positions, dtype=tf.float32)
     
