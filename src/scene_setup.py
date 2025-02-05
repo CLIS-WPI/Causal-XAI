@@ -55,10 +55,10 @@ def setup_scene(config):
         name="bs",
         position=config.bs_position,
         orientation=config.bs_orientation,
-        antenna_array=scene.tx_array,  # Use antenna_array instead of array
         object_id=0
     )
     scene.add(tx)
+    tx.antenna = scene.tx_array  # Set antenna array after creation
     
     # Define and add AGVs
     initial_positions = [
@@ -71,10 +71,10 @@ def setup_scene(config):
             name=f"agv_{i}",
             position=pos,
             orientation=[0.0, 0.0, 0.0],
-            array=scene.rx_array,
             object_id=i+1
         )
         scene.add(rx)
+        rx.antenna = scene.rx_array  # Set antenna array after creation
     
     # Add RIS with enhanced configuration
     ris = RIS(
