@@ -1,324 +1,184 @@
-#validation.py
-#To ensure your simulation aligns with industrial benchmarks and physical realities, focus on these essential validation steps:
 import numpy as np
 import tensorflow as tf
 from datetime import datetime
 import os
+import logging
+from typing import Dict, Any, Tuple, List
 import matplotlib.pyplot as plt
-from typing import Dict, List, Tuple
-import json
 
-class SmartFactoryValidator:
-    """Validator class for Smart Factory Beamforming Scenario"""
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+class ChannelValidator:
+    """Validator class for Smart Factory channel simulation"""
     
-    def __init__(self, config, result_dir: str):
+    def __init__(self, config):
         """
-        Initialize the validator
+        Initialize validator with configuration parameters
         
-        Args:
-            config: Configuration object
-            result_dir: Directory to save validation results
+        Parameters:
+        -----------
+        config : SmartFactoryConfig
+            Configuration object containing validation thresholds
         """
         self.config = config
-        self.result_dir = result_dir
         self.validation_results = {}
         
         # Define validation thresholds
         self.thresholds = {
-            'ris_gain_db': 3.0,  # Minimum expected RIS gain in dB
-            'los_ratio': 0.3,    # Expected LOS ratio
-            'delay_spread_ns': 100.0,  # Expected delay spread in ns
-            'doppler_hz': 78.0,  # Expected Doppler shift at 3 km/h
-            'beam_accuracy': 0.9, # Minimum beam alignment accuracy
-            'energy_reduction': 0.5  # Minimum beam training reduction
+            'min_ris_gain_db': 3.0,  # Minimum expected RIS gain in dB
+            'expected_los_ratio': 0.3,  # Expected LOS ratio in factory
+            'expected_delay_spread_ns': 100,  # Expected RMS delay spread in ns
+            'expected_doppler_hz': 78,  # Expected Doppler shift at 28GHz
+            'min_beam_accuracy': 0.9,  # Minimum beam alignment accuracy
+            'min_energy_reduction': 0.5  # Minimum energy efficiency improvement
         }
 
-    def validate_ris_effectiveness(self, channel_response: Dict) -> Dict:
+    def validate_ris_effectiveness(self, channel_response: Dict[str, tf.Tensor]) -> Tuple[bool, float]:
         """
         Validate RIS effectiveness through SNR gain
         
-        Args:
-            channel_response: Dictionary containing channel responses
-            
         Returns:
-            Dictionary containing validation results
+        --------
+        bool : Validation pass/fail
+        float : Calculated SNR gain
         """
-        h_with_ris = channel_response['h_with_ris']
-        h_without_ris = channel_response['h_without_ris']
-        
-        # Calculate SNR gain in dB
-        snr_gain = 10 * tf.math.log(
-            tf.reduce_mean(tf.abs(h_with_ris)**2) / 
-            tf.reduce_mean(tf.abs(h_without_ris)**2)
-        ) / tf.math.log(10.0)
-        
-        result = {
-            'metric': 'RIS SNR Gain',
-            'value': float(snr_gain),
-            'unit': 'dB',
-            'threshold': self.thresholds['ris_gain_db'],
-            'passed': float(snr_gain) >= self.thresholds['ris_gain_db']
-        }
-        
-        self.validation_results['ris_effectiveness'] = result
-        return result
-
-    def validate_los_ratio(self, channel_response: Dict) -> Dict:
-        """
-        Validate LOS/NLOS ratio
-        
-        Args:
-            channel_response: Dictionary containing channel responses
+        try:
+            h_with_ris = channel_response['h_with_ris']
+            h_without_ris = channel_response['h_without_ris']
             
-        Returns:
-            Dictionary containing validation results
-        """
-        los_ratio = tf.reduce_mean(tf.cast(channel_response['los_condition'], tf.float32))
-        
-        result = {
-            'metric': 'LOS Ratio',
-            'value': float(los_ratio),
-            'unit': '%',
-            'threshold': self.thresholds['los_ratio'],
-            'passed': abs(float(los_ratio) - self.thresholds['los_ratio']) <= 0.1
-        }
-        
-        self.validation_results['los_ratio'] = result
-        return result
-
-    def validate_delay_spread(self, channel_response: Dict) -> Dict:
-        """
-        Validate RMS delay spread
-        
-        Args:
-            channel_response: Dictionary containing channel responses
+            # Calculate SNR gain in dB
+            snr_gain = 10 * tf.math.log(
+                tf.reduce_mean(tf.abs(h_with_ris)**2) / 
+                tf.reduce_mean(tf.abs(h_without_ris)**2)
+            ) / tf.math.log(10.0)
             
-        Returns:
-            Dictionary containing validation results
-        """
-        tau = channel_response['tau'].numpy().flatten()
-        valid_tau = tau[~np.isnan(tau)]
-        rms_delay = np.sqrt(np.mean(valid_tau**2))
-        
-        result = {
-            'metric': 'RMS Delay Spread',
-            'value': float(rms_delay * 1e9),
-            'unit': 'ns',
-            'threshold': self.thresholds['delay_spread_ns'],
-            'passed': abs(float(rms_delay * 1e9) - self.thresholds['delay_spread_ns']) <= 20
-        }
-        
-        self.validation_results['delay_spread'] = result
-        return result
-
-    def validate_mobility_impact(self, channel_response: Dict) -> Dict:
-        """
-        Validate AGV mobility impact through Doppler shift
-        
-        Args:
-            channel_response: Dictionary containing channel responses
+            passes = float(snr_gain) >= self.thresholds['min_ris_gain_db']
             
-        Returns:
-            Dictionary containing validation results
-        """
-        h_with_ris = channel_response['h_with_ris']
-        doppler_shift = tf.reduce_mean(
-            tf.angle(h_with_ris[:, 1:] * tf.math.conj(h_with_ris[:, :-1]))
-        )
-        
-        result = {
-            'metric': 'Doppler Shift',
-            'value': float(doppler_shift),
-            'unit': 'Hz',
-            'threshold': self.thresholds['doppler_hz'],
-            'passed': abs(float(doppler_shift) - self.thresholds['doppler_hz']) <= 10
-        }
-        
-        self.validation_results['mobility_impact'] = result
-        return result
-
-    def validate_beamforming(self, predicted_beams: np.ndarray, optimal_beams: np.ndarray) -> Dict:
-        """
-        Validate beamforming accuracy
-        
-        Args:
-            predicted_beams: Array of predicted beam indices
-            optimal_beams: Array of optimal beam indices
+            logger.info(f"RIS SNR Gain: {float(snr_gain):.1f} dB (Required: ≥{self.thresholds['min_ris_gain_db']} dB)")
+            return passes, float(snr_gain)
             
-        Returns:
-            Dictionary containing validation results
-        """
-        accuracy = np.mean(predicted_beams == optimal_beams)
-        
-        result = {
-            'metric': 'Beam Alignment Accuracy',
-            'value': float(accuracy),
-            'unit': '%',
-            'threshold': self.thresholds['beam_accuracy'],
-            'passed': accuracy >= self.thresholds['beam_accuracy']
-        }
-        
-        self.validation_results['beamforming'] = result
-        return result
+        except Exception as e:
+            logger.error(f"RIS effectiveness validation failed: {str(e)}")
+            return False, 0.0
 
-    def validate_xai_plausibility(self, shap_values: np.ndarray, feature_names: List[str]) -> Dict:
-        """
-        Validate XAI plausibility through SHAP values
-        
-        Args:
-            shap_values: Array of SHAP values
-            feature_names: List of feature names
+    def validate_los_ratio(self, channel_response: Dict[str, Any]) -> Tuple[bool, float]:
+        """Validate LOS/NLOS ratio"""
+        try:
+            los_ratio = tf.reduce_mean(tf.cast(channel_response['los_condition'], tf.float32))
             
-        Returns:
-            Dictionary containing validation results
-        """
-        top_features = np.argsort(shap_values)[-3:]
-        important_features = ['RIS Phase', 'Shelf Distance', 'AGV Position']
-        
-        # Check if top features include important ones
-        has_important = any(feature_names[i] in important_features for i in top_features)
-        
-        result = {
-            'metric': 'XAI Plausibility',
-            'value': has_important,
-            'unit': None,
-            'top_features': [feature_names[i] for i in top_features],
-            'passed': has_important
-        }
-        
-        self.validation_results['xai_plausibility'] = result
-        return result
-
-    def validate_energy_efficiency(self, baseline_scans: int, xai_scans: int) -> Dict:
-        """
-        Validate energy efficiency through beam training reduction
-        
-        Args:
-            baseline_scans: Number of baseline beam scans
-            xai_scans: Number of XAI-guided beam scans
+            # Allow for ±10% deviation from expected ratio
+            passes = abs(float(los_ratio) - self.thresholds['expected_los_ratio']) <= 0.1
             
-        Returns:
-            Dictionary containing validation results
-        """
-        reduction = (baseline_scans - xai_scans) / baseline_scans
-        
-        result = {
-            'metric': 'Beam Training Reduction',
-            'value': float(reduction),
-            'unit': '%',
-            'threshold': self.thresholds['energy_reduction'],
-            'passed': reduction >= self.thresholds['energy_reduction']
-        }
-        
-        self.validation_results['energy_efficiency'] = result
-        return result
+            logger.info(f"LOS Ratio: {float(los_ratio):.1%} (Expected: {self.thresholds['expected_los_ratio']:.1%})")
+            return passes, float(los_ratio)
+            
+        except Exception as e:
+            logger.error(f"LOS ratio validation failed: {str(e)}")
+            return False, 0.0
 
-    def run_full_validation(self, channel_response: Dict, 
+    def validate_delay_spread(self, channel_response: Dict[str, Any]) -> Tuple[bool, float]:
+        """Validate RMS delay spread"""
+        try:
+            tau = channel_response['tau'].numpy().flatten()
+            valid_tau = tau[~np.isnan(tau)]
+            rms_delay = np.sqrt(np.mean(valid_tau**2)) * 1e9  # Convert to ns
+            
+            # Allow for ±20% deviation from expected delay spread
+            passes = abs(rms_delay - self.thresholds['expected_delay_spread_ns']) <= 20
+            
+            logger.info(f"RMS Delay Spread: {rms_delay:.1f} ns (Expected: {self.thresholds['expected_delay_spread_ns']} ns)")
+            return passes, rms_delay
+            
+        except Exception as e:
+            logger.error(f"Delay spread validation failed: {str(e)}")
+            return False, 0.0
+
+    def validate_doppler_shift(self, channel_response: Dict[str, tf.Tensor]) -> Tuple[bool, float]:
+        """Validate Doppler shift consistency"""
+        try:
+            h = channel_response['h_with_ris']
+            doppler_shift = tf.reduce_mean(
+                tf.angle(h[:, 1:] * tf.math.conj(h[:, :-1]))
+            ) / (2 * np.pi * self.config.sampling_time)
+            
+            # Allow for ±10Hz deviation from expected Doppler
+            passes = abs(float(doppler_shift) - self.thresholds['expected_doppler_hz']) <= 10
+            
+            logger.info(f"Doppler Shift: {float(doppler_shift):.1f} Hz (Expected: {self.thresholds['expected_doppler_hz']} Hz)")
+            return passes, float(doppler_shift)
+            
+        except Exception as e:
+            logger.error(f"Doppler validation failed: {str(e)}")
+            return False, 0.0
+
+    def validate_beam_accuracy(self, predicted_beams: np.ndarray, optimal_beams: np.ndarray) -> Tuple[bool, float]:
+        """Validate beamforming accuracy"""
+        try:
+            accuracy = np.mean(predicted_beams == optimal_beams)
+            passes = accuracy >= self.thresholds['min_beam_accuracy']
+            
+            logger.info(f"Beam Accuracy: {accuracy:.1%} (Required: ≥{self.thresholds['min_beam_accuracy']:.1%})")
+            return passes, accuracy
+            
+        except Exception as e:
+            logger.error(f"Beam accuracy validation failed: {str(e)}")
+            return False, 0.0
+
+    def validate_energy_efficiency(self, baseline_scans: int, xai_scans: int) -> Tuple[bool, float]:
+        """Validate energy efficiency improvement"""
+        try:
+            reduction = (baseline_scans - xai_scans) / baseline_scans
+            passes = reduction >= self.thresholds['min_energy_reduction']
+            
+            logger.info(f"Energy Efficiency Improvement: {reduction:.1%} (Required: ≥{self.thresholds['min_energy_reduction']:.1%})")
+            return passes, reduction
+            
+        except Exception as e:
+            logger.error(f"Energy efficiency validation failed: {str(e)}")
+            return False, 0.0
+
+    def run_full_validation(self, channel_response: Dict[str, Any], 
                         predicted_beams: np.ndarray, 
                         optimal_beams: np.ndarray,
-                        shap_values: np.ndarray,
-                        feature_names: List[str],
                         baseline_scans: int,
-                        xai_scans: int) -> Dict:
+                        xai_scans: int) -> Dict[str, Any]:
         """
-        Run all validation checks
-        
-        Args:
-            channel_response: Dictionary containing channel responses
-            predicted_beams: Array of predicted beam indices
-            optimal_beams: Array of optimal beam indices
-            shap_values: Array of SHAP values
-            feature_names: List of feature names
-            baseline_scans: Number of baseline beam scans
-            xai_scans: Number of XAI-guided beam scans
-            
-        Returns:
-            Dictionary containing all validation results
+        Run all validation checks and generate report
         """
-        self.validate_ris_effectiveness(channel_response)
-        self.validate_los_ratio(channel_response)
-        self.validate_delay_spread(channel_response)
-        self.validate_mobility_impact(channel_response)
-        self.validate_beamforming(predicted_beams, optimal_beams)
-        self.validate_xai_plausibility(shap_values, feature_names)
-        self.validate_energy_efficiency(baseline_scans, xai_scans)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        # Save validation results
-        self._save_validation_results()
+        # Run all validations
+        self.validation_results = {
+            'ris_effectiveness': self.validate_ris_effectiveness(channel_response),
+            'los_ratio': self.validate_los_ratio(channel_response),
+            'delay_spread': self.validate_delay_spread(channel_response),
+            'doppler_shift': self.validate_doppler_shift(channel_response),
+            'beam_accuracy': self.validate_beam_accuracy(predicted_beams, optimal_beams),
+            'energy_efficiency': self.validate_energy_efficiency(baseline_scans, xai_scans)
+        }
+        
+        # Generate validation report
+        self.generate_validation_report(timestamp)
         
         return self.validation_results
 
-    def _save_validation_results(self):
-        """Save validation results to file"""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        results_file = os.path.join(self.result_dir, f'validation_results_{timestamp}.json')
+    def generate_validation_report(self, timestamp: str) -> None:
+        """Generate and save validation report"""
+        report_dir = os.path.join(os.getcwd(), 'validation_reports')
+        os.makedirs(report_dir, exist_ok=True)
         
-        with open(results_file, 'w') as f:
-            json.dump(self.validation_results, f, indent=4)
+        report_path = os.path.join(report_dir, f'validation_report_{timestamp}.txt')
         
-        # Generate validation report plot
-        self._plot_validation_results()
-
-    def _plot_validation_results(self):
-        """Generate validation results visualization"""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        metrics = []
-        values = []
-        passed = []
+        with open(report_path, 'w') as f:
+            f.write("Smart Factory Channel Validation Report\n")
+            f.write("=====================================\n\n")
+            
+            for metric, (passes, value) in self.validation_results.items():
+                status = "PASS" if passes else "FAIL"
+                f.write(f"{metric}: {status} (Value: {value:.3f})\n")
+            
+            f.write(f"\nValidation completed at: {timestamp}")
         
-        for key, result in self.validation_results.items():
-            if isinstance(result['value'], (int, float)):
-                metrics.append(result['metric'])
-                values.append(result['value'])
-                passed.append(result['passed'])
-        
-        plt.figure(figsize=(12, 6))
-        bars = plt.bar(metrics, values)
-        
-        # Color bars based on pass/fail
-        for bar, pass_status in zip(bars, passed):
-            bar.set_color('green' if pass_status else 'red')
-        
-        plt.xticks(rotation=45, ha='right')
-        plt.title('Validation Results Overview')
-        plt.tight_layout()
-        
-        # Save plot
-        plot_file = os.path.join(self.result_dir, f'validation_results_{timestamp}.png')
-        plt.savefig(plot_file)
-        plt.close()
-
-def create_validator(config, result_dir: str) -> SmartFactoryValidator:
-    """
-    Factory function to create a validator instance
-    
-    Args:
-        config: Configuration object
-        result_dir: Directory to save validation results
-        
-    Returns:
-        SmartFactoryValidator instance
-    """
-    return SmartFactoryValidator(config, result_dir)
-
-#how to use" # In main.py
-#from validation import create_validator
-
-#def main():
-    # Your existing initialization code...
-    
-    # Create validator
-    #validator = create_validator(config, result_dir)
-    
-    # After generating channel response and other data...
-    #validation_results = validator.run_full_validation(
-        #channel_response=channel_response,
-        #predicted_beams=predicted_beams,
-        #optimal_beams=optimal_beams,
-        #shap_values=shap_values,
-        #feature_names=feature_names,
-        #baseline_scans=baseline_scans,
-        #xai_scans=xai_scans
-    #)
-    
-    #print("Validation complete. Results saved in:", result_dir)
+        logger.info(f"Validation report saved to: {report_path}")
