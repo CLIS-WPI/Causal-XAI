@@ -71,7 +71,7 @@ def setup_scene(config):
         scene.add(concrete)
         print("[DEBUG] Materials added successfully")
 
-        # 4. Configure antenna arrays
+        # 4. Configure antenna arrays (unchanged)
         print("[DEBUG] Setting up antenna arrays...")
         scene.tx_array = PlanarArray(
             num_rows=config.bs_array[0],
@@ -94,7 +94,7 @@ def setup_scene(config):
         )
         print("[DEBUG] Antenna arrays configured")
         
-        # 5. Add radio devices
+        # 5. Add radio devices (unchanged)
         print("[DEBUG] Adding radio devices...")
         tx = Transmitter(
             name="bs",
@@ -128,23 +128,29 @@ def setup_scene(config):
         scene.add(ris)
         print("[DEBUG] Radio devices added")
         
-        # 6. Add static objects - Create and add to scene first, then set properties
+        # 6. Add static objects as Transmitters instead of SceneObjects
         print("[DEBUG] Adding scene objects...")
         room_dims = config.room_dim
         
-        # Add floor - Create and add to scene first
-        floor = SceneObject(name="floor")
-        scene.add(floor)  # Add to scene before setting properties
-        floor.radio_material = concrete  # Set material after adding to scene
-        floor.position = [room_dims[0]/2, room_dims[1]/2, 0]
+        # Add floor
+        floor = Transmitter(
+            name="floor",
+            position=[room_dims[0]/2, room_dims[1]/2, 0],
+            orientation=[0.0, 0.0, 0.0]
+        )
+        scene.add(floor)
+        floor.radio_material = "concrete"
         floor.size = [room_dims[0], room_dims[1], 0.2]
         print("[DEBUG] Floor added")
         
-        # Add ceiling - Create and add to scene first
-        ceiling = SceneObject(name="ceiling")
-        scene.add(ceiling)  # Add to scene before setting properties
-        ceiling.radio_material = concrete  # Set material after adding to scene
-        ceiling.position = [room_dims[0]/2, room_dims[1]/2, room_dims[2]]
+        # Add ceiling
+        ceiling = Transmitter(
+            name="ceiling",
+            position=[room_dims[0]/2, room_dims[1]/2, room_dims[2]],
+            orientation=[0.0, 0.0, 0.0]
+        )
+        scene.add(ceiling)
+        ceiling.radio_material = "concrete"
         ceiling.size = [room_dims[0], room_dims[1], 0.2]
         print("[DEBUG] Ceiling added")
         
@@ -157,10 +163,13 @@ def setup_scene(config):
         ]
         
         for name, size, pos in wall_specs:
-            wall = SceneObject(name=name)
-            scene.add(wall)  # Add to scene first
-            wall.radio_material = concrete  # Then set properties
-            wall.position = pos
+            wall = Transmitter(
+                name=name,
+                position=pos,
+                orientation=[0.0, 0.0, 0.0]
+            )
+            scene.add(wall)
+            wall.radio_material = "concrete"
             wall.size = size
         print("[DEBUG] Walls added")
         
@@ -175,10 +184,13 @@ def setup_scene(config):
         ]
         
         for i, pos in enumerate(shelf_positions):
-            shelf = SceneObject(name=f"shelf_{i}")
-            scene.add(shelf)  # Add to scene first
-            shelf.radio_material = metal  # Then set properties
-            shelf.position = pos
+            shelf = Transmitter(
+                name=f"shelf_{i}",
+                position=pos,
+                orientation=[0.0, 0.0, 0.0]
+            )
+            scene.add(shelf)
+            shelf.radio_material = "metal"
             shelf.size = shelf_dimensions
         print("[DEBUG] Shelves added")
         
