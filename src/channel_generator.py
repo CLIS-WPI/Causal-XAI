@@ -11,6 +11,8 @@ from sionna.channel.utils import cir_to_ofdm_channel
 from sionna.rt import Scene, Transmitter, Receiver, RIS, SceneObject, PlanarArray, RadioMaterial
 from sionna.rt import DiscretePhaseProfile
 from sionna.rt import CellGrid, DiscretePhaseProfile
+from sionna.channel.utils import cir_to_ofdm_channel
+
 class SmartFactoryChannel:
     """Smart Factory Channel Generator using Sionna
     
@@ -757,20 +759,23 @@ class SmartFactoryChannel:
         try:
             # Generate paths with RIS using ray tracing configuration
             paths_with_ris = self.scene.compute_paths(
-                max_bounces=self.config.ray_tracing['max_depth'],
-                diffraction=self.config.ray_tracing['diffraction'],
-                scattering=self.config.ray_tracing['scattering']
+                max_depth=self.config.ray_tracing.get('max_depth', 3),
+                method='fibonacci',  # or 'exhaustive'
+                los=True,  # include line-of-sight paths
+                reflection=True,  # include reflected paths
+                diffraction=True,  # include diffracted paths
+                scattering=False  # include scattered paths
             )
             
             # Convert paths to channel impulse responses (CIR) with RIS
             cir_with_ris = paths_with_ris.cir()
             
-            # Convert CIR to OFDM channel with RIS
-            h_with_ris = sionna.rt.cir_to_ofdm_channel(
-                cir_with_ris,
-                num_time_samples=1,
-                sampling_frequency=self.config.sampling_frequency,
-                dtype=self.config.dtype
+            #  OFDM channel with RIS
+            h_with_ris = cir_to_ofdm_channel(
+                frequencies=tf.range(self.config.num_subcarriers, dtype=tf.float32) * self.config.subcarrier_spacing,
+                a=cir_with_ris.a,  # Path coefficients
+                tau=cir_with_ris.tau,  # Path delays
+                normalize=False  # Optional normalization parameter
             )
             
             # Generate paths without RIS
@@ -785,11 +790,11 @@ class SmartFactoryChannel:
                 cir_without_ris = paths_without_ris.cir()
                 
                 # Convert CIR to OFDM channel without RIS
-                h_without_ris = sionna.rt.cir_to_ofdm_channel(
-                    cir_without_ris,
-                    num_time_samples=1,
-                    sampling_frequency=self.config.sampling_frequency,
-                    dtype=self.config.dtype
+                h_without_ris = cir_to_ofdm_channel(
+                    frequencies=tf.range(self.config.num_subcarriers, dtype=tf.float32) * self.config.subcarrier_spacing,
+                    a=cir_without_ris.a,
+                    tau=cir_without_ris.tau,
+                    normalize=False
                 )
                 self.scene.add(ris)
             else:
