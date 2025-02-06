@@ -132,21 +132,47 @@ def setup_scene(config):
         if config.static_scene['walls']:
             # Add floor
             floor = SceneObject(name="floor", orientation=[0.0, 0.0, 0.0])
-            scene.add(floor)  # Add to scene first
+            # Create rectangle mesh for floor
+            floor_shape = mi.Rectangle(
+                'floor',
+                to_world=mi.ScalarTransform4f.translate([
+                    config.room_dim[0]/2, 
+                    config.room_dim[1]/2, 
+                    0
+                ]).scale([
+                    config.room_dim[0]/2,
+                    config.room_dim[1]/2,
+                    config.static_scene['wall_thickness']
+                ])
+            )
+            floor._mi_shape = floor_shape
+            floor.scene = scene
             floor.object_id = current_object_id
             current_object_id += 1
-            floor.position = [config.room_dim[0]/2, config.room_dim[1]/2, 0]  # Set position after adding
             floor.radio_material = config.static_scene['material']
-            floor.size = [config.room_dim[0], config.room_dim[1], config.static_scene['wall_thickness']]
+            scene.objects[floor.name] = floor
             
             # Add ceiling
             ceiling = SceneObject(name="ceiling", orientation=[0.0, 0.0, 0.0])
-            scene.add(ceiling)  # Add to scene first
+            # Create rectangle mesh for ceiling
+            ceiling_shape = mi.Rectangle(
+                'ceiling',
+                to_world=mi.ScalarTransform4f.translate([
+                    config.room_dim[0]/2,
+                    config.room_dim[1]/2,
+                    config.room_dim[2]
+                ]).scale([
+                    config.room_dim[0]/2,
+                    config.room_dim[1]/2,
+                    config.static_scene['wall_thickness']
+                ])
+            )
+            ceiling._mi_shape = ceiling_shape
+            ceiling.scene = scene
             ceiling.object_id = current_object_id
             current_object_id += 1
-            ceiling.position = [config.room_dim[0]/2, config.room_dim[1]/2, config.room_dim[2]]
             ceiling.radio_material = config.static_scene['material']
-            ceiling.size = [config.room_dim[0], config.room_dim[1], config.static_scene['wall_thickness']]
+            scene.objects[ceiling.name] = ceiling
             
             # Add walls
             wall_specs = [
@@ -162,12 +188,21 @@ def setup_scene(config):
             
             for name, size, pos in wall_specs:
                 wall = SceneObject(name=name, orientation=[0.0, 0.0, 0.0])
-                scene.add(wall)  # Add to scene first
+                # Create rectangle mesh for wall
+                wall_shape = mi.Rectangle(
+                    name,
+                    to_world=mi.ScalarTransform4f.translate(pos).scale([
+                        size[0]/2,
+                        size[1]/2,
+                        size[2]/2
+                    ])
+                )
+                wall._mi_shape = wall_shape
+                wall.scene = scene
                 wall.object_id = current_object_id
                 current_object_id += 1
-                wall.position = pos  # Set position after adding
                 wall.radio_material = config.static_scene['material']
-                wall.size = size
+                scene.objects[wall.name] = wall
 
         print("[DEBUG] Scene objects added successfully")
         return scene
