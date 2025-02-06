@@ -9,6 +9,8 @@ import pandas as pd
 from sionna.constants import SPEED_OF_LIGHT
 from sionna.channel.utils import cir_to_ofdm_channel
 from sionna.rt import Scene, Transmitter, Receiver, RIS, SceneObject, PlanarArray, RadioMaterial
+from sionna.rt import DiscretePhaseProfile
+from sionna.rt import CellGrid, DiscretePhaseProfile
 class SmartFactoryChannel:
     """Smart Factory Channel Generator using Sionna
     
@@ -708,6 +710,13 @@ class SmartFactoryChannel:
         # Update RIS configuration
         ris = self.scene.get("ris")
         if ris is not None:
+            # Create cell grid for RIS
+            cell_grid = CellGrid(
+                num_rows=8,  # Match RIS dimensions
+                num_cols=8,
+                dtype=tf.complex64
+            )
+            
             # Calculate optimal RIS phases for each AGV using the scene configuration
             phase_shifts = []
             for i in range(self.config.num_agvs):
@@ -729,9 +738,21 @@ class SmartFactoryChannel:
                 phase = 2 * np.pi * (path_difference / wavelength)
                 phase_shifts.append(phase)
             
-            # Set RIS phase configuration optimized for all AGVs
+            # Average phase shifts from all AGVs
             optimal_phase = tf.reduce_mean(phase_shifts)
-            ris.set_phases(optimal_phase * tf.ones(self.config.ris_elements))
+            
+            # Create phase profile with correct shape (1, 8, 8)
+            phase_values = optimal_phase * tf.ones([1, 8, 8], dtype=tf.float32)
+            
+            # Create and set the phase profile
+            phase_profile = DiscretePhaseProfile(
+                cell_grid=cell_grid,
+                values=phase_values,
+                dtype=tf.complex64
+            )
+            
+            # Set the phase profile for the RIS
+            ris.phase_profile = phase_profile
         
         try:
             # Generate paths with RIS using ray tracing configuration
