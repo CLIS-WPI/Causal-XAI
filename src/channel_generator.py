@@ -7,6 +7,7 @@ from dowhy import CausalModel
 import networkx as nx
 import pandas as pd
 from sionna.constants import SPEED_OF_LIGHT
+from sionna.rt import cir_to_ofdm_channel
 from sionna.rt import Scene, Transmitter, Receiver, RIS, SceneObject, PlanarArray, RadioMaterial
 class SmartFactoryChannel:
     """Smart Factory Channel Generator using Sionna
@@ -78,17 +79,12 @@ class SmartFactoryChannel:
         except Exception as e:
             raise RuntimeError("Failed to configure antenna arrays") from e
             
-        # Initialize channel model
+        # Instead, just set the antenna arrays in the scene
         try:
-            self.channel_model = sionna.rt.ChannelModel(
-                scene=self.scene,
-                tx_array=self.bs_array,
-                rx_array=self.agv_array,
-                max_depth=config.ray_tracing.get('max_depth', 3),
-                dtype=config.dtype
-            )
+            self.scene.tx_array = self.bs_array
+            self.scene.rx_array = self.agv_array
         except Exception as e:
-            raise RuntimeError("Failed to initialize channel model") from e
+            raise RuntimeError("Failed to set antenna arrays in scene") from e
             
         # Validate critical configurations
         self._validate_configuration()
@@ -740,35 +736,44 @@ class SmartFactoryChannel:
         try:
             # Generate paths with RIS using ray tracing configuration
             paths_with_ris = self.scene.compute_paths(
-                max_depth=self.config.ray_tracing['max_depth'],
+                max_bounces=self.config.ray_tracing['max_depth'],
                 diffraction=self.config.ray_tracing['diffraction'],
                 scattering=self.config.ray_tracing['scattering']
+            )
+            
+            # Convert paths to channel impulse responses (CIR) with RIS
+            cir_with_ris = paths_with_ris.cir()
+            
+            # Convert CIR to OFDM channel with RIS
+            h_with_ris = sionna.rt.cir_to_ofdm_channel(
+                cir_with_ris,
+                num_time_samples=1,
+                sampling_frequency=self.config.sampling_frequency,
+                dtype=self.config.dtype
             )
             
             # Generate paths without RIS
             if ris is not None:
                 self.scene.remove("ris")
                 paths_without_ris = self.scene.compute_paths(
-                    max_depth=self.config.ray_tracing['max_depth'],
+                    max_bounces=self.config.ray_tracing['max_depth'],
                     diffraction=self.config.ray_tracing['diffraction'],
                     scattering=self.config.ray_tracing['scattering']
+                )
+                # Convert paths to CIR without RIS
+                cir_without_ris = paths_without_ris.cir()
+                
+                # Convert CIR to OFDM channel without RIS
+                h_without_ris = sionna.rt.cir_to_ofdm_channel(
+                    cir_without_ris,
+                    num_time_samples=1,
+                    sampling_frequency=self.config.sampling_frequency,
+                    dtype=self.config.dtype
                 )
                 self.scene.add(ris)
             else:
                 paths_without_ris = paths_with_ris
-                
-            # Calculate channel matrices from paths
-            h_with_ris = self.channel_model(
-                num_time_samples=1,
-                sampling_frequency=self.config.sampling_frequency,
-                paths=paths_with_ris
-            )
-            
-            h_without_ris = self.channel_model(
-                num_time_samples=1,
-                sampling_frequency=self.config.sampling_frequency,
-                paths=paths_without_ris
-            )
+                h_without_ris = h_with_ris
             
             # Calculate channel quality metrics
             channel_quality_with_ris = tf.reduce_mean(tf.abs(h_with_ris))
