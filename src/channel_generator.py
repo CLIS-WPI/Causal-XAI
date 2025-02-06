@@ -9,9 +9,10 @@ import pandas as pd
 from sionna.constants import SPEED_OF_LIGHT
 from sionna.channel.utils import cir_to_ofdm_channel
 from sionna.rt import Scene, Transmitter, Receiver, RIS, SceneObject, PlanarArray, RadioMaterial
-from sionna.rt import DiscretePhaseProfile
+from sionna.rt import DiscretePhaseProfile, CellGrid
 from sionna.rt import CellGrid, DiscretePhaseProfile
 from sionna.channel.utils import cir_to_ofdm_channel
+from sionna.constants import SPEED_OF_LIGHT
 
 class SmartFactoryChannel:
     """Smart Factory Channel Generator using Sionna
@@ -68,8 +69,9 @@ class SmartFactoryChannel:
                 num_cols=config.bs_array[1],
                 vertical_spacing=config.bs_array_spacing,
                 horizontal_spacing=config.bs_array_spacing,
-                pattern="tr38901",
-                polarization="VH"
+                pattern=config.bs_array_pattern,
+                polarization=config.bs_polarization,
+                dtype=config.dtype
             )
             
             self.agv_array = PlanarArray(
@@ -759,18 +761,19 @@ class SmartFactoryChannel:
         
             try:
                 # Generate paths with RIS using ray tracing configuration
+                # Generate paths using Sionna's ray tracing
                 paths_with_ris = self.scene.compute_paths(
-                    max_depth=self.config.ray_tracing.get('max_depth', 3),
-                    method='fibonacci',  # or 'exhaustive'
-                    los=True,  # include line-of-sight paths
-                    reflection=True,  # include reflected paths
-                    diffraction=True,  # include diffracted paths
-                    scattering=False  # include scattered paths
+                    max_depth=self.config.ray_tracing['max_depth'],
+                    method=self.config.ray_tracing['method'],
+                    los=self.config.ray_tracing['los'],
+                    reflection=self.config.ray_tracing['reflection'],
+                    diffraction=self.config.ray_tracing['diffraction'],
+                    scattering=self.config.ray_tracing['scattering']
                 )
                 
                 # Convert paths to channel impulse responses (CIR) with RIS
                 cir_with_ris = paths_with_ris.cir()
-                a_with_ris, tau_with_ris = cir_with_ris  # Unpack the tuple
+                a_with_ris, tau_with_ris = cir_with_ris # Unpack the tuple
 
                 # Calculate frequencies for OFDM channel
                 frequencies = tf.range(
