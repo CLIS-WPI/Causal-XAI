@@ -80,7 +80,7 @@ class SmartFactoryChannel:
             
         # Initialize channel model
         try:
-            self.channel_model = sionna.rt.RayTracer(
+            self.channel_model = sionna.rt.ChannelModel(
                 scene=self.scene,
                 tx_array=self.bs_array,
                 rx_array=self.agv_array,
