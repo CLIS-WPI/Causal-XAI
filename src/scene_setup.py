@@ -168,8 +168,8 @@ def setup_scene(config):
                 wall.position = pos  # Set position after adding
                 wall.radio_material = config.static_scene['material']
                 wall.size = size
-        
-        print("[DEBUG] Scene setup completed successfully")
+
+        print("[DEBUG] Scene objects added successfully")
         return scene
         
     except Exception as e:
