@@ -7,7 +7,7 @@ from dowhy import CausalModel
 import networkx as nx
 import pandas as pd
 from sionna.constants import SPEED_OF_LIGHT
-from sionna.rt import cir_to_ofdm_channel
+from sionna.channel.utils import cir_to_ofdm_channel
 from sionna.rt import Scene, Transmitter, Receiver, RIS, SceneObject, PlanarArray, RadioMaterial
 class SmartFactoryChannel:
     """Smart Factory Channel Generator using Sionna
@@ -681,7 +681,7 @@ class SmartFactoryChannel:
                 - Performance metrics
         """
         # Update AGV positions and calculate velocities
-        current_positions = self._update_agv_positions(self.config.time_step)
+        current_positions = self._update_agv_positions(self.config.simulation['time_step'])
         
         # Calculate AGV velocities from position history
         agv_velocities = tf.zeros_like(current_positions)  # Initialize with zeros
