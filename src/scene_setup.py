@@ -87,40 +87,34 @@ def setup_scene(config):
         # 5. Add radio devices with sequential object IDs
         print("[DEBUG] Adding radio devices...")
         # Add base station
-        tx = Transmitter(
-            name="bs",
-            position=config.bs_position,
-            orientation=config.bs_orientation
-        )
+        tx = Transmitter(name="bs", orientation=config.bs_orientation)
+        scene.add(tx)  # Add to scene first
         tx.object_id = current_object_id
         current_object_id += 1
-        scene.add(tx)
+        tx.position = config.bs_position  # Set position after adding to scene
         
         # Add AGVs
         for i in range(config.num_agvs):
-            rx = Receiver(
-                name=f"agv_{i}",
-                position=[12.0 - i*4.0, 5.0 + i*10.0, config.agv_height],
-                orientation=[0.0, 0.0, 0.0]
-            )
+            rx = Receiver(name=f"agv_{i}", orientation=[0.0, 0.0, 0.0])
+            scene.add(rx)  # Add to scene first
             rx.object_id = current_object_id
             current_object_id += 1
-            scene.add(rx)
+            rx.position = [12.0 - i*4.0, 5.0 + i*10.0, config.agv_height]  # Set position after adding
         
         # Add RIS
         try:
             ris = RIS(
                 name="ris",
-                position=config.ris_position,
                 orientation=config.ris_orientation,
                 num_rows=config.ris_elements[0],
                 num_cols=config.ris_elements[1],
                 num_modes=config.ris_modes,
                 dtype=config.dtype
             )
+            scene.add(ris)  # Add to scene first
             ris.object_id = current_object_id
             current_object_id += 1
-            scene.add(ris)
+            ris.position = config.ris_position  # Set position after adding
             print("[DEBUG] RIS added successfully")
         except Exception as e:
             print(f"[DEBUG] Error adding RIS: {str(e)}")
@@ -130,27 +124,20 @@ def setup_scene(config):
         print("[DEBUG] Adding scene objects...")
         if config.static_scene['walls']:
             # Add floor
-            floor = SceneObject(
-                name="floor",
-                position=[config.room_dim[0]/2, config.room_dim[1]/2, 0],
-                orientation=[0.0, 0.0, 0.0],
-                dtype=config.dtype
-            )
+            floor = SceneObject(name="floor", orientation=[0.0, 0.0, 0.0])
             scene.add(floor)  # Add to scene first
             floor.object_id = current_object_id
             current_object_id += 1
+            floor.position = [config.room_dim[0]/2, config.room_dim[1]/2, 0]  # Set position after adding
             floor.radio_material = config.static_scene['material']
             floor.size = [config.room_dim[0], config.room_dim[1], config.static_scene['wall_thickness']]
             
             # Add ceiling
-            ceiling = SceneObject(
-                name="ceiling",
-                position=[config.room_dim[0]/2, config.room_dim[1]/2, config.room_dim[2]],
-                orientation=[0.0, 0.0, 0.0]
-            )
+            ceiling = SceneObject(name="ceiling", orientation=[0.0, 0.0, 0.0])
+            scene.add(ceiling)  # Add to scene first
             ceiling.object_id = current_object_id
             current_object_id += 1
-            scene.add(ceiling)
+            ceiling.position = [config.room_dim[0]/2, config.room_dim[1]/2, config.room_dim[2]]
             ceiling.radio_material = config.static_scene['material']
             ceiling.size = [config.room_dim[0], config.room_dim[1], config.static_scene['wall_thickness']]
             
@@ -167,25 +154,13 @@ def setup_scene(config):
             ]
             
             for name, size, pos in wall_specs:
-                wall = SceneObject(name=name, position=pos, orientation=[0.0, 0.0, 0.0])
+                wall = SceneObject(name=name, orientation=[0.0, 0.0, 0.0])
+                scene.add(wall)  # Add to scene first
                 wall.object_id = current_object_id
                 current_object_id += 1
-                scene.add(wall)
+                wall.position = pos  # Set position after adding
                 wall.radio_material = config.static_scene['material']
                 wall.size = size
-        
-        # Add shelves
-        for i, pos in enumerate(config.scene_objects['shelf_positions']):
-            shelf = SceneObject(
-                name=f"shelf_{i}",
-                position=pos,
-                orientation=[0.0, 0.0, 0.0]
-            )
-            shelf.object_id = current_object_id
-            current_object_id += 1
-            scene.add(shelf)
-            shelf.radio_material = config.scene_objects['shelf_material']
-            shelf.size = config.scene_objects['shelf_dimensions']
         
         print("[DEBUG] Scene setup completed successfully")
         return scene
