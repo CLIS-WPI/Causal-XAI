@@ -87,24 +87,32 @@ def setup_scene(config):
         # 5. Add radio devices with sequential object IDs
         print("[DEBUG] Adding radio devices...")
         # Add base station
-        tx = Transmitter(name="bs", orientation=config.bs_orientation)
+        tx = Transmitter(
+            name="bs",
+            position=config.bs_position,  # Position must be provided during initialization
+            orientation=config.bs_orientation
+        )
         scene.add(tx)  # Add to scene first
         tx.object_id = current_object_id
         current_object_id += 1
-        tx.position = config.bs_position  # Set position after adding to scene
-        
+
         # Add AGVs
         for i in range(config.num_agvs):
-            rx = Receiver(name=f"agv_{i}", orientation=[0.0, 0.0, 0.0])
+            agv_position = [12.0 - i*4.0, 5.0 + i*10.0, config.agv_height]
+            rx = Receiver(
+                name=f"agv_{i}",
+                position=agv_position,  # Position must be provided during initialization
+                orientation=[0.0, 0.0, 0.0]
+            )
             scene.add(rx)  # Add to scene first
             rx.object_id = current_object_id
             current_object_id += 1
-            rx.position = [12.0 - i*4.0, 5.0 + i*10.0, config.agv_height]  # Set position after adding
-        
+
         # Add RIS
         try:
             ris = RIS(
                 name="ris",
+                position=config.ris_position,  # Position must be provided during initialization
                 orientation=config.ris_orientation,
                 num_rows=config.ris_elements[0],
                 num_cols=config.ris_elements[1],
@@ -114,7 +122,6 @@ def setup_scene(config):
             scene.add(ris)  # Add to scene first
             ris.object_id = current_object_id
             current_object_id += 1
-            ris.position = config.ris_position  # Set position after adding
             print("[DEBUG] RIS added successfully")
         except Exception as e:
             print(f"[DEBUG] Error adding RIS: {str(e)}")
