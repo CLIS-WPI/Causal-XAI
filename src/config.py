@@ -14,7 +14,7 @@ class SmartFactoryConfig:
         self.subcarrier_spacing = 15e3  # 15 kHz subcarrier spacing (typical for 5G)
 
         # Room dimensions [m]
-        self.room_dim = [30.0, 20.0, 5.0]  # Length x Width x Height
+        self.room_dim = [20.0, 20.0, 5.0]  # Length x Width x Height
 
         # Frequency configuration
         self.carrier_frequency = 28e9  # 28 GHz
@@ -81,7 +81,7 @@ class SmartFactoryConfig:
         # Scene objects with enhanced configuration
         self.scene_objects = {
             'num_shelves': 5,
-            'shelf_dimensions': [2.0, 1.0, 3.0],  # Updated dimensions
+            'shelf_dimensions': [2.0, 1.0, 4.0],  # Updated dimensions
             'shelf_material': 'metal',
             'shelf_positions': [
                 [5.0, 5.0, 1.5],

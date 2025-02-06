@@ -44,9 +44,6 @@ def setup_scene(config):
         wavelength = SPEED_OF_LIGHT/scene.frequency
         print(f"[DEBUG] Basic properties set. Frequency: {scene.frequency}, Wavelength: {wavelength}")
         
-        # Initialize object ID counter
-        current_object_id = 0
-        
         # 3. Add materials with validation
         if not hasattr(config, 'materials') or not config.materials:
             raise ValueError("Materials configuration is missing or empty")
@@ -85,134 +82,102 @@ def setup_scene(config):
         )
         print("[DEBUG] Antenna arrays configured")
         
-        # 5. Add radio devices with sequential object IDs
+        # 5. Add radio devices
         print("[DEBUG] Adding radio devices...")
         # Add base station
         tx = Transmitter(
             name="bs",
-            position=config.bs_position,  # Position must be provided during initialization
+            position=config.bs_position,
             orientation=config.bs_orientation
         )
-        scene.add(tx)  # Add to scene first
-        tx.object_id = current_object_id
-        current_object_id += 1
+        scene.add(tx)
 
         # Add AGVs
         for i in range(config.num_agvs):
             agv_position = [12.0 - i*4.0, 5.0 + i*10.0, config.agv_height]
             rx = Receiver(
                 name=f"agv_{i}",
-                position=agv_position,  # Position must be provided during initialization
+                position=agv_position,
                 orientation=[0.0, 0.0, 0.0]
             )
-            scene.add(rx)  # Add to scene first
-            rx.object_id = current_object_id
-            current_object_id += 1
+            scene.add(rx)
 
         # Add RIS
         try:
             ris = RIS(
                 name="ris",
-                position=config.ris_position,  # Position must be provided during initialization
+                position=config.ris_position,
                 orientation=config.ris_orientation,
                 num_rows=config.ris_elements[0],
                 num_cols=config.ris_elements[1],
                 num_modes=config.ris_modes,
                 dtype=config.dtype
             )
-            scene.add(ris)  # Add to scene first
-            ris.object_id = current_object_id
-            current_object_id += 1
+            scene.add(ris)
             print("[DEBUG] RIS added successfully")
         except Exception as e:
             print(f"[DEBUG] Error adding RIS: {str(e)}")
             raise
         
-        # 6. Add static objects with sequential object IDs
+        # 6. Add static objects
         print("[DEBUG] Adding scene objects...")
         if config.static_scene['walls']:
             # Add floor
-            floor = SceneObject(name="floor", orientation=[0.0, 0.0, 0.0])
-            # Create rectangle mesh for floor
-            floor_shape = mi.Rectangle(
-                'floor',
-                to_world=mi.ScalarTransform4f.translate([
-                    config.room_dim[0]/2, 
-                    config.room_dim[1]/2, 
-                    0
-                ]).scale([
-                    config.room_dim[0]/2,
-                    config.room_dim[1]/2,
-                    config.static_scene['wall_thickness']
-                ])
+            floor = SceneObject(
+                name="floor",
+                position=[config.room_dim[0]/2, config.room_dim[1]/2, 0],
+                size=[config.room_dim[0], config.room_dim[1], config.static_scene['wall_thickness']],
+                orientation=[0.0, 0.0, 0.0]
             )
-            floor._mi_shape = floor_shape
             floor.scene = scene
-            floor.object_id = current_object_id
-            current_object_id += 1
             floor.radio_material = config.static_scene['material']
-            scene.objects[floor.name] = floor
+            scene.add(floor)
             
             # Add ceiling
-            ceiling = SceneObject(name="ceiling", orientation=[0.0, 0.0, 0.0])
-            # Create rectangle mesh for ceiling
-            ceiling_shape = mi.Rectangle(
-                'ceiling',
-                to_world=mi.ScalarTransform4f.translate([
-                    config.room_dim[0]/2,
-                    config.room_dim[1]/2,
-                    config.room_dim[2]
-                ]).scale([
-                    config.room_dim[0]/2,
-                    config.room_dim[1]/2,
-                    config.static_scene['wall_thickness']
-                ])
+            ceiling = SceneObject(
+                name="ceiling",
+                position=[config.room_dim[0]/2, config.room_dim[1]/2, config.room_dim[2]],
+                size=[config.room_dim[0], config.room_dim[1], config.static_scene['wall_thickness']],
+                orientation=[0.0, 0.0, 0.0]
             )
-            ceiling._mi_shape = ceiling_shape
             ceiling.scene = scene
-            ceiling.object_id = current_object_id
-            current_object_id += 1
             ceiling.radio_material = config.static_scene['material']
-            scene.objects[ceiling.name] = ceiling
+            scene.add(ceiling)
             
             # Add walls
             wall_specs = [
-                ("wall_north", [config.room_dim[0], config.static_scene['wall_thickness'], config.room_dim[2]], 
-                [config.room_dim[0]/2, config.room_dim[1], config.room_dim[2]/2]),
-                ("wall_south", [config.room_dim[0], config.static_scene['wall_thickness'], config.room_dim[2]], 
-                [config.room_dim[0]/2, 0, config.room_dim[2]/2]),
-                ("wall_east", [config.static_scene['wall_thickness'], config.room_dim[1], config.room_dim[2]], 
-                [config.room_dim[0], config.room_dim[1]/2, config.room_dim[2]/2]),
-                ("wall_west", [config.static_scene['wall_thickness'], config.room_dim[1], config.room_dim[2]], 
-                [0, config.room_dim[1]/2, config.room_dim[2]/2])
+                # North wall
+                ("wall_north", 
+                [config.room_dim[0], config.static_scene['wall_thickness'], config.room_dim[2]],
+                [config.room_dim[0]/2, config.room_dim[1], config.room_dim[2]/2],
+                [90.0, 0.0, 0.0]),
+                # South wall
+                ("wall_south", 
+                [config.room_dim[0], config.static_scene['wall_thickness'], config.room_dim[2]],
+                [config.room_dim[0]/2, 0, config.room_dim[2]/2],
+                [90.0, 0.0, 0.0]),
+                # East wall
+                ("wall_east", 
+                [config.static_scene['wall_thickness'], config.room_dim[1], config.room_dim[2]],
+                [config.room_dim[0], config.room_dim[1]/2, config.room_dim[2]/2],
+                [0.0, 90.0, 0.0]),
+                # West wall
+                ("wall_west", 
+                [config.static_scene['wall_thickness'], config.room_dim[1], config.room_dim[2]],
+                [0, config.room_dim[1]/2, config.room_dim[2]/2],
+                [0.0, 90.0, 0.0])
             ]
             
-            for name, size, pos in wall_specs:
-                wall = SceneObject(name=name, orientation=[0.0, 0.0, 0.0])
-                
-                # Determine rotation based on wall position
-                if name in ["wall_north", "wall_south"]:
-                    # Rotate around x-axis for north/south walls
-                    rotation = mi.ScalarTransform4f.rotate([1, 0, 0], 90)
-                else:  # wall_east or wall_west
-                    # Rotate around y-axis for east/west walls
-                    rotation = mi.ScalarTransform4f.rotate([0, 1, 0], 90)
-                
-                # Create rectangle mesh for wall with proper rotation
-                wall_shape = mi.Rectangle(
-                    name,
-                    to_world=mi.ScalarTransform4f.translate(pos) @ rotation @ mi.ScalarTransform4f.scale([
-                        size[0]/2,
-                        size[2]/2,  # Note: swapped size[1] and size[2] due to rotation
-                        size[1]/2
-                    ])
+            for name, size, position, orientation in wall_specs:
+                wall = SceneObject(
+                    name=name,
+                    position=position,
+                    size=size,
+                    orientation=orientation
                 )
-                wall._mi_shape = wall_shape
                 wall.scene = scene
-                wall.object_id = current_object_id
-                current_object_id += 1
                 wall.radio_material = config.static_scene['material']
-                scene.objects[wall.name] = wall
+                scene.add(wall)
 
         print("[DEBUG] Scene objects added successfully")
         return scene
