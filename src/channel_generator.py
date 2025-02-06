@@ -768,10 +768,9 @@ class SmartFactoryChannel:
                     los=self.config.ray_tracing['los'],
                     reflection=self.config.ray_tracing['reflection'],
                     diffraction=self.config.ray_tracing['diffraction'],
-                    scattering=self.config.ray_tracing['scattering'],
-                    min_path_gain_db=self.config.ray_tracing['min_path_gain']
+                    scattering=self.config.ray_tracing['scattering']
                 )
-                
+                                
                 # Get channel impulse response with RIS
                 cir_with_ris = paths_with_ris.cir(
                     sampling_frequency=self.config.sampling_frequency,

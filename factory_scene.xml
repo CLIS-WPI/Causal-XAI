@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<scene>
+    <!-- Scene Metadata -->
+    <metadata>
+        <name>Smart Factory Environment</name>
+        <description>20m x 20m x 5m indoor scenario with shelves and mobile robots</description>
+        <dimensions>
+            <length>20.0</length>
+            <width>20.0</width>
+            <height>5.0</height>
+        </dimensions>
+    </metadata>
+
+    <!-- Material Definitions -->
+    <materials>
+        <material id="concrete_wall">
+            <type>dielectric</type>
+            <relative_permittivity>4.0</relative_permittivity>
+            <conductivity>0.01</conductivity>
+            <scattering_coefficient>0.2</scattering_coefficient>
+        </material>
+
+        <material id="metal_shelf">
+            <type>conductor</type>
+            <relative_permittivity>1.0</relative_permittivity>
+            <conductivity>1e7</conductivity>
+            <scattering_coefficient>0.1</scattering_coefficient>
+        </material>
+    </materials>
+
+    <!-- Room Boundary Geometries -->
+    <geometries>
+        <!-- Floor Geometry -->
+        <shape type="ply" id="floor_surface">
+            <filename>meshes/floor.ply</filename>
+            <material>concrete_wall</material>
+            <face_normals>true</face_normals>
+        </shape>
+
+        <!-- Ceiling Geometry -->
+        <shape type="ply" id="ceiling_surface">
+            <filename>meshes/ceiling.ply</filename>
+            <material>concrete_wall</material>
+            <face_normals>true</face_normals>
+        </shape>
+
+        <!-- Wall Geometries -->
+        <shape type="ply" id="wall_xp">
+            <filename>meshes/wall_xp.ply</filename>
+            <material>concrete_wall</material>
+            <face_normals>true</face_normals>
+        </shape>
+
+        <shape type="ply" id="wall_xm">
+            <filename>meshes/wall_xm.ply</filename>
+            <material>concrete_wall</material>
+            <face_normals>true</face_normals>
+        </shape>
+
+        <shape type="ply" id="wall_yp">
+            <filename>meshes/wall_yp.ply</filename>
+            <material>concrete_wall</material>
+            <face_normals>true</face_normals>
+        </shape>
+
+        <shape type="ply" id="wall_ym">
+            <filename>meshes/wall_ym.ply</filename>
+            <material>concrete_wall</material>
+            <face_normals>true</face_normals>
+        </shape>
+
+        <!-- Shelf Geometries -->
+        <shape type="ply" id="shelf_0">
+            <filename>meshes/shelf_0.ply</filename>
+            <material>metal_shelf</material>
+            <face_normals>true</face_normals>
+        </shape>
+
+        <shape type="ply" id="shelf_1">
+            <filename>meshes/shelf_1.ply</filename>
+            <material>metal_shelf</material>
+            <face_normals>true</face_normals>
+        </shape>
+
+        <shape type="ply" id="shelf_2">
+            <filename>meshes/shelf_2.ply</filename>
+            <material>metal_shelf</material>
+            <face_normals>true</face_normals>
+        </shape>
+
+        <shape type="ply" id="shelf_3">
+            <filename>meshes/shelf_3.ply</filename>
+            <material>metal_shelf</material>
+            <face_normals>true</face_normals>
+        </shape>
+
+        <shape type="ply" id="shelf_4">
+            <filename>meshes/shelf_4.ply</filename>
+            <material>metal_shelf</material>
+            <face_normals>true</face_normals>
+        </shape>
+    </geometries>
+
+    <!-- Ray Tracing Configuration -->
+    <ray_tracing>
+        <max_depth>5</max_depth>
+        <method>fibonacci</method>
+        <num_samples>1000000</num_samples>
+        <los>true</los>
+        <reflection>true</reflection>
+        <diffraction>true</diffraction>
+        <scattering>true</scattering>
+        <min_path_gain>-200</min_path_gain>
+    </ray_tracing>
+</scene>

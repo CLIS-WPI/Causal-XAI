@@ -72,7 +72,6 @@ class SmartFactoryConfig:
             'los': True,                    # Added LOS path option
             'reflection': True,             # Added reflection option
             'ris': True,                    # Added RIS path option
-            'min_path_gain': -200,
             'scene_type': "indoor"
         }
 
