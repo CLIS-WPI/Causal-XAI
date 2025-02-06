@@ -758,63 +758,88 @@ class SmartFactoryChannel:
             
             # Set the phase profile for the RIS
             ris.phase_profile = phase_profile
-        
+
             try:
-                # Generate paths with RIS using ray tracing configuration
-                # Generate paths using Sionna's ray tracing
+                # Generate paths with RIS using Sionna's ray tracing
                 paths_with_ris = self.scene.compute_paths(
                     max_depth=self.config.ray_tracing['max_depth'],
                     method=self.config.ray_tracing['method'],
+                    num_samples=self.config.ray_tracing['num_samples'],
                     los=self.config.ray_tracing['los'],
                     reflection=self.config.ray_tracing['reflection'],
                     diffraction=self.config.ray_tracing['diffraction'],
-                    scattering=self.config.ray_tracing['scattering']
+                    scattering=self.config.ray_tracing['scattering'],
+                    min_path_gain_db=self.config.ray_tracing['min_path_gain']
                 )
                 
-                # Convert paths to channel impulse responses (CIR) with RIS
-                cir_with_ris = paths_with_ris.cir()
-                a_with_ris, tau_with_ris = cir_with_ris # Unpack the tuple
-
-                # Calculate frequencies for OFDM channel
+                # Get channel impulse response with RIS
+                cir_with_ris = paths_with_ris.cir(
+                    sampling_frequency=self.config.sampling_frequency,
+                    num_time_steps=1
+                )
+                
+                # Unpack CIR components
+                a_with_ris = cir_with_ris.a  # Complex path coefficients
+                tau_with_ris = cir_with_ris.tau  # Path delays
+                
+                # Calculate OFDM subcarrier frequencies
                 frequencies = tf.range(
                     start=0,
                     limit=self.config.num_subcarriers,
                     dtype=tf.float32
-                ) * self.config.subcarrier_spacing + self.config.carrier_frequency
-
-                # OFDM channel with RIS
+                ) * self.config.subcarrier_spacing
+                
+                # Generate OFDM channel with RIS
                 h_with_ris = cir_to_ofdm_channel(
                     frequencies=frequencies,
-                    a=a_with_ris,  # Use unpacked coefficient
-                    tau=tau_with_ris,  # Use unpacked delay
-                    normalize=False
+                    a=a_with_ris,
+                    tau=tau_with_ris,
+                    normalize=False,
+                    dtype=self.config.dtype
                 )
-
-                # Generate paths without RIS
+                
+                # Temporarily remove RIS to compute channel without it
                 if ris is not None:
-                    self.scene.remove("ris")
-                    paths_without_ris = self.scene.compute_paths(
-                        max_depth=self.config.ray_tracing['max_depth'], 
-                        diffraction=self.config.ray_tracing['diffraction'],
-                        scattering=self.config.ray_tracing['scattering']
-                    )
-                    # Convert paths to CIR without RIS
-                    cir_without_ris = paths_without_ris.cir()
-                    a_without_ris, tau_without_ris = cir_without_ris  # Unpack the tuple
+                    ris_config = self.scene.remove("ris")  # Store RIS config
                     
-                    # Convert CIR to OFDM channel without RIS using same frequencies
+                    # Generate paths without RIS
+                    paths_without_ris = self.scene.compute_paths(
+                        max_depth=self.config.ray_tracing['max_depth'],
+                        method=self.config.ray_tracing['method'],
+                        num_samples=self.config.ray_tracing['num_samples'],
+                        los=self.config.ray_tracing['los'],
+                        reflection=self.config.ray_tracing['reflection'],
+                        diffraction=self.config.ray_tracing['diffraction'],
+                        scattering=self.config.ray_tracing['scattering'],
+                        min_path_gain_db=self.config.ray_tracing['min_path_gain']
+                    )
+                    
+                    # Get channel impulse response without RIS
+                    cir_without_ris = paths_without_ris.cir(
+                        sampling_frequency=self.config.sampling_frequency,
+                        num_time_steps=1
+                    )
+                    
+                    # Unpack CIR components
+                    a_without_ris = cir_without_ris.a
+                    tau_without_ris = cir_without_ris.tau
+                    
+                    # Generate OFDM channel without RIS
                     h_without_ris = cir_to_ofdm_channel(
                         frequencies=frequencies,
-                        a=a_without_ris,  # Use unpacked coefficient
-                        tau=tau_without_ris,  # Use unpacked delay
-                        normalize=False
+                        a=a_without_ris,
+                        tau=tau_without_ris,
+                        normalize=False,
+                        dtype=self.config.dtype
                     )
-                    self.scene.add(ris)
+                    
+                    # Restore RIS to scene
+                    self.scene.add(ris_config)
                 else:
                     paths_without_ris = paths_with_ris
                     h_without_ris = h_with_ris
                 
-                # Rest of the code remains the same...
+                # Calculate channel quality metrics
                 channel_quality_with_ris = tf.reduce_mean(tf.abs(h_with_ris))
                 channel_quality_without_ris = tf.reduce_mean(tf.abs(h_without_ris))
                 
