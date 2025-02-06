@@ -14,8 +14,8 @@ class SmartFactoryConfig:
         self.subcarrier_spacing = 15e3  # 15 kHz subcarrier spacing (typical for 5G)
 
         # Room dimensions [m]
-        self.room_dim = [20.0, 20.0, 5.0]  # Length x Width x Height
-        
+        self.room_dim = [30.0, 20.0, 5.0]  # Length x Width x Height
+
         # Frequency configuration
         self.carrier_frequency = 28e9  # 28 GHz
         self.wavelength = SPEED_OF_LIGHT/self.carrier_frequency
@@ -34,6 +34,8 @@ class SmartFactoryConfig:
         self.ris_elements = [8, 8]  # 8x8 elements
         self.ris_spacing = 0.5 * self.wavelength
         self.ris_modes = 1  # Number of modes for RIS
+        self.ris_pattern = "iso"
+        self.ris_polarization = "V" 
         
         # Enhanced AGV configuration
         self.num_agvs = 2
@@ -48,14 +50,14 @@ class SmartFactoryConfig:
         self.materials = {
             'concrete': {
                 'name': "concrete",
-                'relative_permittivity': complex(4.5),
+                'relative_permittivity': 4.5,  # Changed from complex(4.5)
                 'conductivity': 0.01,
                 'scattering_coefficient': 0.2,
                 'xpd_coefficient': 8.0
             },
             'metal': {
                 'name': "metal",
-                'relative_permittivity': complex(1.0, -1e7),
+                'relative_permittivity': 1.0,  # Changed from complex(1.0, -1e7)
                 'conductivity': 1e7,
                 'scattering_coefficient': 0.1,
                 'xpd_coefficient': 10.0
@@ -96,7 +98,8 @@ class SmartFactoryConfig:
             'floor': True,
             'ceiling': True,
             'wall_thickness': 0.2,
-            'material': 'concrete'
+            'material': 'concrete',
+            'scene_type': 'indoor'
         }
 
         # Keep existing configurations

@@ -35,7 +35,7 @@ def setup_scene(config):
     print("[DEBUG] Starting scene setup...")
     
     try:
-        # 1. Initialize empty scene
+        # 1. Initialize empty scene with proper initialization
         scene = load_scene("__empty__", dtype=config.dtype)
         
         # 2. Set basic properties
@@ -43,8 +43,8 @@ def setup_scene(config):
         wavelength = SPEED_OF_LIGHT/scene.frequency
         print(f"[DEBUG] Basic properties set. Frequency: {scene.frequency}, Wavelength: {wavelength}")
         
-        # Initialize object ID counter
-        current_object_id = 0
+        # Initialize Mitsuba scene parameters before adding objects
+        scene.init()  # This is the key addition
         
         # 3. Add materials with validation
         if not hasattr(config, 'materials') or not config.materials:
@@ -133,11 +133,12 @@ def setup_scene(config):
             floor = SceneObject(
                 name="floor",
                 position=[config.room_dim[0]/2, config.room_dim[1]/2, 0],
-                orientation=[0.0, 0.0, 0.0]
+                orientation=[0.0, 0.0, 0.0],
+                dtype=config.dtype
             )
+            scene.add(floor)
             floor.object_id = current_object_id
             current_object_id += 1
-            scene.add(floor)
             floor.radio_material = config.static_scene['material']
             floor.size = [config.room_dim[0], config.room_dim[1], config.static_scene['wall_thickness']]
             
