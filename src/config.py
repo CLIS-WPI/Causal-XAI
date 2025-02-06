@@ -10,6 +10,8 @@ class SmartFactoryConfig:
         self.batch_size = 1
         self.dtype = tf.complex64
         self.seed = 42
+        self.num_subcarriers = 128 #Number of OFDM subcarriers
+        self.subcarrier_spacing = 15e3  # 15 kHz subcarrier spacing (typical for 5G)
 
         # Room dimensions [m]
         self.room_dim = [20.0, 20.0, 5.0]  # Length x Width x Height
