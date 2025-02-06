@@ -96,12 +96,10 @@ def setup_scene(config):
             ris = RIS(
                 name="ris",
                 position=config.ris_position,
-                orientation=[0.0, 0.0, 0.0],
                 num_rows=config.ris_elements[0],
                 num_cols=config.ris_elements[1],
-                spacing=config.ris_spacing,
-                horizontal_spacing=config.ris_spacing,
-                polarization="V",
+                num_modes=config.ris_modes,
+                orientation=config.ris_orientation,
                 dtype=config.dtype
             )
             scene.add(ris)
@@ -130,8 +128,9 @@ def setup_scene(config):
                     size=config.scene_objects['shelf_dimensions'],
                     orientation=[0.0, 0.0, 0.0]
                 )
-                shelf.radio_material = material
+                # First add to scene, then set material
                 scene.add(shelf)
+                shelf.radio_material = material
                 print(f"[DEBUG] Shelf {i} added at position: {pos}")
         except Exception as e:
             print(f"[ERROR] Failed to add shelves: {str(e)}")
@@ -172,8 +171,10 @@ def setup_scene(config):
                     size=size,
                     orientation=orientation
                 )
-                obj.radio_material = walls_material
+                # First add to scene
                 scene.add(obj)
+                # Then set material
+                obj.radio_material = walls_material
                 print(f"[DEBUG] Room object {name} added")
         except Exception as e:
             print(f"[ERROR] Failed to add room boundaries: {str(e)}")

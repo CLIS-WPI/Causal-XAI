@@ -34,8 +34,6 @@ class SmartFactoryConfig:
         self.ris_elements = [8, 8]  # 8x8 elements
         self.ris_spacing = 0.5 * self.wavelength
         self.ris_modes = 1  # Number of modes for RIS
-        self.ris_pattern = "iso"
-        self.ris_polarization = "V" 
         
         # Enhanced AGV configuration
         self.num_agvs = 2
