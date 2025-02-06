@@ -1,5 +1,6 @@
 import tensorflow as tf
 import sionna
+import mitsuba as mi   
 from sionna.rt import (
     load_scene, 
     Scene,
@@ -188,13 +189,22 @@ def setup_scene(config):
             
             for name, size, pos in wall_specs:
                 wall = SceneObject(name=name, orientation=[0.0, 0.0, 0.0])
-                # Create rectangle mesh for wall
+                
+                # Determine rotation based on wall position
+                if name in ["wall_north", "wall_south"]:
+                    # Rotate around x-axis for north/south walls
+                    rotation = mi.ScalarTransform4f.rotate([1, 0, 0], 90)
+                else:  # wall_east or wall_west
+                    # Rotate around y-axis for east/west walls
+                    rotation = mi.ScalarTransform4f.rotate([0, 1, 0], 90)
+                
+                # Create rectangle mesh for wall with proper rotation
                 wall_shape = mi.Rectangle(
                     name,
-                    to_world=mi.ScalarTransform4f.translate(pos).scale([
+                    to_world=mi.ScalarTransform4f.translate(pos) @ rotation @ mi.ScalarTransform4f.scale([
                         size[0]/2,
-                        size[1]/2,
-                        size[2]/2
+                        size[2]/2,  # Note: swapped size[1] and size[2] due to rotation
+                        size[1]/2
                     ])
                 )
                 wall._mi_shape = wall_shape
