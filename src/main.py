@@ -67,9 +67,11 @@ def run_validation_pipeline(validator, channel_responses, channel_gen, config):
 def validate_config(config):
     """Validate configuration parameters"""
     required_attrs = [
-        'carrier_frequency', 'sampling_frequency', 'num_time_steps',
+        'carrier_frequency', 'num_time_steps',
         'num_agvs', 'room_dim', 'bs_array', 'ris_elements'
     ]
+    
+    # Removed 'sampling_frequency' from required_attrs
     
     missing_attrs = [attr for attr in required_attrs 
                     if not hasattr(config, attr)]
@@ -80,8 +82,6 @@ def validate_config(config):
     # Validate frequency parameters
     if config.carrier_frequency <= 0:
         raise ValueError("carrier_frequency must be positive")
-    if config.sampling_frequency <= 0:
-        raise ValueError("sampling_frequency must be positive")
     
 def save_channel_stats(channel_response, config, result_dir, validation_results=None):
     """Save channel statistics and configuration to a text file"""
