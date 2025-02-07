@@ -38,75 +38,116 @@ class SmartFactoryChannel:
     """
     
     def __init__(self, config, scene=None):
-        # Validate config
-        if not hasattr(config, 'num_agvs'):
-            raise ValueError("Config must specify num_agvs")
-        if not hasattr(config, 'seed'):
-            raise ValueError("Config must specify random seed")
-            
-        # Initialize basic attributes
-        self.config = config
-        sionna.config.xla_compat = True
-        tf.random.set_seed(config.seed)
-
-        self.shap_analyzer = ShapAnalyzer(config)
-
-        # Initialize position tracking
-        self.positions_history = [[] for _ in range(config.num_agvs)]
-        try:
-            self.agv_positions = self._generate_initial_agv_positions()
-        except Exception as e:
-            raise RuntimeError("Failed to generate initial AGV positions") from e
-
-        # Initialize scene
-        try:
-            if scene is None:
-                self.scene = setup_scene(config)
-            else:
-                self.scene = scene
-        except Exception as e:
-            raise RuntimeError("Failed to initialize scene") from e
+        """
+        Initialize the environment with configuration and scene setup.
         
-        # Configure antenna arrays
+        Args:
+            config: Configuration object containing environment parameters
+            scene: Optional pre-configured scene object
+            
+        Raises:
+            ValueError: If required config parameters are missing or invalid
+            RuntimeError: If initialization of any component fails
+        """
         try:
-            self.bs_array = PlanarArray(
-                num_rows=config.bs_array[0],
-                num_cols=config.bs_array[1],
-                vertical_spacing=config.bs_array_spacing,
-                horizontal_spacing=config.bs_array_spacing,
-                pattern=config.bs_array_pattern,
-                polarization=config.bs_polarization,
-                dtype=config.dtype
-            )
+            # Validate required config attributes
+            self._validate_config(config)
             
-            self.agv_array = PlanarArray(
-                num_rows=1,
-                num_cols=1,
-                vertical_spacing=config.agv_array_spacing,
-                horizontal_spacing=config.agv_array_spacing,
-                pattern="iso",
-                polarization="V"
-            )
-        except Exception as e:
-            raise RuntimeError("Failed to configure antenna arrays") from e
-            
-        # Instead, just set the antenna arrays in the scene
-        try:
-            self.scene.tx_array = self.bs_array
-            self.scene.rx_array = self.agv_array
-        except Exception as e:
-            raise RuntimeError("Failed to set antenna arrays in scene") from e
-            
-        # Validate critical configurations
-        self._validate_configuration()
+            # Initialize basic attributes
+            self.config = config
+            sionna.config.xla_compat = True
+            tf.random.set_seed(config.seed)
 
+            # Initialize SHAP analyzer
+            self.shap_analyzer = ShapAnalyzer(config)
+
+            # Initialize position tracking
+            self.positions_history = [[] for _ in range(config.num_agvs)]
+            self.agv_positions = self._generate_initial_agv_positions()
+
+            # Initialize scene
+            self.scene = scene if scene is not None else setup_scene(config)
+            
+            # Configure and set antenna arrays
+            self._setup_antenna_arrays()
+            
+            # Perform final validations
+            self._validate_scene()
+
+        except ValueError as e:
+            raise ValueError(f"Configuration error: {str(e)}")
+        except Exception as e:
+            raise RuntimeError(f"Environment initialization failed: {str(e)}") from e
+
+    def _validate_config(self, config):
+        """Validate required configuration parameters."""
+        required_attrs = ['num_agvs', 'seed', 'bs_array', 'bs_array_spacing', 
+                        'bs_array_pattern', 'bs_polarization', 'dtype',
+                        'agv_array_spacing']
+        
+        for attr in required_attrs:
+            if not hasattr(config, attr):
+                raise ValueError(f"Config must specify {attr}")
+
+    def _setup_antenna_arrays(self):
+        """Configure and set up antenna arrays."""
+        # Base station array
+        self.bs_array = PlanarArray(
+            num_rows=self.config.bs_array[0],
+            num_cols=self.config.bs_array[1],
+            vertical_spacing=self.config.bs_array_spacing,
+            horizontal_spacing=self.config.bs_array_spacing,
+            pattern=self.config.bs_array_pattern,
+            polarization=self.config.bs_polarization,
+            dtype=self.config.dtype
+        )
+        
+        # AGV array
+        self.agv_array = PlanarArray(
+            num_rows=1,
+            num_cols=1,
+            vertical_spacing=self.config.agv_array_spacing,
+            horizontal_spacing=self.config.agv_array_spacing,
+            pattern="iso",
+            polarization="V"
+        )
+        
+        # Set arrays in scene
+        self.scene.tx_array = self.bs_array
+        self.scene.rx_array = self.agv_array
+
+    def _validate_scene(self):
+        """Validate scene configuration and object IDs."""
+        if not hasattr(self.scene, 'objects'):
+            raise ValueError("Scene is not properly configured - missing objects attribute")
+            
+        if not self.scene.objects:
+            raise ValueError("Scene contains no objects")
+            
+        # Get total number of objects
+        total_objects = len(self.scene.objects)
+        
         # Validate object IDs
-        max_object_id = max([obj.object_id for obj in self.scene.objects.values()])
-        if max_object_id >= self.scene.total_objects:
+        max_object_id = -1
+        for obj in self.scene.objects.values():
+            if hasattr(obj, 'object_id'):
+                max_object_id = max(max_object_id, obj.object_id)
+        
+        if max_object_id >= total_objects:
             raise ValueError(
                 f"Maximum object ID ({max_object_id}) exceeds total objects "
-                f"({self.scene.total_objects})"
+                f"({total_objects})"
             )
+        
+        # Validate required scene components
+        required_objects = ['bs', 'ris']  # Add required object names
+        for obj_name in required_objects:
+            if not any(obj.name == obj_name for obj in self.scene.objects.values()):
+                raise ValueError(f"Scene is missing required object: {obj_name}")
+        
+        # Validate antenna arrays
+        if not hasattr(self.scene, 'tx_array') or not hasattr(self.scene, 'rx_array'):
+            raise ValueError("Scene is missing antenna array configuration")
     
     def _validate_configuration(self):
         """Validate critical configuration parameters"""
