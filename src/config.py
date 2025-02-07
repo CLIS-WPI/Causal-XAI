@@ -6,9 +6,10 @@ class SmartFactoryConfig:
     def __init__(self):
         # Keep existing basic parameters
         self.num_time_steps = 100
-        self.sampling_frequency = 1000
+        self.sampling_frequency = tf.cast(1000, tf.float32)
         self.batch_size = 1
         self.dtype = tf.complex64
+        self.real_dtype = tf.float32  # Add this for real number operations
         self.seed = 42
         self.num_subcarriers = 128 #Number of OFDM subcarriers
         self.subcarrier_spacing = 15e3  # 15 kHz subcarrier spacing (typical for 5G)
@@ -17,8 +18,8 @@ class SmartFactoryConfig:
         self.room_dim = [20.0, 20.0, 5.0]  # Length x Width x Height
 
         # Frequency configuration
-        self.carrier_frequency = 28e9  # 28 GHz
-        self.wavelength = SPEED_OF_LIGHT/self.carrier_frequency
+        self.carrier_frequency = tf.cast(28e9, tf.float32)  # Cast to float32
+        self.wavelength = tf.cast(SPEED_OF_LIGHT/self.carrier_frequency, tf.float32)
         
         # Enhanced Base station configuration
         self.bs_position = [10.0, 0.5, 4.5]

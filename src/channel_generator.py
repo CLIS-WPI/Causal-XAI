@@ -792,8 +792,7 @@ class SmartFactoryChannel:
                     frequencies=frequencies,
                     a=a_with_ris,
                     tau=tau_with_ris,
-                    normalize=False,
-                    dtype=self.config.dtype
+                    normalize=False
                 )
                 
                 # Temporarily remove RIS to compute channel without it

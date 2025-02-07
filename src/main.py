@@ -71,7 +71,6 @@ def validate_config(config):
         'num_agvs', 'room_dim', 'bs_array', 'ris_elements'
     ]
     
-    # Removed 'sampling_frequency' from required_attrs
     
     missing_attrs = [attr for attr in required_attrs 
                     if not hasattr(config, attr)]
