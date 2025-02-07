@@ -13,20 +13,42 @@ def setup_scene(config):
         scene = load_scene('src/factory_scene.xml', dtype=config.dtype)
         scene.frequency = tf.cast(config.carrier_frequency, tf.float32)
         print(f"[DEBUG] Scene initialized with frequency: {scene.frequency/1e9} GHz")
+        print(f"[DEBUG] Initial scene objects: {list(scene.objects.keys())}")
 
         # Add base station
         try:
             bs_pos = tf.constant(config.bs_position, dtype=tf.float32)
             bs_orientation = tf.constant([0.0, 0.0, 0.0], dtype=tf.float32)
             
+            print("[DEBUG] Scene objects before BS addition:", list(scene.objects.keys()))
+            print("[DEBUG] Current object IDs:", [(name, getattr(obj, 'object_id', None)) 
+                                                for name, obj in scene.objects.items()])
+            
             bs = Transmitter(
                 name="bs",
                 position=bs_pos,
-                orientation=bs_orientation
+                orientation=bs_orientation,
+                dtype=config.dtype
             )
+            
+            # Set object_id before adding to scene
+            bs.object_id = len(scene.objects)
+            print(f"[DEBUG] Base station object_id set to: {getattr(bs, 'object_id', None)}")
+            
+            # Add to scene
             scene.add(bs)
-            print("[DEBUG] Base station added successfully")
+            
+            # Explicitly add to scene objects if not already added
+            if 'bs' not in scene.objects:
+                scene._scene_objects['bs'] = bs
+            
+            print(f"[DEBUG] Base station added successfully at position {bs_pos}")
+            print(f"[DEBUG] Base station registered as transmitter: {bs.name in scene.transmitters}")
+            print(f"[DEBUG] Base station registered as object: {bs.name in scene.objects}")
+            print(f"[DEBUG] Scene objects after BS addition: {list(scene.objects.keys())}")
+            
         except Exception as e:
+            print(f"[ERROR] Failed to add base station: {str(e)}")
             raise RuntimeError(f"Failed to add base station: {str(e)}")
 
         # Configure antenna arrays
@@ -56,10 +78,12 @@ def setup_scene(config):
 
         # Add RIS
         try:
+            print("[DEBUG] Scene objects before RIS addition:", list(scene.objects.keys()))
+            print("[DEBUG] Current object IDs:", [(name, getattr(obj, 'object_id', None)) 
+                                                for name, obj in scene.objects.items()])
+            
             ris_pos = tf.constant(config.ris_position, dtype=tf.float32)
             ris_orientation = tf.constant(config.ris_orientation, dtype=tf.float32)
-            
-            print(f"[DEBUG] RIS configuration: position={config.ris_position}, orientation={config.ris_orientation}, elements={config.ris_elements}")
             
             ris = RIS(
                 name="ris",
@@ -69,9 +93,25 @@ def setup_scene(config):
                 num_cols=config.ris_elements[1],
                 dtype=config.dtype
             )
+            
+            # Set object_id before adding to scene
+            ris.object_id = len(scene.objects)
+            print(f"[DEBUG] RIS object_id set to: {getattr(ris, 'object_id', None)}")
+            
+            # Add to scene
             scene.add(ris)
+            
+            # Explicitly add to scene objects if not already added
+            if 'ris' not in scene.objects:
+                scene._scene_objects['ris'] = ris
+            
             print("[DEBUG] RIS added successfully")
+            print(f"[DEBUG] RIS registered as RIS: {'ris' in scene.ris}")
+            print(f"[DEBUG] RIS registered as object: {'ris' in scene.objects}")
+            print(f"[DEBUG] Scene objects after RIS addition: {list(scene.objects.keys())}")
+            
         except Exception as e:
+            print(f"[ERROR] Failed to add RIS: {str(e)}")
             raise RuntimeError(f"Failed to add RIS: {str(e)}")
 
         # Add AGVs
@@ -83,7 +123,8 @@ def setup_scene(config):
                 rx = Receiver(
                     name=f"agv_{i}",
                     position=agv_pos,
-                    orientation=agv_orientation
+                    orientation=agv_orientation,
+                    dtype=config.dtype
                 )
                 scene.add(rx)
             print(f"[DEBUG] {config.num_agvs} AGVs added successfully")
@@ -99,22 +140,28 @@ def setup_scene(config):
 
 def verify_scene(scene):
     """Verify all required components are present in the scene"""
-    print("[DEBUG] Verifying scene configuration...")
+    print("\n[DEBUG] Starting scene verification...")
     print(f"[DEBUG] Available objects: {list(scene.objects.keys())}")
     print(f"[DEBUG] Available transmitters: {list(scene.transmitters.keys())}")
-    if hasattr(scene, 'ris'):
-        print(f"[DEBUG] Available RIS: {list(scene.ris.keys())}")
+    print(f"[DEBUG] Available RIS: {list(scene.ris.keys()) if hasattr(scene, 'ris') else 'No RIS'}")
+    print(f"[DEBUG] Object IDs: {[(name, getattr(obj, 'object_id', None)) for name, obj in scene.objects.items()]}")
     
-    # Verify transmitter
+    # Verify base station
     if "bs" not in scene.transmitters:
-        raise RuntimeError("Base station not found in scene")
-        
-    # Verify RIS - check in scene.ris dictionary
+        raise RuntimeError("Base station not found in transmitters")
+    if "bs" not in scene.objects:
+        print("[WARNING] Base station not in scene objects, attempting to add...")
+        scene._scene_objects['bs'] = scene.transmitters['bs']
+        if "bs" not in scene.objects:
+            raise RuntimeError("Base station not found in scene objects")
+        print("[DEBUG] Base station added to scene objects")
+    
+    # Verify RIS
     if not scene.ris or "ris" not in scene.ris:
         raise RuntimeError("RIS not found in scene")
-        
+    
     # Verify antenna arrays
     if not hasattr(scene, 'tx_array') or not hasattr(scene, 'rx_array'):
         raise RuntimeError("Scene is missing antenna array configuration")
-        
+    
     print("[DEBUG] Scene verification completed successfully")
