@@ -94,6 +94,14 @@ class SmartFactoryChannel:
             
         # Validate critical configurations
         self._validate_configuration()
+
+        # Validate object IDs
+        max_object_id = max([obj.object_id for obj in self.scene.objects.values()])
+        if max_object_id >= self.scene.total_objects:
+            raise ValueError(
+                f"Maximum object ID ({max_object_id}) exceeds total objects "
+                f"({self.scene.total_objects})"
+            )
     
     def _validate_configuration(self):
         """Validate critical configuration parameters"""
@@ -760,6 +768,43 @@ class SmartFactoryChannel:
             ris.phase_profile = phase_profile
 
             try:
+                
+                # Ensure tensor sizes account for all objects
+                array_size = self.scene.total_objects
+                
+                # Initialize tensors with correct size
+                relative_permittivity = tf.zeros([array_size], dtype=self.config.dtype)
+                scattering_coefficient = tf.zeros([array_size], dtype=tf.float32)
+                
+                # When updating tensors, verify indices
+                for obj_id in range(array_size):
+                    if obj_id >= array_size:
+                        raise ValueError(f"Object ID {obj_id} exceeds array size {array_size}")
+                    
+                # Update material properties for each object
+                for obj in self.scene.objects.values():
+                    if hasattr(obj, 'object_id'):
+                        if obj.object_id >= array_size:
+                            raise ValueError(
+                                f"Object ID {obj.object_id} exceeds array size {array_size}"
+                            )
+                        # Set material properties based on object type
+                        if isinstance(obj, RIS):
+                            relative_permittivity = tf.tensor_scatter_nd_update(
+                                relative_permittivity,
+                                [[obj.object_id]],
+                                [tf.cast(1.0, self.config.dtype)]
+                            )
+                            scattering_coefficient = tf.tensor_scatter_nd_update(
+                                scattering_coefficient,
+                                [[obj.object_id]],
+                                [0.1]
+                            )
+                        # Add other object types as needed
+                        
+                # Continue with path generation...
+                paths_with_ris = self.scene.compute_paths(...)
+                
                 # Generate paths with RIS using Sionna's ray tracing
                 paths_with_ris = self.scene.compute_paths(
                     max_depth=self.config.ray_tracing['max_depth'],
