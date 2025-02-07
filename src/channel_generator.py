@@ -674,7 +674,7 @@ class SmartFactoryChannel:
             try:
                 
                 # Ensure tensor sizes account for all objects
-                array_size = self.scene.total_objects
+                array_size = len(self.scene.objects)
                 
                 # Initialize tensors with correct size
                 relative_permittivity = tf.zeros([array_size], dtype=self.config.dtype)
