@@ -16,9 +16,6 @@ from sionna.constants import SPEED_OF_LIGHT
 print(f"[DEBUG] Using Sionna version: {sionna.__version__}")
 
 def setup_scene(config):
-    """
-    Setup scene using factory_scene.xml which contains the PLY references
-    """
     try:
         # Load scene from XML file that contains PLY references
         scene = load_scene('src/factory_scene.xml', dtype=config.dtype)
@@ -33,14 +30,13 @@ def setup_scene(config):
             if hasattr(obj, 'object_id'):
                 max_object_id = max(max_object_id, obj.object_id)
         
-        # Start new object IDs after the existing maximum
         current_object_id = max_object_id + 1
-        
-        # Add base station with proper tensor formatting
-        bs_pos = tf.constant(config.bs_position, dtype=tf.float32)
-        bs_orientation = tf.constant([0.0, 0.0, 0.0], dtype=tf.float32)
-        
+
+        # Add base station
         try:
+            bs_pos = tf.constant(config.bs_position, dtype=tf.float32)
+            bs_orientation = tf.constant([0.0, 0.0, 0.0], dtype=tf.float32)
+            
             bs = Transmitter(
                 name="bs",
                 position=bs_pos,
@@ -50,51 +46,10 @@ def setup_scene(config):
             current_object_id += 1
             scene.add(bs)
             print("[DEBUG] Base station added successfully")
-            
-            # Verify base station was added correctly
-            if "bs" not in scene.transmitters:
-                raise RuntimeError("Base station not found in scene.transmitters after adding")
-                
         except Exception as e:
             raise RuntimeError(f"Failed to add base station: {str(e)}")
 
-        # Modified verification step
-        print("[DEBUG] Verifying scene objects...")
-        required_objects = ['bs', 'ris']
-        for obj_name in required_objects:
-            # Check in both objects and transmitters dictionaries
-            found = False
-            if obj_name in scene.objects:
-                found = True
-            elif obj_name in scene.transmitters:
-                found = True
-            
-            if not found:
-                print(f"[DEBUG] Available objects: {list(scene.objects.keys())}")
-                print(f"[DEBUG] Available transmitters: {list(scene.transmitters.keys())}")
-                raise RuntimeError(f"Failed to add required object: {obj_name}")
-                
-        print("[DEBUG] Scene verification completed successfully")
-        return scene
-
-    except Exception as e:
-        print(f"[CRITICAL ERROR] Scene setup failed: {str(e)}")
-        raise RuntimeError(f"Scene setup error: {str(e)}") from e
-        
-        try:
-            bs = Transmitter(
-                name="bs",  # This name must match what's expected in validation
-                position=bs_pos,
-                orientation=bs_orientation
-            )
-            bs.object_id = current_object_id
-            current_object_id += 1
-            scene.add(bs)
-            print("[DEBUG] Base station added successfully")
-        except Exception as e:
-            raise RuntimeError(f"Failed to add base station: {str(e)}")
-
-        # Configure antenna arrays with proper tensor formatting
+        # Configure antenna arrays
         try:
             scene.tx_array = PlanarArray(
                 num_rows=config.bs_array[0],
@@ -119,7 +74,35 @@ def setup_scene(config):
         except Exception as e:
             raise RuntimeError(f"Failed to configure antenna arrays: {str(e)}")
 
-        # Add AGVs with proper tensor formatting
+        # Add RIS with proper tensor formatting and verification
+        try:
+            ris_pos = tf.constant(config.ris_position, dtype=tf.float32)
+            ris_orientation = tf.constant(config.ris_orientation, dtype=tf.float32)
+            
+            ris = RIS(
+                name="ris",
+                position=ris_pos,
+                orientation=ris_orientation,
+                num_rows=config.ris_elements[0],
+                num_cols=config.ris_elements[1],
+                dtype=config.dtype
+            )
+            ris.object_id = current_object_id
+            current_object_id += 1
+            scene.add(ris)
+            
+            # Verify RIS was added correctly
+            if "ris" not in scene.objects and "ris" not in scene.ris:
+                raise RuntimeError("RIS not found after adding")
+            print("[DEBUG] RIS added successfully")
+        except Exception as e:
+            print(f"[DEBUG] Failed to add RIS: {str(e)}")
+            print(f"[DEBUG] RIS position: {config.ris_position}")
+            print(f"[DEBUG] RIS orientation: {config.ris_orientation}")
+            print(f"[DEBUG] RIS elements: {config.ris_elements}")
+            raise RuntimeError(f"Failed to add RIS: {str(e)}")
+
+        # Add AGVs
         try:
             for i in range(config.num_agvs):
                 agv_pos = tf.constant([12.0 - i*4.0, 5.0 + i*10.0, 0.5], dtype=tf.float32)
@@ -137,6 +120,34 @@ def setup_scene(config):
         except Exception as e:
             raise RuntimeError(f"Failed to add AGVs: {str(e)}")
 
+        # Verification step with more detailed debugging
+        print("[DEBUG] Verifying scene objects...")
+        print(f"[DEBUG] Available objects: {list(scene.objects.keys())}")
+        print(f"[DEBUG] Available transmitters: {list(scene.transmitters.keys())}")
+        if hasattr(scene, 'ris'):
+            print(f"[DEBUG] Available RIS: {list(scene.ris.keys())}")
+        
+        # Check required objects
+        required_objects = ['bs', 'ris']
+        for obj_name in required_objects:
+            found = False
+            if obj_name in scene.objects:
+                found = True
+            elif obj_name in scene.transmitters and obj_name == 'bs':
+                found = True
+            elif hasattr(scene, 'ris') and obj_name in scene.ris and obj_name == 'ris':
+                found = True
+                
+            if not found:
+                raise RuntimeError(f"Failed to add required object: {obj_name}")
+
+        print("[DEBUG] Scene verification completed successfully")
+        return scene
+
+    except Exception as e:
+        print(f"[CRITICAL ERROR] Scene setup failed: {str(e)}")
+        raise RuntimeError(f"Scene setup error: {str(e)}") from e
+        
         # Add RIS with proper tensor formatting
         try:
             ris_pos = tf.constant(config.ris_position, dtype=tf.float32)
