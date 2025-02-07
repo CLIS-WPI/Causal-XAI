@@ -841,15 +841,6 @@ class SmartFactoryChannel:
                     stored_ris = self.scene.remove("ris")  # Store the actual RIS object
                     
                     # Generate paths without RIS
-                    paths_without_ris = self.scene.compute_paths(...)
-                    
-                    # Generate OFDM channel without RIS
-                    h_without_ris = cir_to_ofdm_channel(...)
-                    
-                    # Restore RIS to scene using the stored RIS object
-                    self.scene.add(stored_ris)  # Add back the actual RIS object
-                    
-                    # Generate paths without RIS
                     paths_without_ris = self.scene.compute_paths(
                         max_depth=self.config.ray_tracing['max_depth'],
                         method=self.config.ray_tracing['method'],
@@ -876,8 +867,8 @@ class SmartFactoryChannel:
                         tau=tau_without_ris,
                     )
                     
-                    # Restore RIS to scene
-                    self.scene.add(ris_config)
+                    # Restore RIS to scene using the stored RIS object
+                    self.scene.add(stored_ris)  # Add back the actual RIS object
                 else:
                     paths_without_ris = paths_with_ris
                     h_without_ris = h_with_ris
