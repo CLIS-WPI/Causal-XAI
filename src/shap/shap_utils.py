@@ -3,7 +3,6 @@ import numpy as np
 
 def preprocess_channel_data(channel_response, config):
     """Preprocess channel data for SHAP analysis"""
-    # Extract relevant features
     features = []
     
     if config.shap['features']['channel_response']:
@@ -15,9 +14,9 @@ def preprocess_channel_data(channel_response, config):
     if config.shap['features']['agv_position']:
         features.append(tf.reshape(channel_response['agv_positions'], [-1]))
         
-    if config.shap['features']['ris_state']:
+    if config.shap['features']['ris_state'] and 'ris_state' in channel_response:
         features.append(tf.reshape(channel_response['ris_state'], [-1]))
-        
+    
     return tf.concat(features, axis=-1)
 
 def get_feature_names(config):

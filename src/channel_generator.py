@@ -13,8 +13,9 @@ from sionna.rt import DiscretePhaseProfile, CellGrid
 from sionna.rt import CellGrid, DiscretePhaseProfile
 from sionna.channel.utils import cir_to_ofdm_channel
 from sionna.constants import SPEED_OF_LIGHT
-from src.shap.shap_analyzer import ShapAnalyzer
-from src.shap.shap_utils import preprocess_channel_data
+from shap.shap_analyzer import ShapAnalyzer
+from shap.shap_utils import preprocess_channel_data
+
 
 class SmartFactoryChannel:
     """Smart Factory Channel Generator using Sionna
@@ -789,6 +790,7 @@ class SmartFactoryChannel:
                     'agv_velocities': agv_velocities,
                     'h_with_ris': h_with_ris,
                     'h_without_ris': h_without_ris,
+                    'ris_state': phase_values,  # Add this line
                     'channel_quality': {
                         'with_ris': channel_quality_with_ris,
                         'without_ris': channel_quality_without_ris,
