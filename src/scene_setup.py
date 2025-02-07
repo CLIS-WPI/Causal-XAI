@@ -23,7 +23,7 @@ def setup_scene(config):
         # Load scene from XML file that contains PLY references
         scene = load_scene('src/factory_scene.xml', dtype=config.dtype)
         
-        # Keep track of object IDs
+        # Initialize object ID counter
         current_object_id = 0
         
         # Set frequency 
@@ -89,12 +89,23 @@ def setup_scene(config):
         current_object_id += 1
         scene.add(ris)
 
-        # Store total number of objects for tensor sizing
+        # Store total number of objects
         scene.total_objects = current_object_id
         print(f"[DEBUG] Total objects in scene: {scene.total_objects}")
 
-        # Validate object IDs
-        max_object_id = max([obj.object_id for obj in scene.objects.values() if hasattr(obj, 'object_id')])
+        # Reset and reassign object IDs for all objects in scene
+        for obj in scene.objects.values():
+            if not hasattr(obj, 'object_id'):
+                print(f"[WARNING] Object {obj.name} has no object_id attribute")
+                continue
+            if obj.object_id >= scene.total_objects:
+                print(f"[WARNING] Resetting object ID for {obj.name} from {obj.object_id} to {current_object_id}")
+                obj.object_id = current_object_id
+                current_object_id += 1
+
+        # Final validation
+        max_object_id = max([obj.object_id for obj in scene.objects.values() 
+                           if hasattr(obj, 'object_id')])
         if max_object_id >= scene.total_objects:
             raise ValueError(
                 f"Maximum object ID ({max_object_id}) exceeds total objects "
