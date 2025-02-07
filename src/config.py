@@ -138,7 +138,10 @@ class SmartFactoryConfig:
             'time_step': 0.001,
             'snr_range': [-10, 30],
             'channel_estimation_error': 0.1
-        }
+            }
+        self.num_time_steps = 100
+        self.sampling_frequency = tf.cast(1000, tf.float32)
+        
         
         self.shap = {
             'analysis': {

@@ -570,7 +570,7 @@ class SmartFactoryChannel:
                 agv_velocities = tf.tensor_scatter_nd_update(
                     agv_velocities,
                     [[i]],
-                    [(curr_pos - prev_pos) / self.config.time_step]
+                    [(curr_pos - prev_pos) / self.config.simulation['time_step']]  # Access time_step from simulation dict
                 )
         
         # Add batch dimension to positions
