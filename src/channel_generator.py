@@ -158,41 +158,45 @@ class SmartFactoryChannel:
             time_step (float): Time step for position update in seconds
             
         Returns:
-            tf.Tensor: Updated AGV positions
+            tf.Tensor: Updated AGV positions with shape [num_agvs, 3]
         """
         if not hasattr(self, 'waypoints'):
             self.waypoints = self._generate_agv_waypoints()
             self.current_waypoint_indices = [0] * self.config.num_agvs
         
-        # Use time_step instead of fixed dt
         speed = 0.83  # 3 km/h in m/s
-        
         new_positions = []
+        
+        # Convert current positions to numpy if it's a tensor
+        current_positions = self.agv_positions.numpy() if tf.is_tensor(self.agv_positions) else self.agv_positions
+        
         for i in range(self.config.num_agvs):
-            current_pos = self.agv_positions[i]
-            target_waypoint = self.waypoints[i][self.current_waypoint_indices[i]]
+            current_pos = current_positions[i]
+            target_waypoint = np.array(self.waypoints[i][self.current_waypoint_indices[i]] + [0.5])  # Add z-coordinate
             
             # Calculate direction vector to next waypoint
-            direction = np.array(target_waypoint) - current_pos[:2]
+            direction = target_waypoint - current_pos
             distance = np.linalg.norm(direction)
             
             if distance < speed * time_step:  # Reached waypoint
                 self.current_waypoint_indices[i] = (self.current_waypoint_indices[i] + 1) % len(self.waypoints[i])
-                new_pos = np.array([*target_waypoint, 0.5])
+                new_pos = target_waypoint
             else:
-                # Move towards waypoint using time_step
-                direction = direction / distance
-                new_pos = current_pos + np.array([*direction * speed * time_step, 0.0])
-            
+                # Move towards waypoint
+                normalized_direction = direction / distance
+                new_pos = current_pos + normalized_direction * speed * time_step
+                
             new_positions.append(new_pos)
         
-        self.agv_positions = tf.constant(new_positions, dtype=tf.float32)
+        # Convert list of positions to numpy array first
+        new_positions_array = np.array(new_positions, dtype=np.float32)
         
-        # Update positions history
+        # Update positions history with numpy arrays
         for i in range(self.config.num_agvs):
-            self.positions_history[i].append(self.agv_positions[i].numpy())
+            self.positions_history[i].append(new_positions_array[i].copy())
         
-        return self.agv_positions
+        # Convert to tensorflow tensor with explicit shape
+        return tf.constant(new_positions_array, dtype=tf.float32)
 
     def save_csi_dataset(self, filepath, num_samples=None):
         """
@@ -204,36 +208,34 @@ class SmartFactoryChannel:
         """
         import h5py
         
-        # Use config value if num_samples not specified
         if num_samples is None:
             num_samples = self.config.num_time_steps
         
         with h5py.File(filepath, 'w') as f:
-            # Create groups for different components
             csi_group = f.create_group('csi_data')
             config_group = f.create_group('config')
             
-            # Initialize lists to store data
             channel_data = []
             path_delays = []
             los_conditions = []
             agv_positions = []
             
-            # Generate and collect samples
             for _ in range(num_samples):
                 sample = self.generate_channel()
                 
                 channel_data.append(sample['h'].numpy())
                 path_delays.append(sample['tau'].numpy())
-                los_conditions.append(sample['los_condition'].numpy())
+                # Convert integer LOS condition to numpy array
+                los_conditions.append(np.array(sample['los_condition'], dtype=np.int32))
                 agv_positions.append(sample['agv_positions'].numpy())
             
-            # Convert lists to numpy arrays and save
+            # Save datasets
             csi_group.create_dataset('channel_matrices', data=np.array(channel_data))
             csi_group.create_dataset('path_delays', data=np.array(path_delays))
             csi_group.create_dataset('los_conditions', data=np.array(los_conditions))
             csi_group.create_dataset('agv_positions', data=np.array(agv_positions))
             
+        # Rest of the method remains the same
             # Save all configuration parameters
             for key, value in vars(self.config).items():
                 if isinstance(value, (int, float, str, list)):
@@ -517,33 +519,31 @@ class SmartFactoryChannel:
         }
 
     def _compute_pruning_factor(self, channel_response):
-        """Compute beam pruning factor based on XAI analysis
-        
-        Args:
-            channel_response (dict): Dictionary containing channel response data
-                including SHAP analysis results
+        """Compute beam pruning factor based on XAI analysis"""
+        try:
+            # Use SHAP values to determine which beams are most important
+            shap_analysis = channel_response['shap_analysis']
+            position_impact = tf.reduce_mean(tf.abs(shap_analysis['position_impact']['values']))
+            ris_impact = tf.reduce_mean(tf.abs(shap_analysis['ris_impact']['values']))
+            
+            # Calculate pruning factor based on feature importance
+            total_impact = position_impact + ris_impact
+            
+            # Handle division by zero and NaN
+            if tf.math.is_nan(total_impact) or tf.math.equal(total_impact, 0.0):
+                return 0.0  # Default to no pruning if values are invalid
                 
-        Returns:
-            float: Pruning factor between 0 and 0.5 indicating how much
-                beam pruning should be applied
-                
-        Note:
-            The pruning factor is calculated based on the relative importance
-            of position and RIS impacts from SHAP analysis
-        """
-        # Use SHAP values to determine which beams are most important
-        shap_analysis = channel_response['shap_analysis']
-        position_impact = tf.reduce_mean(tf.abs(shap_analysis['position_impact']['values']))
-        ris_impact = tf.reduce_mean(tf.abs(shap_analysis['ris_impact']['values']))
-        
-        # Calculate pruning factor based on feature importance
-        total_impact = position_impact + ris_impact
-        pruning_factor = tf.minimum(
-            0.5,  # Maximum 50% pruning
-            0.3 * (1 - position_impact / total_impact)  # More pruning when position impact is low
-        )
-        
-        return pruning_factor.numpy()
+            pruning_factor = tf.minimum(
+                0.5,  # Maximum 50% pruning
+                0.3 * (1 - position_impact / total_impact)  # More pruning when position impact is low
+            )
+            
+            # Ensure result is a valid number
+            return 0.0 if tf.math.is_nan(pruning_factor) else float(pruning_factor)
+            
+        except Exception as e:
+            print(f"Warning: Error computing pruning factor: {str(e)}")
+            return 0.0  # Default to no pruning on error
 
     def generate_channel(self):
         """Generate channel matrices with proper RIS modeling, explainability data, causal analysis and energy metrics
