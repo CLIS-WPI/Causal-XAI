@@ -91,30 +91,51 @@ class SmartFactoryChannel:
 
     def _setup_antenna_arrays(self):
         """Configure and set up antenna arrays."""
-        # Base station array
-        self.bs_array = PlanarArray(
-            num_rows=self.config.bs_array[0],
-            num_cols=self.config.bs_array[1],
-            vertical_spacing=self.config.bs_array_spacing,
-            horizontal_spacing=self.config.bs_array_spacing,
-            pattern=self.config.bs_array_pattern,
-            polarization=self.config.bs_polarization,
-            dtype=self.config.dtype
-        )
-        
-        # AGV array
-        self.agv_array = PlanarArray(
-            num_rows=1,
-            num_cols=1,
-            vertical_spacing=self.config.agv_array_spacing,
-            horizontal_spacing=self.config.agv_array_spacing,
-            pattern="iso",
-            polarization="V"
-        )
-        
-        # Set arrays in scene
-        self.scene.tx_array = self.bs_array
-        self.scene.rx_array = self.agv_array
+        try:
+            # Base station array
+            self.bs_array = PlanarArray(
+                num_rows=self.config.bs_array[0],
+                num_cols=self.config.bs_array[1],
+                vertical_spacing=self.config.bs_array_spacing,
+                horizontal_spacing=self.config.bs_array_spacing,
+                pattern=self.config.bs_array_pattern,
+                polarization=self.config.bs_polarization,
+                dtype=self.config.dtype
+            )
+            
+            # AGV array
+            self.agv_array = PlanarArray(
+                num_rows=1,
+                num_cols=1,
+                vertical_spacing=self.config.agv_array_spacing,
+                horizontal_spacing=self.config.agv_array_spacing,
+                pattern="iso",
+                polarization="V"
+            )
+            
+            # Get current max object ID
+            max_id = -1
+            for obj in self.scene.objects.values():
+                if hasattr(obj, 'object_id'):
+                    max_id = max(max_id, obj.object_id)
+            
+            # Set arrays in scene with proper object IDs
+            self.scene.tx_array = self.bs_array
+            
+            # Add base station with next available ID
+            bs = self.scene.get('bs')
+            if bs is not None:
+                bs.object_id = max_id + 1
+                
+            # Add RIS with next available ID after base station
+            ris = self.scene.get('ris')
+            if ris is not None:
+                ris.object_id = max_id + 2
+                
+            self.scene.rx_array = self.agv_array
+
+        except Exception as e:
+            raise RuntimeError(f"Error setting up antenna arrays: {str(e)}")
 
     def _validate_scene(self):
         """Validate scene configuration and object IDs."""
@@ -148,6 +169,45 @@ class SmartFactoryChannel:
         # Validate antenna arrays
         if not hasattr(self.scene, 'tx_array') or not hasattr(self.scene, 'rx_array'):
             raise ValueError("Scene is missing antenna array configuration")
+    def add(self, item):
+        """Add an item to the scene with proper object ID management"""
+        try:
+            # Get current max object ID
+            max_id = -1
+            for obj in self.scene.objects.values():
+                if hasattr(obj, 'object_id'):
+                    max_id = max(max_id, obj.object_id)
+            
+            # Handle RIS objects specially
+            if isinstance(item, RIS):
+                # Assign next available ID
+                item.object_id = max_id + 1
+                
+                # Set radio material
+                item.radio_material = RadioMaterial("itu_metal", dtype=self.config.dtype)
+                
+                # Add to scene's RIS dictionary if it exists
+                if hasattr(self.scene, '_ris'):
+                    self.scene._ris[item.name] = item
+                
+                # Add to scene objects
+                self.scene._scene_objects[item.name] = item
+                
+                # Set scene reference
+                item.scene = self.scene
+                
+            else:
+                # For non-RIS objects, use scene's default add method
+                self.scene.add(item)
+                
+                # Ensure object ID is set properly
+                if hasattr(item, 'object_id'):
+                    item.object_id = max_id + 1
+                    
+            return item
+            
+        except Exception as e:
+            raise RuntimeError(f"Error adding item to scene: {str(e)}")
     
     def _validate_configuration(self):
         """Validate critical configuration parameters"""
