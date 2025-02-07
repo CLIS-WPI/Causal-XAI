@@ -15,67 +15,19 @@ from sionna.constants import SPEED_OF_LIGHT
 
 print(f"[DEBUG] Using Sionna version: {sionna.__version__}")
 
-def setup_scene(config, ply_dir='src/meshes'):
+def setup_scene(config):
     """
-    Setup scene with PLY-based geometries
+    Setup scene using factory_scene.xml which contains the PLY references
     """
     try:
-        # Initialize empty scene correctly using load_scene
-        scene = load_scene("__empty__", dtype=config.dtype)
+        # Load scene from XML file that contains PLY references
+        scene = load_scene('src/factory_scene.xml', dtype=config.dtype)
         
         # Set frequency 
         scene.frequency = tf.cast(config.carrier_frequency, tf.float32)
         print(f"[DEBUG] Scene initialized with frequency: {scene.frequency/1e9} GHz")
 
-        # Create radio materials using tf.float32 for all real values
-        metal_material = RadioMaterial(
-            name="shelf_metal",  
-            relative_permittivity=tf.cast(1.0, tf.float32),
-            conductivity=tf.cast(1e7, tf.float32),
-            scattering_coefficient=tf.cast(0.1, tf.float32),
-            xpd_coefficient=tf.cast(0.0, tf.float32)
-        )
-        scene.add(metal_material)
-
-        concrete_material = RadioMaterial(
-            name="wall_concrete",  
-            relative_permittivity=tf.cast(4.0, tf.float32),
-            conductivity=tf.cast(0.01, tf.float32),
-            scattering_coefficient=tf.cast(0.2, tf.float32),
-            xpd_coefficient=tf.cast(0.5, tf.float32)
-        )
-        scene.add(concrete_material)
-
-        # Load PLY files for room boundaries
-        room_objects = {
-            'floor': os.path.join(ply_dir, 'floor.ply'),
-            'ceiling': os.path.join(ply_dir, 'ceiling.ply'),
-            'wall_xp': os.path.join(ply_dir, 'wall_xp.ply'),
-            'wall_xm': os.path.join(ply_dir, 'wall_xm.ply'),
-            'wall_yp': os.path.join(ply_dir, 'wall_yp.ply'),
-            'wall_ym': os.path.join(ply_dir, 'wall_ym.ply')
-        }
-
-        # Load room boundaries from PLY files
-        for name, ply_path in room_objects.items():
-            try:
-                room_obj = SceneObject(name=name)
-                room_obj.load_from_file(ply_path)
-                room_obj.radio_material = concrete_material
-                print(f"Loaded room object: {name}")
-            except Exception as e:
-                print(f"Error loading {name}: {str(e)}")
-
-        # Load shelves from PLY files
-        for i in range(5):  # 5 shelves as in config
-            shelf_path = os.path.join(ply_dir, f'shelf_{i}.ply')
-            try:
-                shelf = SceneObject(name=f"shelf_{i}")
-                shelf.load_from_file(shelf_path)
-                shelf.radio_material = metal_material
-                print(f"Loaded shelf {i}")
-            except Exception as e:
-                print(f"Error loading shelf_{i}: {str(e)}")
+        # No need to create materials or load PLY files manually as they're in the XML
 
         # Add base station with correct type casting
         bs_pos = [tf.cast(x, tf.float32) for x in config.bs_position]
@@ -130,13 +82,9 @@ def setup_scene(config, ply_dir='src/meshes'):
         )
         scene.add(ris)
 
+        print("[DEBUG] Scene setup completed successfully")
         return scene
 
     except Exception as e:
         print(f"[CRITICAL ERROR] Scene setup failed: {str(e)}")
         raise RuntimeError(f"Scene setup error: {str(e)}") from e
-
-if __name__ == "__main__":
-    from config import SmartFactoryConfig
-    config = SmartFactoryConfig()
-    setup_scene(config)

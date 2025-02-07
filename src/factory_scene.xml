@@ -1,0 +1,88 @@
+def generate_scene_xml():
+    scene_xml = """<?xml version="1.0" encoding="UTF-8"?>
+<scene version="2.1.0">
+    <!-- Define materials -->
+    <bsdf type="twosided" id="mat-concrete">
+        <relative_permittivity>4.0</relative_permittivity>
+        <conductivity>0.01</conductivity>
+        <scattering_coefficient>0.2</scattering_coefficient>
+    </bsdf>
+    
+    <bsdf type="twosided" id="mat-metal">
+        <relative_permittivity>1.0</relative_permittivity>
+        <conductivity>1e7</conductivity>
+        <scattering_coefficient>0.1</scattering_coefficient>
+    </bsdf>
+
+    <!-- Room boundaries -->
+    <shape type="ply" id="floor">
+        <string name="filename" value="src/meshes/floor.ply"/>
+        <boolean name="face_normals" value="true"/>
+        <ref id="mat-concrete" name="bsdf"/>
+    </shape>
+
+    <shape type="ply" id="ceiling">
+        <string name="filename" value="src/meshes/ceiling.ply"/>
+        <boolean name="face_normals" value="true"/>
+        <ref id="mat-concrete" name="bsdf"/>
+    </shape>
+
+    <!-- Walls -->
+    <shape type="ply" id="wall_xp">
+        <string name="filename" value="src/meshes/wall_xp.ply"/>
+        <boolean name="face_normals" value="true"/>
+        <ref id="mat-concrete" name="bsdf"/>
+    </shape>
+    
+    <shape type="ply" id="wall_xm">
+        <string name="filename" value="src/meshes/wall_xm.ply"/>
+        <boolean name="face_normals" value="true"/>
+        <ref id="mat-concrete" name="bsdf"/>
+    </shape>
+    
+    <shape type="ply" id="wall_yp">
+        <string name="filename" value="src/meshes/wall_yp.ply"/>
+        <boolean name="face_normals" value="true"/>
+        <ref id="mat-concrete" name="bsdf"/>
+    </shape>
+    
+    <shape type="ply" id="wall_ym">
+        <string name="filename" value="src/meshes/wall_ym.ply"/>
+        <boolean name="face_normals" value="true"/>
+        <ref id="mat-concrete" name="bsdf"/>
+    </shape>
+
+    <!-- Shelves -->
+    <shape type="ply" id="shelf_0">
+        <string name="filename" value="src/meshes/shelf_0.ply"/>
+        <boolean name="face_normals" value="true"/>
+        <ref id="mat-metal" name="bsdf"/>
+    </shape>
+
+    <shape type="ply" id="shelf_1">
+        <string name="filename" value="src/meshes/shelf_1.ply"/>
+        <boolean name="face_normals" value="true"/>
+        <ref id="mat-metal" name="bsdf"/>
+    </shape>
+
+    <shape type="ply" id="shelf_2">
+        <string name="filename" value="src/meshes/shelf_2.ply"/>
+        <boolean name="face_normals" value="true"/>
+        <ref id="mat-metal" name="bsdf"/>
+    </shape>
+
+    <shape type="ply" id="shelf_3">
+        <string name="filename" value="src/meshes/shelf_3.ply"/>
+        <boolean name="face_normals" value="true"/>
+        <ref id="mat-metal" name="bsdf"/>
+    </shape>
+
+    <shape type="ply" id="shelf_4">
+        <string name="filename" value="src/meshes/shelf_4.ply"/>
+        <boolean name="face_normals" value="true"/>
+        <ref id="mat-metal" name="bsdf"/>
+    </shape>
+</scene>"""
+    
+    with open('src/factory_scene.xml', 'w') as f:
+        f.write(scene_xml)
