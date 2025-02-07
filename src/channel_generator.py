@@ -781,6 +781,7 @@ class SmartFactoryChannel:
                 channel_quality_with_ris = tf.reduce_mean(tf.abs(h_with_ris))
                 channel_quality_without_ris = tf.reduce_mean(tf.abs(h_without_ris))
                 
+                # In generate_channel(), change the order of updates:
                 channel_response = {
                     'h': h_with_ris,
                     'tau': paths_with_ris.tau,
@@ -790,15 +791,19 @@ class SmartFactoryChannel:
                     'agv_velocities': agv_velocities,
                     'h_with_ris': h_with_ris,
                     'h_without_ris': h_without_ris,
-                    'ris_state': phase_values,  # Add this line
+                    'ris_state': phase_values,
                     'channel_quality': {
                         'with_ris': channel_quality_with_ris,
                         'without_ris': channel_quality_without_ris,
                         'improvement': channel_quality_with_ris - channel_quality_without_ris
                     }
                 }
-                
-                # Add additional metrics and analysis
+
+                # First add SHAP analysis
+                shap_results = self.compute_channel_shap_values(channel_response)
+                channel_response['shap_analysis'] = shap_results
+
+                # Then add all other metrics that depend on SHAP analysis
                 channel_response.update({
                     'ray_tracing_metrics': {
                         'num_paths': tf.shape(paths_with_ris.tau)[-1],
@@ -806,7 +811,6 @@ class SmartFactoryChannel:
                         'angles_of_arrival': paths_with_ris.theta_t,
                         'angles_of_departure': paths_with_ris.theta_r
                     },
-                    'shap_analysis': self.compute_channel_shap_values(channel_response),
                     'explanation_metadata': self.get_explanation_metadata(),
                     'energy_metrics': self.compute_energy_metrics(channel_response),
                     'causal_analysis': self.perform_causal_analysis(channel_response),
