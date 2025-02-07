@@ -588,10 +588,13 @@ class SmartFactoryChannel:
 
     def _cleanup_temporary_ris(self):
         """Remove temporary RIS objects created during channel generation"""
-        ris_names = [name for name in self.scene.objects.keys() 
-                    if name.startswith('ris_')]
-        for name in ris_names:
-            self.scene.remove(name)
+        try:
+            ris_names = [name for name in self.scene.objects.keys() 
+                        if name.startswith('ris_temp')]
+            for name in ris_names:
+                self.scene.remove(name)
+        except Exception as e:
+            print(f"Warning: Error cleaning up temporary RIS: {str(e)}")
 
     def generate_channel(self):
         """Generate channel matrices with proper RIS modeling, explainability data, causal analysis and energy metrics
@@ -765,7 +768,8 @@ class SmartFactoryChannel:
                             'position': stored_ris.position,
                             'orientation': stored_ris.orientation,
                             'size': stored_ris.size,
-                            'phase_profile': stored_ris.phase_profile
+                            'phase_profile': stored_ris.phase_profile,
+                            'object_id': len(self.scene.objects) - 1  # Assign proper ID
                         }
                         
                         # Remove RIS from scene
