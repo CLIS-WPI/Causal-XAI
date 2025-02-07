@@ -578,10 +578,11 @@ class SmartFactoryChannel:
     def setup_causal_graph(self):
         """Create causal graph for AGV→LOS→BeamChoice relationships"""
         graph = nx.DiGraph([
-            ('AGV_Position', 'LOS_Condition'),
-            ('LOS_Condition', 'Channel_Quality'),
-            ('RIS_Config', 'Channel_Quality'),
-            ('AGV_Position', 'Channel_Quality')
+            ('agv_x', 'los_condition'),
+            ('agv_y', 'los_condition'),
+            ('los_condition', 'channel_quality_with_ris'),
+            ('agv_x', 'channel_quality_with_ris'),
+            ('agv_y', 'channel_quality_with_ris')
         ])
         return graph
 
@@ -591,11 +592,10 @@ class SmartFactoryChannel:
         data = pd.DataFrame({
             'agv_x': channel_response['agv_positions'][0, :, 0].numpy(),
             'agv_y': channel_response['agv_positions'][0, :, 1].numpy(),
-            'los_condition': channel_response['los_condition'].numpy(),
+            'los_condition': tf.cast(channel_response['los_condition'], tf.float32).numpy(),
             'channel_quality_with_ris': channel_response['channel_quality']['with_ris'].numpy(),
             'channel_quality_without_ris': channel_response['channel_quality']['without_ris'].numpy()
         })
-        
         # Create causal model
         model = CausalModel(
             data=data,
@@ -626,7 +626,7 @@ class SmartFactoryChannel:
     def compute_energy_metrics(self, channel_response):
         """Compute energy efficiency metrics"""
         # Calculate baseline beam training overhead
-        baseline_scans = self.config.num_beams
+        baseline_scans = self.config.beamforming['num_beams']
         
         # Calculate optimized beam training using XAI-guided pruning
         pruning_factor = self._compute_pruning_factor(channel_response)
@@ -634,14 +634,14 @@ class SmartFactoryChannel:
         
         # Calculate energy consumption for different components
         beam_training_energy = {
-            'baseline': baseline_scans * self.config.energy_per_beam_scan,
-            'optimized': optimized_scans * self.config.energy_per_beam_scan,
-            'savings': (baseline_scans - optimized_scans) * self.config.energy_per_beam_scan
+            'baseline': baseline_scans * self.config.energy['beam_scan_power'],
+            'optimized': optimized_scans * self.config.energy['beam_scan_power'],
+            'savings': (baseline_scans - optimized_scans) * self.config.energy['beam_scan_power']
         }
         
         # Calculate RIS-related energy metrics
         ris_energy = {
-            'configuration_overhead': self.config.ris_config_energy,
+            'configuration_overhead': self.config.energy['ris_config_power'],
             'improvement_factor': channel_response['channel_quality']['improvement']
         }
         
@@ -838,40 +838,81 @@ class SmartFactoryChannel:
                 
                 # Temporarily remove RIS to compute channel without it
                 if ris is not None:
-                    stored_ris = self.scene.remove("ris")  # Store the actual RIS object
-                    
-                    # Generate paths without RIS
-                    paths_without_ris = self.scene.compute_paths(
-                        max_depth=self.config.ray_tracing['max_depth'],
-                        method=self.config.ray_tracing['method'],
-                        num_samples=self.config.ray_tracing['num_samples'],
-                        los=self.config.ray_tracing['los'],
-                        reflection=self.config.ray_tracing['reflection'],
-                        diffraction=self.config.ray_tracing['diffraction'],
-                        scattering=self.config.ray_tracing['scattering']
-                    )
-                    
-                    # Apply Doppler effect and get channel impulse response without RIS
-                    paths_without_ris.apply_doppler(
-                        sampling_frequency=self.config.sampling_frequency,
-                        num_time_steps=1
-                    )
-                    
-                    # Get channel impulse response
-                    a_without_ris, tau_without_ris = paths_without_ris.cir()
-                    
-                    # Generate OFDM channel without RIS
-                    h_without_ris = cir_to_ofdm_channel(
-                        frequencies=frequencies,
-                        a=a_without_ris,
-                        tau=tau_without_ris,
-                    )
-                    
-                    # Restore RIS to scene using the stored RIS object
-                    self.scene.add(stored_ris)  # Add back the actual RIS object
-                else:
-                    paths_without_ris = paths_with_ris
-                    h_without_ris = h_with_ris
+                    # Store RIS configuration before removing
+                    stored_ris = self.scene.get("ris")  # Get the RIS object
+                    if stored_ris is not None:
+                        # Verify it's a valid RIS object before proceeding
+                        if not isinstance(stored_ris, RIS):
+                            raise ValueError("Invalid RIS object type")
+                            
+                        # Store RIS properties before removing
+                        stored_ris_config = {
+                            'name': stored_ris.name,
+                            'position': stored_ris.position,
+                            'orientation': stored_ris.orientation,
+                            'size': stored_ris.size,
+                            'phase_profile': stored_ris.phase_profile
+                        }
+                        
+                        # Remove RIS from scene
+                        self.scene.remove("ris")
+                        
+                        try:
+                            # Generate paths without RIS
+                            paths_without_ris = self.scene.compute_paths(
+                                max_depth=self.config.ray_tracing['max_depth'],
+                                method=self.config.ray_tracing['method'],
+                                num_samples=self.config.ray_tracing['num_samples'],
+                                los=self.config.ray_tracing['los'],
+                                reflection=self.config.ray_tracing['reflection'],
+                                diffraction=self.config.ray_tracing['diffraction'],
+                                scattering=self.config.ray_tracing['scattering']
+                            )
+                            
+                            # Get channel impulse response without RIS
+                            a_without_ris, tau_without_ris = paths_without_ris.cir()
+
+                            # Generate OFDM channel without RIS
+                            h_without_ris = cir_to_ofdm_channel(
+                                frequencies=frequencies,
+                                a=a_without_ris,
+                                tau=tau_without_ris,
+                            )
+
+                            # Create new RIS object with stored configuration
+                            new_ris = RIS(
+                                name=stored_ris_config['name'],
+                                position=stored_ris_config['position'],
+                                orientation=stored_ris_config['orientation'],
+                                num_rows=self.config.ris_elements[0],
+                                num_cols=self.config.ris_elements[1],
+                                dtype=self.config.dtype
+                            )
+                            new_ris.phase_profile = stored_ris_config['phase_profile']
+                            
+                            # Add the new RIS back to scene
+                            self.scene.add(new_ris)
+                            
+                        except Exception as e:
+                            # Make sure to restore RIS even if an error occurs
+                            if stored_ris is not None:
+                                try:
+                                    new_ris = RIS(
+                                        name=stored_ris_config['name'],
+                                        position=stored_ris_config['position'],
+                                        orientation=stored_ris_config['orientation'],
+                                        num_rows=self.config.ris_elements[0],
+                                        num_cols=self.config.ris_elements[1],
+                                        dtype=self.config.dtype
+                                    )
+                                    new_ris.phase_profile = stored_ris_config['phase_profile']
+                                    self.scene.add(new_ris)
+                                except Exception as restore_error:
+                                    print(f"Error restoring RIS: {restore_error}")
+                            raise e
+                    else:
+                        paths_without_ris = paths_with_ris
+                        h_without_ris = h_with_ris
                 
                 # Calculate channel quality metrics
                 channel_quality_with_ris = tf.reduce_mean(tf.abs(h_with_ris))
@@ -881,7 +922,7 @@ class SmartFactoryChannel:
                     'h': h_with_ris,
                     'tau': paths_with_ris.tau,
                     'paths': paths_with_ris,
-                    'los_condition': paths_with_ris.los,
+                    'los_condition': paths_with_ris.LOS,
                     'agv_positions': current_positions,
                     'agv_velocities': agv_velocities,
                     'h_with_ris': h_with_ris,
@@ -896,15 +937,15 @@ class SmartFactoryChannel:
                 # Add additional metrics and analysis
                 channel_response.update({
                     'ray_tracing_metrics': {
-                        'num_paths': paths_with_ris.num_paths,
-                        'path_gains': paths_with_ris.gain,
+                        'num_paths': tf.shape(paths_with_ris.tau)[-1],
+                        'path_amplitudes': tf.abs(paths_with_ris.a), 
                         'angles_of_arrival': paths_with_ris.theta_t,
                         'angles_of_departure': paths_with_ris.theta_r
                     },
-                    'causal_analysis': self.perform_causal_analysis(channel_response),
-                    'energy_metrics': self.compute_energy_metrics(channel_response),
-                    'explanation_metadata': self.get_explanation_metadata(),
                     'shap_analysis': self.compute_channel_shap_values(channel_response),
+                    'explanation_metadata': self.get_explanation_metadata(),
+                    'energy_metrics': self.compute_energy_metrics(channel_response),
+                    'causal_analysis': self.perform_causal_analysis(channel_response),
                     'performance_metrics': {
                         'channel_capacity': {
                             'with_ris': channel_quality_with_ris,
@@ -920,10 +961,10 @@ class SmartFactoryChannel:
                         'position_impact': tf.reduce_mean(tf.abs(current_positions)),
                         'velocity_impact': tf.reduce_mean(tf.abs(agv_velocities)),
                         'ris_impact': tf.reduce_mean(tf.abs(h_with_ris - h_without_ris)),
-                        'los_impact': tf.reduce_mean(tf.cast(paths_with_ris.los, tf.float32))
+                        'los_impact': tf.reduce_mean(tf.cast(paths_with_ris.LOS, tf.float32))
                     }
                 })
-                
+
                 return channel_response
                 
             except Exception as e:
