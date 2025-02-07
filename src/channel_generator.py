@@ -802,9 +802,6 @@ class SmartFactoryChannel:
                             )
                         # Add other object types as needed
                         
-                # Continue with path generation...
-                paths_with_ris = self.scene.compute_paths(...)
-                
                 # Generate paths with RIS using Sionna's ray tracing
                 paths_with_ris = self.scene.compute_paths(
                     max_depth=self.config.ray_tracing['max_depth'],
@@ -837,7 +834,6 @@ class SmartFactoryChannel:
                     frequencies=frequencies,
                     a=a_with_ris,
                     tau=tau_with_ris,
-                    normalize=False
                 )
                 
                 # Temporarily remove RIS to compute channel without it
@@ -869,8 +865,6 @@ class SmartFactoryChannel:
                         frequencies=frequencies,
                         a=a_without_ris,
                         tau=tau_without_ris,
-                        normalize=False,
-                        dtype=self.config.dtype
                     )
                     
                     # Restore RIS to scene

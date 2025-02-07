@@ -23,8 +23,9 @@ def setup_scene(config):
         # Load scene from XML file that contains PLY references
         scene = load_scene('src/factory_scene.xml', dtype=config.dtype)
         
-        # Initialize object ID counter
+        # Initialize object ID counter and track all objects
         current_object_id = 0
+        all_objects = {}
         
         # Set frequency 
         scene.frequency = tf.cast(config.carrier_frequency, tf.float32)
@@ -39,6 +40,7 @@ def setup_scene(config):
         )
         tx.object_id = current_object_id
         current_object_id += 1
+        all_objects["bs"] = tx
         scene.add(tx)
 
         # Configure antenna arrays
@@ -73,6 +75,7 @@ def setup_scene(config):
             )
             rx.object_id = current_object_id
             current_object_id += 1
+            all_objects[f"agv_{i}"] = rx
             scene.add(rx)
 
         # Add RIS with proper ID
@@ -87,25 +90,23 @@ def setup_scene(config):
         )
         ris.object_id = current_object_id
         current_object_id += 1
+        all_objects["ris"] = ris
         scene.add(ris)
+
+        # Process existing scene objects (walls, shelves, etc.)
+        for name, obj in scene.objects.items():
+            if name not in all_objects:  # Only process objects we haven't added
+                obj.object_id = current_object_id
+                current_object_id += 1
+                all_objects[name] = obj
 
         # Store total number of objects
         scene.total_objects = current_object_id
         print(f"[DEBUG] Total objects in scene: {scene.total_objects}")
 
-        # Reset and reassign object IDs for all objects in scene
-        for obj in scene.objects.values():
-            if not hasattr(obj, 'object_id'):
-                print(f"[WARNING] Object {obj.name} has no object_id attribute")
-                continue
-            if obj.object_id >= scene.total_objects:
-                print(f"[WARNING] Resetting object ID for {obj.name} from {obj.object_id} to {current_object_id}")
-                obj.object_id = current_object_id
-                current_object_id += 1
-
         # Final validation
         max_object_id = max([obj.object_id for obj in scene.objects.values() 
-                           if hasattr(obj, 'object_id')])
+                        if hasattr(obj, 'object_id')])
         if max_object_id >= scene.total_objects:
             raise ValueError(
                 f"Maximum object ID ({max_object_id}) exceeds total objects "
