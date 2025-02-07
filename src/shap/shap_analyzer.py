@@ -8,17 +8,19 @@ class ShapAnalyzer:
         self.background_data = None
         
     def prepare_background_data(self, channel_data, num_samples=None):
-        """Prepare background data for SHAP analysis"""
-        if num_samples is None:
-            num_samples = self.config.shap['analysis']['num_background_samples']
+            """Prepare background data for SHAP analysis"""
+            if num_samples is None:
+                num_samples = 10  # Default minimum samples
+                
+            # Extract relevant features from channel data
+            features = {
+                'h_with_ris': channel_data['h_with_ris'],
+                'h_without_ris': channel_data['h_without_ris'],
+                'los_condition': channel_data['los_condition'],
+                'agv_positions': channel_data['agv_positions']
+            }
             
-        if len(channel_data) < self.config.shap['analysis']['min_samples_required']:
-            raise ValueError(f"Insufficient samples for SHAP analysis. Need at least {self.config.shap['analysis']['min_samples_required']}")
-            
-        # Sample background data
-        indices = np.random.choice(len(channel_data), num_samples, replace=False)
-        self.background_data = tf.gather(channel_data, indices)
-        return self.background_data
+            return features
         
     def analyze_channel_response(self, channel_response):
         """Analyze channel response using SHAP"""

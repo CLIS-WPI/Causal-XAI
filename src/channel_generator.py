@@ -13,6 +13,8 @@ from sionna.rt import DiscretePhaseProfile, CellGrid
 from sionna.rt import CellGrid, DiscretePhaseProfile
 from sionna.channel.utils import cir_to_ofdm_channel
 from sionna.constants import SPEED_OF_LIGHT
+from src.shap.shap_analyzer import ShapAnalyzer
+from src.shap.shap_utils import preprocess_channel_data
 
 class SmartFactoryChannel:
     """Smart Factory Channel Generator using Sionna
@@ -45,7 +47,9 @@ class SmartFactoryChannel:
         self.config = config
         sionna.config.xla_compat = True
         tf.random.set_seed(config.seed)
-        
+
+        self.shap_analyzer = ShapAnalyzer(config)
+
         # Initialize position tracking
         self.positions_history = [[] for _ in range(config.num_agvs)]
         try:
@@ -377,171 +381,29 @@ class SmartFactoryChannel:
             }
         }
 
-
     def compute_channel_shap_values(self, channel_response):
-        """
-        Compute SHAP values for channel response analysis using DeepExplainer
-        """
-        # Prepare background data (use historical channel responses)
-        background_data = self._get_background_data()  # You need to implement this
-        
-        # Create explainer
-        explainer = shap.DeepExplainer(
-            model=self._get_channel_model(),  # You need to implement this
-            data=background_data
-        )
-        
-        # Compute SHAP values
-        channel_data = tf.stack([
-            channel_response['h_with_ris'],
-            channel_response['h_without_ris'],
-            tf.cast(channel_response['los_condition'], tf.float32)
-        ], axis=-1)
-        
-        shap_values = explainer.shap_values(channel_data)
-        
-        return {
-            'position_impact': {
-                'description': 'Impact of AGV positions on channel',
-                'values': shap_values[0],  # SHAP values for position impact
-                'interpretation': 'Shows how AGV positions affect channel quality'
-            },
-            'ris_impact': {
-                'description': 'Impact of RIS on channel',
-                'values': shap_values[1],  # SHAP values for RIS impact
-                'interpretation': 'Quantifies RIS contribution to channel improvement'
-            }
-        }
-
-    def _get_background_data(self):
-        """Helper method to get background data for SHAP analysis
-        
-        This method processes historical position data to create background data
-        for SHAP analysis. It includes error handling for insufficient data and
-        handles channel response generation for each historical position.
-        
-        Returns:
-            tf.Tensor: Background data for SHAP analysis from historical channel responses
-            
-        Raises:
-            ValueError: If no historical data is available
-            ValueError: If insufficient samples for meaningful analysis
-            RuntimeError: If channel model is not properly initialized
-        """
-        # Check if history exists and has data
-        if not self.positions_history or not self.positions_history[0]:
-            raise ValueError("No historical data available for SHAP analysis")
-        
-        # Check minimum required samples
-        min_required_samples = 10
-        if len(self.positions_history[0]) < min_required_samples:
-            raise ValueError(
-                f"Insufficient samples for SHAP analysis. Found {len(self.positions_history[0])} "
-                f"samples, but need at least {min_required_samples}"
-            )
-        
-        # Verify channel model initialization
-        if not hasattr(self, 'channel_model'):
-            raise RuntimeError("Channel model not initialized. Initialize in __init__")
-        
+        """Compute SHAP values for channel response analysis"""
         try:
-            # Use position history to create background data
-            num_samples = min(100, len(self.positions_history[0]))  # Use up to 100 historical samples
-            
-            background_channels = []
-            for i in range(num_samples):
-                try:
-                    # Get historical positions for all AGVs with error handling
-                    historical_positions = tf.constant(
-                        [[self.positions_history[j][-(i+1)] for j in range(self.config.num_agvs)]],
-                        dtype=tf.float32
-                    )
-                    
-                    # Generate channel response for historical positions
-                    bs_position = tf.constant([[[10.0, 0.5, 4.5]]], dtype=tf.float32)
-                    
-                    # Set topology for historical position
-                    self.channel_model.set_topology(
-                        ut_loc=historical_positions,
-                        bs_loc=bs_position,
-                        ut_orientations=tf.zeros([1, self.config.num_agvs, 3]),
-                        bs_orientations=tf.zeros([1, 1, 3]),
-                        ut_velocities=tf.zeros([1, self.config.num_agvs, 3]),
-                        in_state=tf.zeros([1, self.config.num_agvs], dtype=tf.bool)
-                    )
-                    
-                    # Compute paths and channel response with max_depth from config
-                    paths = self.scene.compute_paths(
-                        max_depth=self.config.ray_tracing.get('max_depth', 3)
-                    )
-                    
-                    # Generate channel response
-                    h = self.channel_model(
-                        num_time_samples=1,
-                        sampling_frequency=self.config.sampling_frequency,
-                        paths=paths
-                    )
-                    
-                    # Stack channel features with proper shape checking
-                    channel_features = tf.stack([
-                        h[0],  # Channel response
-                        # LOS condition indicator
-                        tf.cast(
-                            tf.reduce_any(tf.not_equal(paths.tau, float('inf')), 
-                            axis=-1), 
-                            tf.float32
-                        ),
-                        # Reshape positions with explicit shape
-                        tf.reshape(historical_positions, [-1])
-                    ], axis=-1)
-                    
-                    background_channels.append(channel_features)
-                    
-                except (IndexError, tf.errors.InvalidArgumentError) as e:
-                    print(f"Warning: Error processing sample {i}: {str(e)}")
-                    continue
-            
-            # Check if we have enough valid samples
-            if not background_channels:
-                raise ValueError("No valid background channels could be generated")
+            if not hasattr(self, 'shap_analyzer'):
+                self.shap_analyzer = ShapAnalyzer(self.config)
                 
-            # Stack all valid background channels
-            return tf.stack(background_channels, axis=0)
-            
-        except Exception as e:
-            raise RuntimeError(f"Error generating background data: {str(e)}") from e
-
-    def _get_channel_model(self):
-        """Helper method to get the channel model for SHAP analysis
-        
-        Returns:
-            callable: Simplified channel model function for SHAP analysis
-        """
-        def simplified_channel_model(inputs):
-            """Simplified channel model for SHAP analysis
-            
-            Args:
-                inputs: Channel features [channel_response, los_condition, positions]
-                
-            Returns:
-                tf.Tensor: Channel quality metric
-            """
-            channel_response = inputs[..., 0]
-            los_condition = inputs[..., 1]
-            positions = tf.reshape(inputs[..., 2:], [-1, self.config.num_agvs, 3])
-            
-            # Compute simplified channel quality metric
-            channel_quality = tf.abs(channel_response) * tf.cast(los_condition, tf.float32)
-            
-            # Add position-dependent effects
-            distance_effect = tf.reduce_mean(
-                tf.sqrt(tf.reduce_sum(tf.square(positions), axis=-1)),
-                axis=-1
-            )
-            
-            return channel_quality * tf.exp(-0.1 * distance_effect)
-        
-        return simplified_channel_model
+            # Process data and get SHAP analysis
+            processed_data = preprocess_channel_data(channel_response, self.config)
+            return self.shap_analyzer.analyze_channel_response(processed_data)
+        except ValueError as e:
+            # Return default values for insufficient samples
+            return {
+                'position_impact': {
+                    'description': 'Impact of AGV positions on channel',
+                    'values': tf.zeros_like(channel_response['h_with_ris']),
+                    'interpretation': 'Insufficient samples for SHAP analysis'
+                },
+                'ris_impact': {
+                    'description': 'Impact of RIS on channel',
+                    'values': tf.zeros_like(channel_response['h_with_ris']),
+                    'interpretation': 'Insufficient samples for SHAP analysis'
+                }
+            }
 
     def generate_causal_analysis(self, channel_data):
         """
