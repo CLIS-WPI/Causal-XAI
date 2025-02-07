@@ -586,6 +586,13 @@ class SmartFactoryChannel:
             print(f"Warning: Error computing pruning factor: {str(e)}")
             return 0.0  # Default to no pruning on error
 
+    def _cleanup_temporary_ris(self):
+        """Remove temporary RIS objects created during channel generation"""
+        ris_names = [name for name in self.scene.objects.keys() 
+                    if name.startswith('ris_')]
+        for name in ris_names:
+            self.scene.remove(name)
+
     def generate_channel(self):
         """Generate channel matrices with proper RIS modeling, explainability data, causal analysis and energy metrics
         
@@ -748,10 +755,13 @@ class SmartFactoryChannel:
                         # Verify it's a valid RIS object before proceeding
                         if not isinstance(stored_ris, RIS):
                             raise ValueError("Invalid RIS object type")
-                            
+                        
+                        # Generate unique temporary name for restored RIS
+                        temp_ris_name = f"ris_temp_{id(stored_ris)}"
+                        
                         # Store RIS properties before removing
                         stored_ris_config = {
-                            'name': stored_ris.name,
+                            'name': temp_ris_name,  # Use temporary name
                             'position': stored_ris.position,
                             'orientation': stored_ris.orientation,
                             'size': stored_ris.size,
@@ -783,9 +793,9 @@ class SmartFactoryChannel:
                                 tau=tau_without_ris,
                             )
 
-                            # Create new RIS object with stored configuration
+                            # Create new RIS object with stored configuration and temporary name
                             new_ris = RIS(
-                                name=stored_ris_config['name'],
+                                name=temp_ris_name,  # Use temporary name
                                 position=stored_ris_config['position'],
                                 orientation=stored_ris_config['orientation'],
                                 num_rows=self.config.ris_elements[0],
@@ -794,15 +804,21 @@ class SmartFactoryChannel:
                             )
                             new_ris.phase_profile = stored_ris_config['phase_profile']
                             
-                            # Add the new RIS back to scene
-                            self.scene.add(new_ris)
+                            try:
+                                # Add the new RIS back to scene
+                                self.scene.add(new_ris)
+                            except ValueError as add_error:
+                                print(f"Warning: Could not add temporary RIS: {add_error}")
+                                # If adding fails, ensure we have fallback values
+                                paths_without_ris = paths_with_ris
+                                h_without_ris = h_with_ris
                             
                         except Exception as e:
                             # Make sure to restore RIS even if an error occurs
                             if stored_ris is not None:
                                 try:
                                     new_ris = RIS(
-                                        name=stored_ris_config['name'],
+                                        name=temp_ris_name,  # Use temporary name
                                         position=stored_ris_config['position'],
                                         orientation=stored_ris_config['orientation'],
                                         num_rows=self.config.ris_elements[0],
@@ -813,7 +829,18 @@ class SmartFactoryChannel:
                                     self.scene.add(new_ris)
                                 except Exception as restore_error:
                                     print(f"Error restoring RIS: {restore_error}")
+                                    # Ensure we have fallback values
+                                    paths_without_ris = paths_with_ris
+                                    h_without_ris = h_with_ris
                             raise e
+                        finally:
+                            # Cleanup any temporary RIS objects
+                            try:
+                                temp_ris = self.scene.get(temp_ris_name)
+                                if temp_ris is not None:
+                                    self.scene.remove(temp_ris_name)
+                            except Exception as cleanup_error:
+                                print(f"Warning: Error during temporary RIS cleanup: {cleanup_error}")
                     else:
                         paths_without_ris = paths_with_ris
                         h_without_ris = h_with_ris
