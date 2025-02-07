@@ -1,5 +1,6 @@
 import tensorflow as tf
 import sionna
+from sionna.rt import RadioMaterial
 from sionna.rt import (
     load_scene, Scene, PlanarArray, Transmitter, Receiver, RIS, RadioMaterial, SceneObject
 )
@@ -24,17 +25,26 @@ def setup_scene(config):
             print("[DEBUG] Current object IDs:", [(name, getattr(obj, 'object_id', None)) 
                                                 for name, obj in scene.objects.items()])
             
+            metal_material = RadioMaterial("itu_metal", dtype=config.dtype)
+
             bs = Transmitter(
                 name="bs",
                 position=bs_pos,
                 orientation=bs_orientation,
                 dtype=config.dtype
             )
-            
+
+            # Add velocity property - set to zero for a stationary base station
+            bs.velocity = tf.constant([0.0, 0.0, 0.0], dtype=tf.float32)
+
             # Set object_id before adding to scene
             bs.object_id = len(scene.objects)
             print(f"[DEBUG] Base station object_id set to: {getattr(bs, 'object_id', None)}")
             
+
+            bs.radio_material = metal_material   # Use the RadioMaterial object instead of string
+            print(f"[DEBUG] Base station object_id set to: {getattr(bs, 'object_id', None)}")
+
             # Add to scene
             scene.add(bs)
             
@@ -95,8 +105,12 @@ def setup_scene(config):
             )
             
             # Set object_id before adding to scene
+            bs.object_id = len(scene.objects)
             ris.object_id = len(scene.objects)
             print(f"[DEBUG] RIS object_id set to: {getattr(ris, 'object_id', None)}")
+            
+            # Set radio material
+            bs.radio_material = RadioMaterial("itu_metal", dtype=config.dtype)
             
             # Add to scene
             scene.add(ris)
