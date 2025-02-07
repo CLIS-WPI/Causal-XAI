@@ -122,6 +122,7 @@ class SmartFactoryConfig:
         }
         
         self.causal = {
+            # In causal
             'variables': {
                 'agv_position': True,
                 'los_condition': True,
@@ -150,7 +151,7 @@ class SmartFactoryConfig:
                 'show_feature_importance': True,
                 'max_display': 10,
                 'figure_size': (10, 6)
-            },
+            },# In shap
             'features': {
                 'channel_response': True,
                 'los_condition': True,
