@@ -30,11 +30,11 @@ class SmartFactoryConfig:
         self.bs_polarization = "VH"        # Added polarization config
         
         # Enhanced RIS configuration
-        self.ris_position = [10.0, 19.5, 2.5]
-        self.ris_orientation = [0.0, 0.0, 0.0]
-        self.ris_elements = [8, 8]  # 8x8 elements
-        self.ris_spacing = 0.5 * self.wavelength
-        self.ris_modes = 1  # Number of modes for RIS
+        self.ris_position = [10.0, 19.5, 2.5] # 3D position array [x, y, z]
+        self.ris_orientation = [0.0, 0.0, 0.0] # 3D orientation array [rx, ry, rz] 
+        self.ris_elements = [8, 8]  # 8x8 elements # 2D array [num_rows, num_cols]
+        self.ris_spacing = 0.5 * self.wavelength # RIS element spacing
+        self.ris_modes = 1  # Number of modes for RIS # Number of modes for RIS
         
         # Enhanced AGV configuration
         self.num_agvs = 2
