@@ -6,7 +6,7 @@ class SmartFactoryConfig:
     def __init__(self):
         # Keep existing basic parameters
         self.num_time_steps = 100
-        self.sampling_frequency = 1000
+        #self.sampling_frequency = 1000
         self.batch_size = 1
         self.dtype = tf.complex64
         self.seed = 42

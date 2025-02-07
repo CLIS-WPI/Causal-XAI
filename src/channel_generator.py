@@ -770,16 +770,15 @@ class SmartFactoryChannel:
                     diffraction=self.config.ray_tracing['diffraction'],
                     scattering=self.config.ray_tracing['scattering']
                 )
-                                
-                # Get channel impulse response with RIS
-                cir_with_ris = paths_with_ris.cir(
+                
+                # Apply Doppler effect and get channel impulse response with RIS
+                paths_with_ris.apply_doppler(
                     sampling_frequency=self.config.sampling_frequency,
                     num_time_steps=1
                 )
                 
-                # Unpack CIR components
-                a_with_ris = cir_with_ris.a  # Complex path coefficients
-                tau_with_ris = cir_with_ris.tau  # Path delays
+                # Get channel impulse response
+                a_with_ris, tau_with_ris = paths_with_ris.cir()
                 
                 # Calculate OFDM subcarrier frequencies
                 frequencies = tf.range(
@@ -809,19 +808,17 @@ class SmartFactoryChannel:
                         los=self.config.ray_tracing['los'],
                         reflection=self.config.ray_tracing['reflection'],
                         diffraction=self.config.ray_tracing['diffraction'],
-                        scattering=self.config.ray_tracing['scattering'],
-                        min_path_gain_db=self.config.ray_tracing['min_path_gain']
+                        scattering=self.config.ray_tracing['scattering']
                     )
                     
-                    # Get channel impulse response without RIS
-                    cir_without_ris = paths_without_ris.cir(
+                    # Apply Doppler effect and get channel impulse response without RIS
+                    paths_without_ris.apply_doppler(
                         sampling_frequency=self.config.sampling_frequency,
                         num_time_steps=1
                     )
                     
-                    # Unpack CIR components
-                    a_without_ris = cir_without_ris.a
-                    tau_without_ris = cir_without_ris.tau
+                    # Get channel impulse response
+                    a_without_ris, tau_without_ris = paths_without_ris.cir()
                     
                     # Generate OFDM channel without RIS
                     h_without_ris = cir_to_ofdm_channel(
