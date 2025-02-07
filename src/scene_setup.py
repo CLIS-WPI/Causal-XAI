@@ -23,15 +23,20 @@ def setup_scene(config):
         # Load scene from XML file that contains PLY references
         scene = load_scene('src/factory_scene.xml', dtype=config.dtype)
         
-        # Initialize object ID counter and track all objects
-        current_object_id = 0
-        all_objects = {}
-        
         # Set frequency 
         scene.frequency = tf.cast(config.carrier_frequency, tf.float32)
         print(f"[DEBUG] Scene initialized with frequency: {scene.frequency/1e9} GHz")
 
-        # Add base station with correct type casting and object ID
+        # First, process existing scene objects to get the current max object ID
+        max_object_id = -1
+        for obj in scene.objects.values():
+            if hasattr(obj, 'object_id'):
+                max_object_id = max(max_object_id, obj.object_id)
+        
+        # Start new object IDs after the existing maximum
+        current_object_id = max_object_id + 1
+        
+        # Add base station
         bs_pos = [tf.cast(x, tf.float32) for x in config.bs_position]
         tx = Transmitter(
             name="bs",
@@ -40,7 +45,6 @@ def setup_scene(config):
         )
         tx.object_id = current_object_id
         current_object_id += 1
-        all_objects["bs"] = tx
         scene.add(tx)
 
         # Configure antenna arrays
@@ -64,7 +68,7 @@ def setup_scene(config):
             dtype=config.dtype
         )
 
-        # Add AGVs with sequential IDs
+        # Add AGVs
         for i in range(config.num_agvs):
             position = [12.0 - i*4.0, 5.0 + i*10.0, 0.5]
             position = [tf.cast(x, tf.float32) for x in position]
@@ -75,10 +79,9 @@ def setup_scene(config):
             )
             rx.object_id = current_object_id
             current_object_id += 1
-            all_objects[f"agv_{i}"] = rx
             scene.add(rx)
 
-        # Add RIS with proper ID
+        # Add RIS
         ris_pos = [tf.cast(x, tf.float32) for x in config.ris_position]
         ris = RIS(
             name="ris",
@@ -90,31 +93,16 @@ def setup_scene(config):
         )
         ris.object_id = current_object_id
         current_object_id += 1
-        all_objects["ris"] = ris
         scene.add(ris)
 
-        # Process existing scene objects (walls, shelves, etc.)
-        for name, obj in scene.objects.items():
-            if name not in all_objects:  # Only process objects we haven't added
-                obj.object_id = current_object_id
-                current_object_id += 1
-                all_objects[name] = obj
-
-        # Store total number of objects
-        scene.total_objects = current_object_id
-        print(f"[DEBUG] Total objects in scene: {scene.total_objects}")
-
-        # Final validation
-        max_object_id = max([obj.object_id for obj in scene.objects.values() 
-                        if hasattr(obj, 'object_id')])
-        if max_object_id >= scene.total_objects:
-            raise ValueError(
-                f"Maximum object ID ({max_object_id}) exceeds total objects "
-                f"({scene.total_objects})"
-            )
-
+        # Print debug information
+        print(f"[DEBUG] Total objects in scene: {len(scene.objects)}")
         print("[DEBUG] Scene setup completed successfully")
+        
         return scene
+
+    except Exception as e:
+        raise RuntimeError(f"Failed to setup scene: {str(e)}") from e
 
     except Exception as e:
         print(f"[CRITICAL ERROR] Scene setup failed: {str(e)}")
