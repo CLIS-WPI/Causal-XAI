@@ -138,3 +138,23 @@ class SmartFactoryConfig:
             'snr_range': [-10, 30],
             'channel_estimation_error': 0.1
         }
+        
+        self.shap = {
+            'analysis': {
+                'num_background_samples': 100,
+                'min_samples_required': 10,
+                'max_display_features': 20
+            },
+            'visualization': {
+                'plot_type': 'bar',
+                'show_feature_importance': True,
+                'max_display': 10,
+                'figure_size': (10, 6)
+            },
+            'features': {
+                'channel_response': True,
+                'los_condition': True,
+                'agv_position': True,
+                'ris_state': True
+            }
+        }
