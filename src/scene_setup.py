@@ -21,12 +21,19 @@ def setup_scene(config):
             bs_pos = tf.constant(config.bs_position, dtype=tf.float32)
             bs_orientation = tf.constant([0.0, 0.0, 0.0], dtype=tf.float32)
             
+            # Debug current scene state
             print("[DEBUG] Scene objects before BS addition:", list(scene.objects.keys()))
             print("[DEBUG] Current object IDs:", [(name, getattr(obj, 'object_id', None)) 
                                                 for name, obj in scene.objects.items()])
             
+            # Validate current object IDs
+            current_ids = [getattr(obj, 'object_id', None) for obj in scene.objects.values()]
+            print(f"[DEBUG] Current object IDs in use: {current_ids}")
+            
+            # Create metal material
             metal_material = RadioMaterial("itu_metal", dtype=config.dtype)
 
+            # Create base station
             bs = Transmitter(
                 name="bs",
                 position=bs_pos,
@@ -34,31 +41,54 @@ def setup_scene(config):
                 dtype=config.dtype
             )
 
-            # Add velocity property - set to zero for a stationary base station
+            # Add velocity property
             bs.velocity = tf.constant([0.0, 0.0, 0.0], dtype=tf.float32)
 
-            # Set object_id before adding to scene
-            bs.object_id = len(scene.objects)
-            print(f"[DEBUG] Base station object_id set to: {getattr(bs, 'object_id', None)}")
+            # Calculate next available object ID
+            next_id = max(current_ids + [-1]) + 1 if current_ids else 0
+            bs.object_id = next_id
             
+            print(f"[DEBUG] Next available object_id: {next_id}")
+            print(f"[DEBUG] Base station assigned object_id: {getattr(bs, 'object_id', None)}")
 
-            bs.radio_material = metal_material   # Use the RadioMaterial object instead of string
-            print(f"[DEBUG] Base station object_id set to: {getattr(bs, 'object_id', None)}")
+            # Set radio material
+            bs.radio_material = metal_material
+
+            # Validate object ID before adding to scene
+            if hasattr(bs, 'object_id'):
+                print(f"[DEBUG] Validating BS object_id: {bs.object_id}")
+                if bs.object_id in current_ids:
+                    raise ValueError(f"Duplicate object ID {bs.object_id} detected")
+            else:
+                raise ValueError("Base station missing object_id attribute")
 
             # Add to scene
             scene.add(bs)
             
-            # Explicitly add to scene objects if not already added
-            if 'bs' not in scene.objects:
-                scene._scene_objects['bs'] = bs
-            
+            # Verify successful addition
             print(f"[DEBUG] Base station added successfully at position {bs_pos}")
             print(f"[DEBUG] Base station registered as transmitter: {bs.name in scene.transmitters}")
             print(f"[DEBUG] Base station registered as object: {bs.name in scene.objects}")
-            print(f"[DEBUG] Scene objects after BS addition: {list(scene.objects.keys())}")
             
+            # Verify final state
+            print(f"[DEBUG] Scene objects after BS addition: {list(scene.objects.keys())}")
+            print(f"[DEBUG] Final object IDs: {[(name, getattr(obj, 'object_id', None)) for name, obj in scene.objects.items()]}")
+            
+            # Validate no duplicate IDs exist
+            final_ids = [getattr(obj, 'object_id', None) for obj in scene.objects.values()]
+            if len(final_ids) != len(set(final_ids)):
+                raise ValueError("Duplicate object IDs detected after BS addition")
+            
+            # Validate max ID doesn't exceed object count
+            max_id = max(final_ids) if final_ids else -1
+            if max_id >= len(scene.objects):
+                raise ValueError(f"Maximum object ID ({max_id}) exceeds total objects ({len(scene.objects)})")
+
         except Exception as e:
             print(f"[ERROR] Failed to add base station: {str(e)}")
+            print(f"[DEBUG] Current scene state at failure:")
+            print(f"[DEBUG] Objects: {list(scene.objects.keys())}")
+            print(f"[DEBUG] Object IDs: {[(name, getattr(obj, 'object_id', None)) for name, obj in scene.objects.items()]}")
             raise RuntimeError(f"Failed to add base station: {str(e)}")
 
         # Configure antenna arrays
