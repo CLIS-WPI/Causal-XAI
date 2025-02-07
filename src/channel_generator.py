@@ -141,34 +141,47 @@ class SmartFactoryChannel:
         """Validate scene configuration and object IDs."""
         if not hasattr(self.scene, 'objects'):
             raise ValueError("Scene is not properly configured - missing objects attribute")
-            
+                
         if not self.scene.objects:
             raise ValueError("Scene contains no objects")
-            
+                
         # Get total number of objects
         total_objects = len(self.scene.objects)
-        
+            
         # Validate object IDs
         max_object_id = -1
         for obj in self.scene.objects.values():
             if hasattr(obj, 'object_id'):
                 max_object_id = max(max_object_id, obj.object_id)
-        
+            
         if max_object_id >= total_objects:
             raise ValueError(
                 f"Maximum object ID ({max_object_id}) exceeds total objects "
                 f"({total_objects})"
             )
-        
+            
         # Validate required scene components
         required_objects = ['bs', 'ris']  # Add required object names
         for obj_name in required_objects:
             if not any(obj.name == obj_name for obj in self.scene.objects.values()):
                 raise ValueError(f"Scene is missing required object: {obj_name}")
-        
+            
         # Validate antenna arrays
         if not hasattr(self.scene, 'tx_array') or not hasattr(self.scene, 'rx_array'):
             raise ValueError("Scene is missing antenna array configuration")
+
+    def _verify_object_ids(self):
+        """Verify all object IDs are unique and valid"""
+        object_ids = []
+        for obj in self.scene.objects.values():
+            if hasattr(obj, 'object_id'):
+                if obj.object_id in object_ids:
+                    raise ValueError(f"Duplicate object ID {obj.object_id} found")
+                object_ids.append(obj.object_id)
+                
+            if obj.object_id >= len(self.scene.objects):
+                raise ValueError(f"Object ID {obj.object_id} exceeds scene size")
+        
     def add(self, item):
         """Add an item to the scene with proper object ID management"""
         try:
@@ -196,6 +209,9 @@ class SmartFactoryChannel:
                 # Set scene reference
                 item.scene = self.scene
                 
+                # Verify object IDs after adding RIS
+                self._verify_object_ids()
+                
             else:
                 # For non-RIS objects, use scene's default add method
                 self.scene.add(item)
@@ -204,8 +220,11 @@ class SmartFactoryChannel:
                 if hasattr(item, 'object_id'):
                     item.object_id = max_id + 1
                     
+                # Verify object IDs after adding any object
+                self._verify_object_ids()
+                        
             return item
-            
+                
         except Exception as e:
             raise RuntimeError(f"Error adding item to scene: {str(e)}")
     
@@ -870,7 +889,8 @@ class SmartFactoryChannel:
                             
                             try:
                                 # Add the new RIS back to scene
-                                self.scene.add(new_ris)
+                                self.add(new_ris)
+                                self._verify_object_ids()
                             except ValueError as add_error:
                                 print(f"Warning: Could not add temporary RIS: {add_error}")
                                 # If adding fails, ensure we have fallback values
@@ -890,7 +910,8 @@ class SmartFactoryChannel:
                                         dtype=self.config.dtype
                                     )
                                     new_ris.phase_profile = stored_ris_config['phase_profile']
-                                    self.scene.add(new_ris)
+                                    self.add(new_ris)
+                                    self._verify_object_ids()
                                 except Exception as restore_error:
                                     print(f"Error restoring RIS: {restore_error}")
                                     # Ensure we have fallback values
