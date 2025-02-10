@@ -149,12 +149,15 @@ def setup_scene(config):
             ris.object_id = next_id
             print(f"[DEBUG] RIS object_id set to: {getattr(ris, 'object_id', None)}")
             
-            # Create and set radio material
-            metal_material = RadioMaterial("itu_metal", dtype=config.dtype)
-            metal_material.scene = scene  # Set scene reference for material
-            
-            # Set radio material before adding to scene
-            ris.radio_material = metal_material
+            # Get or create radio material for BS
+            metal_material = scene.get("itu_metal")
+            if metal_material is None:
+                metal_material = RadioMaterial("itu_metal", dtype=config.dtype)
+                metal_material.scene = scene
+                scene.add(metal_material)
+
+            # Set radio material
+            bs.radio_material = metal_material
             
             # Add to scene
             scene.add(ris)
@@ -163,7 +166,6 @@ def setup_scene(config):
             print("[DEBUG] RIS added successfully")
             print(f"[DEBUG] RIS registered as RIS: {'ris' in scene.ris}")
             print(f"[DEBUG] RIS registered as object: {'ris' in scene.objects}")
-            print(f"[DEBUG] Scene objects after RIS addition: {list(scene.objects.keys())}")
             
             # Verify final state
             final_ids = [getattr(obj, 'object_id', None) for obj in scene.objects.values()]
