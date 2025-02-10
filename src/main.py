@@ -15,12 +15,21 @@ import logging
 from validation import ChannelValidator
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress TF warnings
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN custom operations
-# Configure logging
+
+import logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('smart_factory.log'),  # Save logs to file
+        logging.StreamHandler()  # Also show logs in console
+    ]
 )
 logger = logging.getLogger(__name__)
+
+# Optional: Set specific log levels for different modules
+logging.getLogger('matplotlib').setLevel(logging.WARNING)  # Reduce matplotlib debug spam
+logging.getLogger('tensorflow').setLevel(logging.WARNING)  # Reduce tensorflow debug spam
 
 # Enable XLA compatibility
 sionna.config.xla_compat = True
