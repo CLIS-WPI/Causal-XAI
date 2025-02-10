@@ -56,10 +56,6 @@ class SceneManager:
             scene: Sionna Scene object
             config: Configuration object containing scene parameters
         """
-        # Add dtype validation
-        if not hasattr(scene, 'dtype'):
-            scene.dtype = config.dtype
-            
         self._scene = scene
         self._config = config
         self._lock = threading.Lock()

@@ -22,8 +22,7 @@ def setup_scene(config):
     try:
         logger.info("Creating new scene...")
         # Create new scene instead of loading
-        scene = Scene()
-        scene.dtype = config.dtype
+        scene = Scene(dtype=config.dtype)
         scene.frequency = tf.cast(config.carrier_frequency, tf.float32)
         logger.info("Scene created successfully")
 
