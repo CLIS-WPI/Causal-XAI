@@ -4,7 +4,7 @@ from sionna.rt import RadioMaterial
 from sionna.rt import (
     load_scene, Scene, PlanarArray, Transmitter, Receiver, RIS, RadioMaterial, SceneObject
 )
-from src.scene_manager import SceneManager
+from scene_manager import SceneManager
 print(f"[DEBUG] Using Sionna version: {sionna.__version__}")
 
 def setup_scene(config):
