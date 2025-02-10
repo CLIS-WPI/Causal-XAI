@@ -34,7 +34,7 @@ def setup_scene(config):
         # Validate config prerequisites
         logger.debug("Validating configuration...")
         required_attrs = ['dtype', 'carrier_frequency', 'bs_position', 'ris_position', 
-                         'ris_elements', 'num_agvs', 'agv_height']
+                        'ris_elements', 'num_agvs', 'agv_height']
         missing_attrs = [attr for attr in required_attrs if not hasattr(config, attr)]
         if missing_attrs:
             raise ValueError(f"Missing required config attributes: {missing_attrs}")
@@ -45,7 +45,7 @@ def setup_scene(config):
         # Create scene with explicit error checking
         logger.info("Creating new scene...")
         try:
-            scene = Scene(dtype=config.dtype)
+            scene = Scene(env_filename="__empty__", dtype=config.dtype)
             if not hasattr(scene, '_dtype'):
                 raise AttributeError("Scene dtype not properly initialized")
             logger.debug(f"Scene created with dtype: {scene._dtype}")
