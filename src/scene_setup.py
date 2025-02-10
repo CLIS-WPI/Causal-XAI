@@ -148,20 +148,30 @@ def setup_scene(config):
             next_id = max(current_ids + [-1]) + 1 if current_ids else 0
             ris.object_id = next_id
             print(f"[DEBUG] RIS object_id set to: {getattr(ris, 'object_id', None)}")
-            
-            # Get or create radio material for BS
+                
+            # Get or create radio material
             metal_material = scene.get("itu_metal")
             if metal_material is None:
                 metal_material = RadioMaterial("itu_metal", dtype=config.dtype)
                 metal_material.scene = scene
                 scene.add(metal_material)
 
-            # Set radio material
-            bs.radio_material = metal_material
+            # Set radio material for RIS (not BS)
+            ris.radio_material = metal_material
             
-            # Add to scene
+            # Add RIS to scene
             scene.add(ris)
-            
+
+            # Explicitly add RIS to scene objects if not already there
+            if 'ris' not in scene.objects:
+                scene._scene_objects['ris'] = ris
+
+            # After adding RIS
+            print("[DEBUG] Scene state after RIS addition:")
+            print(f"[DEBUG] Scene objects: {list(scene.objects.keys())}")
+            print(f"[DEBUG] Scene RIS: {list(scene.ris.keys())}")
+            print(f"[DEBUG] RIS object ID: {getattr(ris, 'object_id', None)}")
+
             # Verify RIS addition
             print("[DEBUG] RIS added successfully")
             print(f"[DEBUG] RIS registered as RIS: {'ris' in scene.ris}")
@@ -223,7 +233,6 @@ def verify_scene(scene):
     print(f"[DEBUG] Available objects: {list(scene.objects.keys())}")
     print(f"[DEBUG] Available transmitters: {list(scene.transmitters.keys())}")
     print(f"[DEBUG] Available RIS: {list(scene.ris.keys()) if hasattr(scene, 'ris') else 'No RIS'}")
-    print(f"[DEBUG] Object IDs: {[(name, getattr(obj, 'object_id', None)) for name, obj in scene.objects.items()]}")
     
     # Verify base station
     if "bs" not in scene.transmitters:
@@ -231,13 +240,18 @@ def verify_scene(scene):
     if "bs" not in scene.objects:
         print("[WARNING] Base station not in scene objects, attempting to add...")
         scene._scene_objects['bs'] = scene.transmitters['bs']
-        if "bs" not in scene.objects:
-            raise RuntimeError("Base station not found in scene objects")
-        print("[DEBUG] Base station added to scene objects")
     
     # Verify RIS
-    if not scene.ris or "ris" not in scene.ris:
-        raise RuntimeError("RIS not found in scene")
+    if not hasattr(scene, 'ris') or "ris" not in scene.ris:
+        raise RuntimeError("RIS not found in scene.ris")
+    if "ris" not in scene.objects:
+        print("[WARNING] RIS not in scene objects, attempting to add...")
+        scene._scene_objects['ris'] = scene.ris['ris']
+    
+    # Verify RIS radio material
+    ris = scene.ris.get('ris')
+    if ris is None or not hasattr(ris, 'radio_material'):
+        raise RuntimeError("RIS missing radio material")
     
     # Verify antenna arrays
     if not hasattr(scene, 'tx_array') or not hasattr(scene, 'rx_array'):
