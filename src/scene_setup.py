@@ -164,7 +164,7 @@ def setup_scene(config):
         logger.exception("Detailed error trace:")
         raise RuntimeError(f"Scene setup error: {str(e)}") from e
 
-def _add_room_boundaries(scene, config):
+def _add_room_boundaries(self):
     """Add walls, floor and ceiling to the scene"""
     try:
         # Create concrete material
@@ -172,73 +172,52 @@ def _add_room_boundaries(scene, config):
             name="concrete",
             relative_permittivity=4.5,
             conductivity=0.01,
-            dtype=config.dtype
+            dtype=self._scene.dtype
         )
         
-        # Add to scene
-        scene.add(concrete)
+        # Add material to scene
+        self._scene.add(concrete)
         
         # Room dimensions
-        length, width, height = config.room_dim
+        length, width, height = self._config.room_dim
         
         # Add floor
         floor = SceneObject(
             name="floor",
-            position=[length/2, width/2, 0],
-            size=[length, width, 0.2],
             radio_material=concrete,
-            dtype=config.dtype
+            dtype=self._scene.dtype
         )
-        scene.add(floor)
+        floor.scene = self._scene
+        floor.position = tf.constant([length/2, width/2, 0], dtype=tf.float32)
+        self._scene.add(floor)
         
         # Add ceiling
         ceiling = SceneObject(
-            name="ceiling",
-            position=[length/2, width/2, height],
-            size=[length, width, 0.2],
+            name="ceiling", 
             radio_material=concrete,
-            dtype=config.dtype
+            dtype=self._scene.dtype
         )
-        scene.add(ceiling)
+        ceiling.scene = self._scene
+        ceiling.position = tf.constant([length/2, width/2, height], dtype=tf.float32)
+        self._scene.add(ceiling)
         
-        # Add walls
+        # Add walls in similar pattern
         walls = [
-            # Front wall
-            SceneObject(
-                name="wall_front",
-                position=[length/2, 0, height/2],
-                size=[length, 0.2, height],
-                radio_material=concrete,
-                dtype=config.dtype
-            ),
-            # Back wall
-            SceneObject(
-                name="wall_back",
-                position=[length/2, width, height/2],
-                size=[length, 0.2, height],
-                radio_material=concrete,
-                dtype=config.dtype
-            ),
-            # Left wall
-            SceneObject(
-                name="wall_left",
-                position=[0, width/2, height/2],
-                size=[0.2, width, height],
-                radio_material=concrete,
-                dtype=config.dtype
-            ),
-            # Right wall
-            SceneObject(
-                name="wall_right",
-                position=[length, width/2, height/2],
-                size=[0.2, width, height],
-                radio_material=concrete,
-                dtype=config.dtype
-            )
+            ("wall_front", [length/2, 0, height/2]),
+            ("wall_back", [length/2, width, height/2]),
+            ("wall_left", [0, width/2, height/2]),
+            ("wall_right", [length, width/2, height/2])
         ]
         
-        for wall in walls:
-            scene.add(wall)
+        for name, pos in walls:
+            wall = SceneObject(
+                name=name,
+                radio_material=concrete,
+                dtype=self._scene.dtype
+            )
+            wall.scene = self._scene
+            wall.position = tf.constant(pos, dtype=tf.float32)
+            self._scene.add(wall)
             
     except Exception as e:
         logger.error(f"Failed to add room boundaries: {str(e)}")
