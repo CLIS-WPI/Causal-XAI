@@ -1,11 +1,21 @@
 import tensorflow as tf
 import sionna
+import logging
 from sionna.rt import RadioMaterial
 from sionna.rt import (
     load_scene, Scene, PlanarArray, Transmitter, Receiver, RIS, RadioMaterial, SceneObject
 )
 from scene_manager import SceneManager
 print(f"[DEBUG] Using Sionna version: {sionna.__version__}")
+
+# Setup logger
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+handler = logging.StreamHandler()
+handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 def setup_scene(config):
     """Setup the factory scene with transmitters, receivers, and RIS"""
