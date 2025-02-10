@@ -80,63 +80,63 @@ class SceneManager:
         logger.info("Scene manager initialized successfully")
 
     def _add_room_boundaries(self):
-    """Add walls, floor and ceiling to the scene"""
-    try:
-        # Create concrete material
-        concrete = RadioMaterial(
-            name="concrete",
-            relative_permittivity=4.5,
-            conductivity=0.01,
-            dtype=self._scene.dtype
-        )
-        
-        # Add material to scene
-        self._scene.add(concrete)
-        
-        # Room dimensions
-        length, width, height = self._config.room_dim
-        
-        # Add floor
-        floor = SceneObject(
-            name="floor",
-            radio_material=concrete,
-            dtype=self._scene.dtype
-        )
-        floor.scene = self._scene
-        floor.position = tf.constant([length/2, width/2, 0], dtype=tf.float32)
-        self._scene.add(floor)
-        
-        # Add ceiling
-        ceiling = SceneObject(
-            name="ceiling", 
-            radio_material=concrete,
-            dtype=self._scene.dtype
-        )
-        ceiling.scene = self._scene
-        ceiling.position = tf.constant([length/2, width/2, height], dtype=tf.float32)
-        self._scene.add(ceiling)
-        
-        # Add walls
-        walls = [
-            ("wall_front", [length/2, 0, height/2]),
-            ("wall_back", [length/2, width, height/2]),
-            ("wall_left", [0, width/2, height/2]),
-            ("wall_right", [length, width/2, height/2])
-        ]
-        
-        for name, pos in walls:
-            wall = SceneObject(
-                name=name,
+        """Add walls, floor and ceiling to the scene"""
+        try:
+            # Create concrete material
+            concrete = RadioMaterial(
+                name="concrete",
+                relative_permittivity=4.5,
+                conductivity=0.01,
+                dtype=self._scene.dtype
+            )
+            
+            # Add material to scene
+            self._scene.add(concrete)
+            
+            # Room dimensions
+            length, width, height = self._config.room_dim
+            
+            # Add floor
+            floor = SceneObject(
+                name="floor",
                 radio_material=concrete,
                 dtype=self._scene.dtype
             )
-            wall.scene = self._scene
-            wall.position = tf.constant(pos, dtype=tf.float32)
-            self._scene.add(wall)
+            floor.scene = self._scene
+            floor.position = tf.constant([length/2, width/2, 0], dtype=tf.float32)
+            self._scene.add(floor)
             
-    except Exception as e:
-        logger.error(f"Failed to add room boundaries: {str(e)}")
-        raise
+            # Add ceiling
+            ceiling = SceneObject(
+                name="ceiling", 
+                radio_material=concrete,
+                dtype=self._scene.dtype
+            )
+            ceiling.scene = self._scene
+            ceiling.position = tf.constant([length/2, width/2, height], dtype=tf.float32)
+            self._scene.add(ceiling)
+            
+            # Add walls
+            walls = [
+                ("wall_front", [length/2, 0, height/2]),
+                ("wall_back", [length/2, width, height/2]),
+                ("wall_left", [0, width/2, height/2]),
+                ("wall_right", [length, width/2, height/2])
+            ]
+            
+            for name, pos in walls:
+                wall = SceneObject(
+                    name=name,
+                    radio_material=concrete,
+                    dtype=self._scene.dtype
+                )
+                wall.scene = self._scene
+                wall.position = tf.constant(pos, dtype=tf.float32)
+                self._scene.add(wall)
+                
+        except Exception as e:
+            logger.error(f"Failed to add room boundaries: {str(e)}")
+            raise
 
     def _initialize_registries(self):
         """Initialize object and material registries from existing scene state"""
