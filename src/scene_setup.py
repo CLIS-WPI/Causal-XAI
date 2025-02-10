@@ -124,6 +124,7 @@ def setup_scene(config):
             
             ris_pos = tf.constant(config.ris_position, dtype=tf.float32)
             ris_orientation = tf.constant(config.ris_orientation, dtype=tf.float32)
+            print(f"[DEBUG] Creating RIS at position {ris_pos} with orientation {ris_orientation}")
             
             # Create RIS instance
             ris = RIS(
@@ -134,73 +135,70 @@ def setup_scene(config):
                 num_cols=config.ris_elements[1],
                 dtype=config.dtype
             )
+            print(f"[DEBUG] RIS instance created with dimensions: {config.ris_elements}")
             
-            # Set scene reference before anything else
+            # Set scene reference first (required for proper initialization)
             ris.scene = scene
+            print("[DEBUG] Scene reference set for RIS")
             
-            # Calculate next available object ID including BS
-            current_ids = [getattr(obj, 'object_id', None) for obj in scene.objects.values()]
-            if 'bs' in scene.transmitters:
-                bs_id = getattr(scene.transmitters['bs'], 'object_id', None)
-                if bs_id is not None:
-                    current_ids.append(bs_id)
-            
-            next_id = max(current_ids + [-1]) + 1 if current_ids else 0
-            ris.object_id = next_id
-            print(f"[DEBUG] RIS object_id set to: {getattr(ris, 'object_id', None)}")
-                
-            # Get or create radio material
+            # Get or create radio material before setting object ID
             metal_material = scene.get("itu_metal")
             if metal_material is None:
+                print("[DEBUG] Creating new itu_metal material")
                 metal_material = RadioMaterial("itu_metal", dtype=config.dtype)
                 metal_material.scene = scene
                 scene.add(metal_material)
+            else:
+                print("[DEBUG] Using existing itu_metal material")
 
-            # Set radio material for RIS (not BS)
+            # Set radio material for RIS
             ris.radio_material = metal_material
+            print(f"[DEBUG] Radio material set for RIS: {getattr(ris.radio_material, 'name', None)}")
             
-            # Add RIS to scene
+            # Add RIS to scene (this will automatically handle object ID assignment)
             scene.add(ris)
+            print("[DEBUG] RIS added to scene")
+            print(f"[DEBUG] RIS object ID after scene addition: {getattr(ris, 'object_id', None)}")
 
-            # Explicitly add RIS to scene objects if not already there
-            if 'ris' not in scene.objects:
-                scene._scene_objects['ris'] = ris
-
-            # After adding RIS
-            print("[DEBUG] Scene state after RIS addition:")
+            # Verify RIS addition
+            print("\n[DEBUG] Scene state after RIS addition:")
             print(f"[DEBUG] Scene objects: {list(scene.objects.keys())}")
             print(f"[DEBUG] Scene RIS: {list(scene.ris.keys())}")
             print(f"[DEBUG] RIS object ID: {getattr(ris, 'object_id', None)}")
+            print(f"[DEBUG] RIS radio material: {getattr(ris.radio_material, 'name', None)}")
 
-            # Verify RIS addition
-            print("[DEBUG] RIS added successfully")
-            print(f"[DEBUG] RIS registered as RIS: {'ris' in scene.ris}")
-            print(f"[DEBUG] RIS registered as object: {'ris' in scene.objects}")
+            # Calculate total objects and verify IDs
+            total_objects = len(scene.objects)  # This already includes RIS and BS
+            all_ids = [getattr(obj, 'object_id', None) for obj in scene.objects.values()]
+            valid_ids = [id for id in all_ids if id is not None]
+            unique_ids = set(valid_ids)
             
-            # Verify final state
-            final_ids = [getattr(obj, 'object_id', None) for obj in scene.objects.values()]
-            if 'bs' in scene.transmitters:
-                bs_id = getattr(scene.transmitters['bs'], 'object_id', None)
-                if bs_id is not None:
-                    final_ids.append(bs_id)
-                    
-            print(f"[DEBUG] Final object IDs after RIS addition: {final_ids}")
+            print("\n[DEBUG] Final verification:")
+            print(f"[DEBUG] All object IDs: {valid_ids}")
+            print(f"[DEBUG] Unique object IDs: {list(unique_ids)}")
+            print(f"[DEBUG] Total objects in scene: {total_objects}")
             
-            # Validate no duplicate IDs
-            if len(final_ids) != len(set(final_ids)):
-                raise ValueError("Duplicate object IDs detected after RIS addition")
+            # Validate IDs
+            if len(valid_ids) != total_objects:
+                raise ValueError(f"Missing object IDs: found {len(valid_ids)} IDs for {total_objects} objects")
             
-            # Validate max ID doesn't exceed object count
-            total_objects = len(scene.objects) + len(scene.transmitters) + len(scene.ris)
-            max_id = max(final_ids) if final_ids else -1
+            if len(valid_ids) != len(unique_ids):
+                duplicate_ids = [id for id in valid_ids if valid_ids.count(id) > 1]
+                raise ValueError(f"Duplicate object IDs detected: {duplicate_ids}")
+            
+            max_id = max(valid_ids) if valid_ids else -1
             if max_id >= total_objects:
                 raise ValueError(f"Maximum object ID ({max_id}) exceeds total objects ({total_objects})")
             
+            print("[DEBUG] All RIS validations passed successfully")
+            print(f"[DEBUG] Object ID validation complete: {len(valid_ids)}/{total_objects} objects have valid IDs")
+            
         except Exception as e:
-            print(f"[ERROR] Failed to add RIS: {str(e)}")
+            print(f"\n[ERROR] Failed to add RIS: {str(e)}")
             print(f"[DEBUG] Current scene state at failure:")
             print(f"[DEBUG] Objects: {list(scene.objects.keys())}")
             print(f"[DEBUG] Object IDs: {[(name, getattr(obj, 'object_id', None)) for name, obj in scene.objects.items()]}")
+            print(f"[DEBUG] RIS state: {getattr(ris, '__dict__', 'Not created')}")
             raise RuntimeError(f"Failed to add RIS: {str(e)}")
 
         # Add AGVs
