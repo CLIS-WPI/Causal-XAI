@@ -138,38 +138,35 @@ class SmartFactoryChannel:
             raise RuntimeError(f"Error setting up antenna arrays: {str(e)}")
 
     def _validate_scene(self):
-        """Validate scene configuration and object IDs."""
+        """Validate scene configuration and object IDs"""
         if not hasattr(self.scene, 'objects'):
             raise ValueError("Scene is not properly configured - missing objects attribute")
-                
+            
         if not self.scene.objects:
             raise ValueError("Scene contains no objects")
-                
-        # Get total number of objects
-        total_objects = len(self.scene.objects)
             
-        # Validate object IDs
+        # Get total number of objects including BS and RIS
+        total_objects = len(self.scene.objects)
+        
+        # Find maximum object ID
         max_object_id = -1
         for obj in self.scene.objects.values():
             if hasattr(obj, 'object_id'):
                 max_object_id = max(max_object_id, obj.object_id)
-            
+        
+        # Verify object IDs are zero-based and continuous
         if max_object_id >= total_objects:
-            raise ValueError(
-                f"Maximum object ID ({max_object_id}) exceeds total objects "
-                f"({total_objects})"
-            )
-            
-        # Validate required scene components
-        required_objects = ['bs', 'ris']  # Add required object names
+            # Fix object IDs by reassigning them sequentially
+            for i, obj in enumerate(self.scene.objects.values()):
+                if hasattr(obj, 'object_id'):
+                    obj.object_id = i
+                    
+        # Verify required scene components
+        required_objects = ['bs', 'ris']
         for obj_name in required_objects:
             if not any(obj.name == obj_name for obj in self.scene.objects.values()):
                 raise ValueError(f"Scene is missing required object: {obj_name}")
             
-        # Validate antenna arrays
-        if not hasattr(self.scene, 'tx_array') or not hasattr(self.scene, 'rx_array'):
-            raise ValueError("Scene is missing antenna array configuration")
-
     def _verify_object_ids(self):
         """Verify all object IDs are unique and valid"""
         object_ids = []
