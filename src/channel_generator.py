@@ -138,7 +138,7 @@ class SmartFactoryChannel:
             raise RuntimeError(f"Error setting up antenna arrays: {str(e)}")
 
     def _validate_scene(self):
-        """Validate scene configuration and object IDs"""
+        """Validate scene configuration and object IDs."""
         if not hasattr(self.scene, 'objects'):
             raise ValueError("Scene is not properly configured - missing objects attribute")
             
@@ -150,22 +150,34 @@ class SmartFactoryChannel:
         
         # Find maximum object ID
         max_object_id = -1
+        object_ids = []
         for obj in self.scene.objects.values():
             if hasattr(obj, 'object_id'):
                 max_object_id = max(max_object_id, obj.object_id)
+                object_ids.append(obj.object_id)
+        
+        # Check for duplicate IDs
+        if len(object_ids) != len(set(object_ids)):
+            raise ValueError("Duplicate object IDs detected")
         
         # Verify object IDs are zero-based and continuous
         if max_object_id >= total_objects:
             # Fix object IDs by reassigning them sequentially
+            print("[DEBUG] Reassigning object IDs sequentially")
             for i, obj in enumerate(self.scene.objects.values()):
                 if hasattr(obj, 'object_id'):
                     obj.object_id = i
-                    
+                    print(f"[DEBUG] Assigned ID {i} to object {obj.name}")
+        
         # Verify required scene components
-        required_objects = ['bs', 'ris']
+        required_objects = ['bs', 'ris']  # Add other required object names if needed
         for obj_name in required_objects:
             if not any(obj.name == obj_name for obj in self.scene.objects.values()):
                 raise ValueError(f"Scene is missing required object: {obj_name}")
+        
+        # Validate antenna arrays
+        if not hasattr(self.scene, 'tx_array') or not hasattr(self.scene, 'rx_array'):
+            raise ValueError("Scene is missing antenna array configuration")
             
     def _verify_object_ids(self):
         """Verify all object IDs are unique and valid"""
