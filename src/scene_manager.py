@@ -240,10 +240,13 @@ class SceneManager:
             return material
 
     def add_transmitter(self, name: str, position: tf.Tensor,
-                    orientation: tf.Tensor, dtype=tf.complex64) -> Transmitter:
+                        orientation: tf.Tensor, dtype=tf.complex64) -> Transmitter:
         """Add a transmitter to the scene"""
         with self._lock:
             try:
+                # Log start
+                logger.debug(f"Creating transmitter {name}")
+                
                 # Create transmitter
                 tx = Transmitter(
                     name=name,
@@ -251,15 +254,19 @@ class SceneManager:
                     orientation=orientation,
                     dtype=dtype
                 )
+                logger.debug(f"Transmitter {name} created")
                 
                 # Set scene reference first
                 tx.scene = self._scene
+                logger.debug(f"Scene reference set for {name}")
                 
                 # Register object
                 object_id = self._register_object(tx, ObjectType.TRANSMITTER)
                 tx.object_id = object_id
+                logger.debug(f"Object ID {object_id} assigned to {name}")
                 
                 # Configure antenna array
+                logger.debug(f"Configuring antenna array for {name}")
                 tx_array = PlanarArray(
                     num_rows=self._config.bs_array[0],
                     num_cols=self._config.bs_array[1],
@@ -270,15 +277,18 @@ class SceneManager:
                     dtype=dtype
                 )
                 tx.array = tx_array
+                logger.debug(f"Antenna array configured for {name}")
                 
                 # Add to scene
                 self._scene.add(tx)
                 logger.info(f"Added transmitter {name} with ID {object_id}")
                 return tx
-                
+                    
             except Exception as e:
                 logger.error(f"Failed to add transmitter {name}: {str(e)}")
-                self._unregister_object(object_id)
+                logger.exception("Detailed error trace:")
+                if 'object_id' in locals():
+                    self._unregister_object(object_id)
                 raise
 
     def add_ris(self, name: str, position: tf.Tensor, orientation: tf.Tensor,

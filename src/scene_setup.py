@@ -181,43 +181,51 @@ def _add_room_boundaries(self):
         # Room dimensions
         length, width, height = self._config.room_dim
         
-        # Add floor
-        floor = SceneObject(
+        # Create walls using Transmitter objects (as placeholders for surfaces)
+        # This is a workaround since Sionna doesn't have a direct wall object
+        
+        # Floor
+        floor = Transmitter(
             name="floor",
-            radio_material=concrete,
+            position=tf.constant([length/2, width/2, 0], dtype=tf.float32),
+            orientation=tf.constant([0, 0, 0], dtype=tf.float32),
             dtype=self._scene.dtype
         )
         floor.scene = self._scene
-        floor.position = tf.constant([length/2, width/2, 0], dtype=tf.float32)
+        floor.radio_material = concrete
         self._scene.add(floor)
         
-        # Add ceiling
-        ceiling = SceneObject(
-            name="ceiling", 
-            radio_material=concrete,
+        # Ceiling
+        ceiling = Transmitter(
+            name="ceiling",
+            position=tf.constant([length/2, width/2, height], dtype=tf.float32),
+            orientation=tf.constant([0, 0, 0], dtype=tf.float32),
             dtype=self._scene.dtype
         )
         ceiling.scene = self._scene
-        ceiling.position = tf.constant([length/2, width/2, height], dtype=tf.float32)
+        ceiling.radio_material = concrete
         self._scene.add(ceiling)
         
-        # Add walls in similar pattern
-        walls = [
+        # Walls
+        wall_configs = [
             ("wall_front", [length/2, 0, height/2]),
             ("wall_back", [length/2, width, height/2]),
             ("wall_left", [0, width/2, height/2]),
             ("wall_right", [length, width/2, height/2])
         ]
         
-        for name, pos in walls:
-            wall = SceneObject(
+        for name, position in wall_configs:
+            wall = Transmitter(
                 name=name,
-                radio_material=concrete,
+                position=tf.constant(position, dtype=tf.float32),
+                orientation=tf.constant([0, 0, 0], dtype=tf.float32),
                 dtype=self._scene.dtype
             )
             wall.scene = self._scene
-            wall.position = tf.constant(pos, dtype=tf.float32)
+            wall.radio_material = concrete
             self._scene.add(wall)
+            
+        logger.info("Room boundaries added successfully")
             
     except Exception as e:
         logger.error(f"Failed to add room boundaries: {str(e)}")
