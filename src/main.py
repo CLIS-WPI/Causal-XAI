@@ -456,78 +456,134 @@ def main():
         np.random.seed(seed)
         logger.info(f"Random seed set to {seed}")
         
-        # Initialize and validate configuration
+        # Initialize and validate configuration with additional checks
         try:
             config = SmartFactoryConfig()
             validate_config(config)
+            
+            # Add model and scenario attributes if not present
+            if not hasattr(config, 'model'):
+                config.model = 'ray_tracing'
+            if not hasattr(config, 'scenario'):
+                config.scenario = 'indoor_factory'
+                
             logger.info("Configuration initialized and validated")
+            
         except Exception as e:
             logger.error(f"Configuration initialization failed: {str(e)}")
             raise
 
-        # Setup scene with detailed logging
+        # Setup scene with detailed logging and validation
         try:
             logger.info("Starting scene setup...")
             scene = setup_scene(config)
-            logger.info("Basic scene setup completed")
+            
+            # Validate scene components
+            if not scene:
+                raise ValueError("Scene setup returned None")
+                
+            # Verify essential scene components
+            required_components = ['transmitters', 'receivers', 'objects']
+            for component in required_components:
+                if not hasattr(scene, component):
+                    raise ValueError(f"Scene missing required component: {component}")
             
             # Verify scene objects
             if hasattr(scene, 'objects'):
                 logger.info(f"Scene contains {len(scene.objects)} objects")
+                # Verify essential objects
+                required_objects = ['bs', 'ris']
+                for obj_name in required_objects:
+                    if not any(obj_name in name.lower() for name in scene.objects.keys()):
+                        logger.warning(f"Scene missing recommended object: {obj_name}")
+                
                 for name, obj in scene.objects.items():
                     logger.debug(f"Scene object: {name}, Type: {type(obj)}")
             else:
-                logger.warning("Scene has no objects attribute")
+                raise ValueError("Scene has no objects attribute")
                 
             logger.info("Scene setup completed successfully")
+            
         except Exception as e:
             logger.error(f"Failed to setup scene: {str(e)}")
             traceback.print_exc()
             raise
         
-        # Create channel generator with detailed logging
+        # Create and validate channel generator
         try:
             logger.info("Initializing channel generator...")
+            
+            # Verify scene configuration before channel generator initialization
+            if not hasattr(scene, 'frequency'):
+                scene.frequency = tf.cast(config.carrier_frequency, tf.float32)
+                
             channel_gen = SmartFactoryChannel(config, scene=scene)
-            logger.info("Channel generator initialized successfully")
             
             # Verify channel generator initialization
-            if hasattr(channel_gen, 'scene'):
-                logger.debug("Channel generator has scene reference")
-            if hasattr(channel_gen, 'config'):
-                logger.debug("Channel generator has config reference")
+            required_attrs = ['scene', 'config', 'positions_history', 'agv_positions']
+            missing_attrs = [attr for attr in required_attrs if not hasattr(channel_gen, attr)]
+            if missing_attrs:
+                raise ValueError(f"Channel generator missing attributes: {missing_attrs}")
+                
+            logger.info("Channel generator initialized successfully")
                 
         except Exception as e:
             logger.error(f"Failed to initialize channel generator: {str(e)}")
             traceback.print_exc()
             raise
         
-        # Generate and save CSI dataset
+        # Generate and validate CSI dataset
         try:
             logger.info("Starting CSI dataset generation...")
             csi_filepath = os.path.join(result_dir, 'csi_dataset.h5')
+            
+            # Verify channel generator methods
+            if not hasattr(channel_gen, 'save_csi_dataset'):
+                raise AttributeError("Channel generator missing save_csi_dataset method")
+                
             channel_gen.save_csi_dataset(csi_filepath)
             logger.info(f"CSI dataset saved to: {csi_filepath}")
             
             # Load and verify the saved dataset
             logger.info("Loading CSI dataset for verification...")
             loaded_data = channel_gen.load_csi_dataset(csi_filepath)
-            logger.info("CSI dataset loaded successfully")
             
-            # Process channel responses
+            # Verify dataset contents
+            required_keys = ['channel_matrices', 'path_delays', 'los_conditions', 'agv_positions']
+            missing_keys = [key for key in required_keys if key not in loaded_data]
+            if missing_keys:
+                raise ValueError(f"Dataset missing required keys: {missing_keys}")
+                
+            logger.info("CSI dataset loaded and verified successfully")
+            
+            # Process and validate channel responses
             logger.info("Processing channel responses...")
             channel_responses = process_channel_responses(loaded_data)
+            if not channel_responses:
+                raise ValueError("No channel responses generated")
             logger.info(f"Processed {len(channel_responses)} channel responses")
             
-            # Initialize analyzer
+            # Initialize and validate analyzer
             logger.info("Initializing channel analyzer...")
             analyzer = ChannelAnalyzer(scene)
+            if not hasattr(analyzer, 'scene'):
+                raise ValueError("Channel analyzer not properly initialized")
             logger.info("Channel analyzer initialized")
             
-            # Run analysis pipeline
+            # Run analysis pipeline with validation
             logger.info("Starting analysis pipeline...")
-            run_analysis_pipeline(analyzer, channel_responses, channel_gen, 
-                                config, result_dir)
+            validator = ChannelValidator(config)
+            validation_results, validation_passed = run_validation_pipeline(
+                validator, channel_responses, channel_gen, config
+            )
+            
+            if validation_passed:
+                run_analysis_pipeline(analyzer, channel_responses, channel_gen, 
+                                config, result_dir, validation_results)
+            else:
+                logger.warning("Validation failed, but continuing with analysis")
+                run_analysis_pipeline(analyzer, channel_responses, channel_gen, 
+                                config, result_dir, validation_results)
             
         except Exception as e:
             logger.error(f"Error in analysis pipeline: {str(e)}")
