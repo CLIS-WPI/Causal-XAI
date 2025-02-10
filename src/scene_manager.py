@@ -189,69 +189,95 @@ class SceneManager:
             self._next_id += 1
             return object_id
 
-    def _register_object(self, obj: Any, obj_type: ObjectType, 
-                    radio_material: Optional[str] = None) -> int:
-        """Register a new object in the scene"""
+    def _register_object(self, obj: Any, obj_type: ObjectType,
+                        radio_material: Optional[str] = None) -> int:
+        """Register a new object in the scene, with extra debug prints."""
+        print("[DEBUG PRINT] Entering _register_object()")
+        print(f"[DEBUG PRINT] _register_object() called with obj_type={obj_type}, radio_material={radio_material}")
+
         with self._lock:
+            print("[DEBUG PRINT] _register_object() lock acquired")
             try:
-                logger.debug(f"Starting object registration process...")
-                
+                logger.debug("=== START REGISTRATION PROCESS ===")
+                logger.debug(f"Object type: {obj_type}")
+                logger.debug(f"Object details: {type(obj)}")
+                print("[DEBUG PRINT] Generating a new object ID...")
+
                 # Generate unique ID
                 try:
-                    logger.debug(f"Generating new object ID...")
                     object_id = self._generate_object_id()
-                    logger.debug(f"Generated object ID: {object_id}")
-                except Exception as id_error:
-                    logger.error(f"Failed to generate object ID: {str(id_error)}")
+                    logger.debug(f"Generated ID: {object_id}")
+                    print(f"[DEBUG PRINT] _register_object() generated object_id={object_id}")
+                except Exception as e:
+                    logger.error(f"ID generation failed: {str(e)}")
+                    print(f"[DEBUG PRINT] Exception generating object ID: {e}")
                     raise
-                
-                # Create registration
+
+                # Get object name
+                print("[DEBUG PRINT] Extracting object name...")
                 try:
-                    logger.debug(f"Creating SceneObject registration...")
-                    obj_name = obj.name if hasattr(obj, 'name') else f"object_{object_id}"
-                    logger.debug(f"Using name: {obj_name}")
-                    
+                    name = obj.name if hasattr(obj, 'name') else f"object_{object_id}"
+                    logger.debug(f"Object name: {name}")
+                    print(f"[DEBUG PRINT] _register_object() got name='{name}'")
+                except Exception as e:
+                    logger.error(f"Name extraction failed: {str(e)}")
+                    print(f"[DEBUG PRINT] Exception extracting name: {e}")
+                    raise
+
+                # Check object state
+                print("[DEBUG PRINT] Checking object state (scene, array, position)...")
+                try:
+                    logger.debug(f"Object state check:")
+                    logger.debug(f"- Has scene: {hasattr(obj, 'scene')}")
+                    logger.debug(f"- Has array: {hasattr(obj, 'array')}")
+                    logger.debug(f"- Has position: {hasattr(obj, 'position')}")
+                    print("[DEBUG PRINT] Object state check complete")
+                except Exception as e:
+                    logger.error(f"State check failed: {str(e)}")
+                    print(f"[DEBUG PRINT] Exception in object state check: {e}")
+                    raise
+
+                # Create registration
+                print("[DEBUG PRINT] Creating SceneObject...")
+                try:
                     scene_object = SceneObject(
                         id=object_id,
-                        name=obj_name,
+                        name=name,
                         obj_type=obj_type,
                         radio_material=radio_material,
                         reference=obj
                     )
-                    logger.debug(f"SceneObject created with ID {object_id}")
-                except Exception as obj_error:
-                    logger.error(f"Failed to create SceneObject: {str(obj_error)}")
+                    logger.debug("SceneObject created successfully")
+                    print("[DEBUG PRINT] SceneObject created successfully")
+                except Exception as e:
+                    logger.error(f"SceneObject creation failed: {str(e)}")
+                    logger.error(f"Creation parameters: id={object_id}, name={name}, type={obj_type}")
+                    print(f"[DEBUG PRINT] Exception creating SceneObject: {e}")
                     raise
-                
-                # Add to registry
-                try:
-                    logger.debug(f"Adding to object registry with ID {object_id}")
-                    self._object_registry[object_id] = scene_object
-                    logger.debug(f"Added to registry successfully")
-                except Exception as reg_error:
-                    logger.error(f"Failed to add to registry: {str(reg_error)}")
-                    raise
-                
-                # Register material if specified
-                if radio_material:
-                    try:
-                        logger.debug(f"Setting up material registration")
-                        if radio_material not in self._material_registry:
-                            self._material_registry[radio_material] = set()
-                        self._material_registry[radio_material].add(object_id)
-                        logger.debug(f"Material registration complete")
-                    except Exception as mat_error:
-                        logger.error(f"Failed to register material: {str(mat_error)}")
-                        raise
-                    
-                logger.debug(f"Registration completed for object ID {object_id}")
-                return object_id
-                
-            except Exception as e:
-                logger.error(f"Registration failed: {str(e)}")
-                logger.error("Full traceback:", exc_info=True)
-                raise
 
+                # Registry update
+                print("[DEBUG PRINT] Adding to object registry...")
+                try:
+                    self._object_registry[object_id] = scene_object
+                    logger.debug("Added to object registry")
+                    print(f"[DEBUG PRINT] Successfully added object_id={object_id} to registry")
+                except Exception as e:
+                    logger.error(f"Registry update failed: {str(e)}")
+                    print(f"[DEBUG PRINT] Exception updating registry: {e}")
+                    raise
+
+                logger.debug("=== REGISTRATION COMPLETE ===")
+                print(f"[DEBUG PRINT] Registration complete for object_id={object_id}")
+                print("[DEBUG PRINT] Exiting _register_object() normally...")
+                return object_id
+
+            except Exception as e:
+                logger.error("!!! REGISTRATION FAILED !!!")
+                logger.error(f"Error: {str(e)}")
+                logger.error("Traceback:", exc_info=True)
+                print(f"[DEBUG PRINT] EXCEPTION in _register_object(): {e}")
+                raise
+            
     def _get_or_create_material(self, material_name: str, 
                             dtype=tf.complex64) -> RadioMaterial:
         """Get existing material or create new one"""
@@ -265,13 +291,19 @@ class SceneManager:
             return material
 
     def add_transmitter(self, name: str, position: tf.Tensor,
-            orientation: tf.Tensor, dtype=tf.complex64) -> Transmitter:
+                        orientation: tf.Tensor, dtype=tf.complex64) -> Transmitter:
         """Add a transmitter to the scene"""
+        print(f"[DEBUG PRINT] Entering add_transmitter() for '{name}'")
+        print(f"[DEBUG PRINT] About to acquire lock in add_transmitter() for '{name}'")
+
         with self._lock:
+            print(f"[DEBUG PRINT] Lock acquired for add_transmitter() - {name}")
             try:
+                # High-level logging
                 logger.debug(f"Starting to create transmitter {name}...")
                 logger.debug(f"Position: {position.numpy()}, Orientation: {orientation.numpy()}, dtype: {dtype}")
-                
+
+                print(f"[DEBUG PRINT] Creating Transmitter object: {name}")
                 tx = Transmitter(
                     name=name,
                     position=position,
@@ -279,23 +311,27 @@ class SceneManager:
                     dtype=dtype
                 )
                 logger.debug(f"Transmitter {name} object created successfully")
-                
+                print(f"[DEBUG PRINT] Finished creating Transmitter object: {name}")
+
                 logger.debug(f"Setting scene reference for {name}...")
                 tx.scene = self._scene
                 logger.debug(f"Scene reference set successfully for {name}")
-                
+                print(f"[DEBUG PRINT] Transmitter '{name}' scene reference assigned")
+
                 # Convert spacing to proper tensor
                 logger.debug(f"Converting array spacing. Original value: {self._config.bs_array_spacing}")
                 array_spacing = tf.cast(self._config.bs_array_spacing, dtype=tf.float32)
                 logger.debug(f"Array spacing converted to tensor: {array_spacing}")
-                
-                # Configure antenna array with explicit error handling
+                print(f"[DEBUG PRINT] BS array spacing (float32): {array_spacing.numpy()}")
+
+                # Configure antenna array
                 try:
                     logger.debug(f"Creating antenna array with params:")
                     logger.debug(f"- Rows: {self._config.bs_array[0]}")
                     logger.debug(f"- Cols: {self._config.bs_array[1]}")
                     logger.debug(f"- Spacing: {array_spacing}")
-                    
+
+                    print(f"[DEBUG PRINT] About to create PlanarArray for '{name}'")
                     tx_array = PlanarArray(
                         num_rows=self._config.bs_array[0],
                         num_cols=self._config.bs_array[1],
@@ -306,35 +342,46 @@ class SceneManager:
                         dtype=dtype
                     )
                     logger.debug("Antenna array object created successfully")
-                    
+                    print(f"[DEBUG PRINT] PlanarArray created successfully for '{name}'")
+
                     logger.debug(f"Assigning antenna array to transmitter {name}...")
                     tx.array = tx_array
                     logger.debug("Antenna array assigned successfully")
-                    
+                    print(f"[DEBUG PRINT] Antenna array assigned to transmitter '{name}'")
+
                 except Exception as array_error:
                     logger.error(f"Failed to create/assign antenna array: {str(array_error)}")
                     logger.error("Array error traceback:", exc_info=True)
+                    print(f"[DEBUG PRINT] Exception while creating PlanarArray: {array_error}")
                     raise
 
                 logger.debug(f"Registering {name} in object registry...")
+                print(f"[DEBUG PRINT] About to _register_object() for '{name}'")
                 object_id = self._register_object(tx, ObjectType.TRANSMITTER)
                 tx.object_id = object_id
                 logger.debug(f"Object registered and ID {object_id} assigned to {name}")
-                
+                print(f"[DEBUG PRINT] Done registering '{name}' with object ID = {object_id}")
+
                 logger.debug(f"Adding {name} to scene...")
+                print(f"[DEBUG PRINT] About to call self._scene.add(tx) for '{name}'")
                 self._scene.add(tx)
                 logger.debug(f"Successfully added {name} to scene")
-                
+                print(f"[DEBUG PRINT] Done calling self._scene.add(tx) for '{name}'")
+
                 logger.info(f"Successfully completed transmitter {name} setup with ID {object_id}")
+                print(f"[DEBUG PRINT] Exiting add_transmitter() for '{name}' with success")
                 return tx
-                    
+
             except Exception as e:
                 logger.error(f"Failed to add transmitter {name}: {str(e)}")
                 logger.error("Full error traceback:", exc_info=True)
+                print(f"[DEBUG PRINT] ERROR in add_transmitter() for '{name}': {e}")
                 if 'object_id' in locals():
                     logger.debug(f"Cleaning up - unregistering object ID {object_id}")
+                    print(f"[DEBUG PRINT] Unregistering object ID {object_id}")
                     self._unregister_object(object_id)
                 raise
+
 
     def add_ris(self, name: str, position: tf.Tensor, orientation: tf.Tensor,
                 num_rows: int, num_cols: int, dtype=tf.complex64) -> RIS:

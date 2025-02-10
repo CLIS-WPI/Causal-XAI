@@ -480,6 +480,7 @@ def main():
             
         except Exception as e:
             logger.error(f"Configuration initialization failed: {str(e)}")
+            logger.error(traceback.format_exc())  # Add full traceback
             raise
 
         # Setup scene with detailed logging and validation
@@ -515,7 +516,7 @@ def main():
             
         except Exception as e:
             logger.error(f"Failed to setup scene: {str(e)}")
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
             raise
         
         # Create and validate channel generator
@@ -533,12 +534,29 @@ def main():
             missing_attrs = [attr for attr in required_attrs if not hasattr(channel_gen, attr)]
             if missing_attrs:
                 raise ValueError(f"Channel generator missing attributes: {missing_attrs}")
-                
+            logger.debug(f"Initial AGV positions: {channel_gen.agv_positions}")
+            logger.debug(f"Positions history length: {len(channel_gen.positions_history)}")    
             logger.info("Channel generator initialized successfully")
+            
+            # Optional: Log additional diagnostic information
+            try:
+                logger.debug(f"Scene frequency: {scene.frequency}")
+                logger.debug(f"Channel generator initial AGV positions: {channel_gen.agv_positions}")
+            except Exception as diag_error:
+                logger.warning(f"Could not log diagnostic information: {diag_error}")
                 
         except Exception as e:
             logger.error(f"Failed to initialize channel generator: {str(e)}")
-            traceback.print_exc()
+            logger.error(traceback.format_exc())  # Comprehensive error logging
+            
+            # Optional: Log more context about the configuration and scene
+            try:
+                logger.error(f"Scene details: frequency={getattr(scene, 'frequency', 'N/A')}")
+                logger.error(f"Configuration details: {vars(config)}")
+                logger.error(f"Scene type: {type(scene)}")
+            except Exception:
+                logger.error("Could not log additional configuration details")
+            
             raise
         
         # Generate and validate CSI dataset
@@ -596,7 +614,7 @@ def main():
             
         except Exception as e:
             logger.error(f"Error in analysis pipeline: {str(e)}")
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
             raise
         
         logger.info("Analysis completed successfully")
