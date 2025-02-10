@@ -16,7 +16,6 @@ from sionna.constants import SPEED_OF_LIGHT
 from shap.shap_analyzer import ShapAnalyzer
 from shap.shap_utils import preprocess_channel_data
 
-
 class SmartFactoryChannel:
     """Smart Factory Channel Generator using Sionna
     
@@ -49,35 +48,45 @@ class SmartFactoryChannel:
             ValueError: If required config parameters are missing or invalid
             RuntimeError: If initialization of any component fails
         """
-        try:
-            # Validate required config attributes
-            self._validate_config(config)
-            
-            # Initialize basic attributes
-            self.config = config
-            sionna.config.xla_compat = True
-            tf.random.set_seed(config.seed)
 
-            # Initialize SHAP analyzer
-            self.shap_analyzer = ShapAnalyzer(config)
+    try:
+        print("[DEBUG] Starting SmartFactoryChannel initialization")
+        
+        # Validate required config attributes
+        self._validate_config(config)
+        print("[DEBUG] Config validation passed")
+        
+        # Initialize basic attributes
+        self.config = config
+        sionna.config.xla_compat = True
+        tf.random.set_seed(config.seed)
+        print("[DEBUG] Basic attributes initialized")
 
-            # Initialize position tracking
-            self.positions_history = [[] for _ in range(config.num_agvs)]
-            self.agv_positions = self._generate_initial_agv_positions()
+        # Initialize SHAP analyzer
+        self.shap_analyzer = ShapAnalyzer(config)
+        print("[DEBUG] SHAP analyzer initialized")
 
-            # Initialize scene
-            self.scene = scene if scene is not None else setup_scene(config)
-            
-            # Configure and set antenna arrays
-            self._setup_antenna_arrays()
-            
-            # Perform final validations
-            self._validate_scene()
+        # Initialize position tracking
+        self.positions_history = [[] for _ in range(config.num_agvs)]
+        self.agv_positions = self._generate_initial_agv_positions()
+        print("[DEBUG] Position tracking initialized")
 
-        except ValueError as e:
-            raise ValueError(f"Configuration error: {str(e)}")
-        except Exception as e:
-            raise RuntimeError(f"Environment initialization failed: {str(e)}") from e
+        # Initialize scene
+        self.scene = scene if scene is not None else setup_scene(config)
+        print("[DEBUG] Scene initialized")
+        
+        # Configure and set antenna arrays
+        self._setup_antenna_arrays()
+        print("[DEBUG] Antenna arrays configured")
+        
+        # Perform final validations
+        self._validate_scene()
+        print("[DEBUG] Scene validation completed")
+
+    except Exception as e:
+        print(f"[ERROR] SmartFactoryChannel initialization failed: {str(e)}")
+        traceback.print_exc()
+        raise from e
 
     def _validate_config(self, config):
         """Validate required configuration parameters."""

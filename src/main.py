@@ -457,49 +457,75 @@ def main():
         logger.info(f"Random seed set to {seed}")
         
         # Initialize and validate configuration
-        config = SmartFactoryConfig()
-        validate_config(config)
-        logger.info("Configuration initialized and validated")
-        
-        # Setup scene
         try:
+            config = SmartFactoryConfig()
+            validate_config(config)
+            logger.info("Configuration initialized and validated")
+        except Exception as e:
+            logger.error(f"Configuration initialization failed: {str(e)}")
+            raise
+
+        # Setup scene with detailed logging
+        try:
+            logger.info("Starting scene setup...")
             scene = setup_scene(config)
+            logger.info("Basic scene setup completed")
+            
+            # Verify scene objects
+            if hasattr(scene, 'objects'):
+                logger.info(f"Scene contains {len(scene.objects)} objects")
+                for name, obj in scene.objects.items():
+                    logger.debug(f"Scene object: {name}, Type: {type(obj)}")
+            else:
+                logger.warning("Scene has no objects attribute")
+                
             logger.info("Scene setup completed successfully")
         except Exception as e:
             logger.error(f"Failed to setup scene: {str(e)}")
+            traceback.print_exc()
             raise
         
-        # Create channel generator
+        # Create channel generator with detailed logging
         try:
+            logger.info("Initializing channel generator...")
             channel_gen = SmartFactoryChannel(config, scene=scene)
-            logger.info("Channel generator initialized")
+            logger.info("Channel generator initialized successfully")
+            
+            # Verify channel generator initialization
+            if hasattr(channel_gen, 'scene'):
+                logger.debug("Channel generator has scene reference")
+            if hasattr(channel_gen, 'config'):
+                logger.debug("Channel generator has config reference")
+                
         except Exception as e:
             logger.error(f"Failed to initialize channel generator: {str(e)}")
+            traceback.print_exc()
             raise
-        
-        # Ensure result directory exists
-        result_dir = ensure_result_dir()
-        logger.info(f"Results will be saved to: {result_dir}")
         
         # Generate and save CSI dataset
         try:
+            logger.info("Starting CSI dataset generation...")
             csi_filepath = os.path.join(result_dir, 'csi_dataset.h5')
             channel_gen.save_csi_dataset(csi_filepath)
             logger.info(f"CSI dataset saved to: {csi_filepath}")
             
             # Load and verify the saved dataset
+            logger.info("Loading CSI dataset for verification...")
             loaded_data = channel_gen.load_csi_dataset(csi_filepath)
             logger.info("CSI dataset loaded successfully")
             
             # Process channel responses
+            logger.info("Processing channel responses...")
             channel_responses = process_channel_responses(loaded_data)
             logger.info(f"Processed {len(channel_responses)} channel responses")
             
             # Initialize analyzer
+            logger.info("Initializing channel analyzer...")
             analyzer = ChannelAnalyzer(scene)
             logger.info("Channel analyzer initialized")
             
             # Run analysis pipeline
+            logger.info("Starting analysis pipeline...")
             run_analysis_pipeline(analyzer, channel_responses, channel_gen, 
                                 config, result_dir)
             
