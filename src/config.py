@@ -13,6 +13,9 @@ class SmartFactoryConfig:
         self.seed = 42
         self.num_subcarriers = 128 #Number of OFDM subcarriers
         self.subcarrier_spacing = 15e3  # 15 kHz subcarrier spacing (typical for 5G)
+        self.scene_type = "indoor"  # Explicit scene type at top level
+        self.ris_pattern = "iso"
+        self.ris_polarization = "V"
 
         # Room dimensions [m]
         self.room_dim = [20.0, 20.0, 5.0]  # Length x Width x Height
@@ -42,6 +45,7 @@ class SmartFactoryConfig:
         self.agv_speed = 0.83
         self.agv_array = [1, 1]
         self.agv_array_spacing = 0.5 * self.wavelength
+        self.rx_array_spacing = 0.5 * self.wavelength
         self.agv_array_pattern = "iso"     # Added antenna pattern type
         self.agv_polarization = "V"        # Added polarization config
         
@@ -142,7 +146,7 @@ class SmartFactoryConfig:
         self.num_time_steps = 100
         self.sampling_frequency = tf.cast(1000, tf.float32)
         
-        
+                
         self.shap = {
             'analysis': {
                 'num_background_samples': 100,
