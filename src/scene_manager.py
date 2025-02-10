@@ -96,25 +96,38 @@ class SceneManager:
             # Room dimensions
             length, width, height = self._config.room_dim
             
-            # Add floor
+            # Create floor shape in Mitsuba
+            floor_shape = mi.load_dict({
+                'type': 'rectangle',
+                'to_world': mi.ScalarTransform4f.scale([length, width, 1.0])
+            })
+            
+            # Add floor as SceneObject with Mitsuba shape
             floor = SceneObject(
                 name="floor",
-                radio_material=concrete,
-                dtype=self._scene.dtype
+                object_id=self._generate_object_id(),
+                mi_shape=floor_shape,
+                radio_material=concrete
             )
             floor.scene = self._scene
             floor.position = tf.constant([length/2, width/2, 0], dtype=tf.float32)
-            self._scene.add(floor)
+            self._register_object(floor, ObjectType.SCENE_OBJECT)
             
-            # Add ceiling
+            # Similarly for ceiling
+            ceiling_shape = mi.load_dict({
+                'type': 'rectangle', 
+                'to_world': mi.ScalarTransform4f.scale([length, width, 1.0])
+            })
+            
             ceiling = SceneObject(
-                name="ceiling", 
-                radio_material=concrete,
-                dtype=self._scene.dtype
+                name="ceiling",
+                object_id=self._generate_object_id(),
+                mi_shape=ceiling_shape,
+                radio_material=concrete
             )
             ceiling.scene = self._scene
             ceiling.position = tf.constant([length/2, width/2, height], dtype=tf.float32)
-            self._scene.add(ceiling)
+            self._register_object(ceiling, ObjectType.SCENE_OBJECT)
             
             # Add walls
             walls = [
@@ -125,14 +138,20 @@ class SceneManager:
             ]
             
             for name, pos in walls:
+                wall_shape = mi.load_dict({
+                    'type': 'rectangle',
+                    'to_world': mi.ScalarTransform4f.scale([length, height, 1.0])
+                })
+                
                 wall = SceneObject(
                     name=name,
-                    radio_material=concrete,
-                    dtype=self._scene.dtype
+                    object_id=self._generate_object_id(),
+                    mi_shape=wall_shape,
+                    radio_material=concrete
                 )
                 wall.scene = self._scene
                 wall.position = tf.constant(pos, dtype=tf.float32)
-                self._scene.add(wall)
+                self._register_object(wall, ObjectType.SCENE_OBJECT)
                 
         except Exception as e:
             logger.error(f"Failed to add room boundaries: {str(e)}")
