@@ -596,9 +596,8 @@ class SceneManager:
                         dtype=dtype
                     )
                     
-                    # Create phase profile with correct parameters
+                    # Create phase profile with minimal parameters
                     phase_profile = DiscretePhaseProfile(
-                        n_bits=2,  # Use n_bits instead of num_bits
                         cell_grid=cell_grid,  # Pass the cell grid
                         dtype=dtype
                     )
@@ -607,7 +606,7 @@ class SceneManager:
                 except Exception as e:
                     print(f"[DEBUG PRINT] Error creating phase profile: {str(e)}")
                     raise RuntimeError(f"Failed to configure phase profile: {str(e)}") from e
-                            
+                    
                 # Step 7: RIS Configuration Validation
                 print("[DEBUG PRINT] Validating RIS configuration")
                 self._validate_ris_configuration(ris)
