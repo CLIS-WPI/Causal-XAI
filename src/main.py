@@ -54,18 +54,17 @@ def validate_config(config):
 def generate_channel_data(scene, config):
     """Generate channel data using ray tracing"""
     try:
-        # Load the factory scene XML
-        scene.load("src/factory_scene.xml")
+        print("Generating channel data...")
         
         # Compute paths using ray tracing
         paths = scene.compute_paths(
-            receivers=[rx.name for rx in scene.receivers.values()],
-            transmitters=['bs'],
-            max_depth=5,  # Number of reflections
-            los=True,
-            reflection=True,
-            diffraction=True,
-            scattering=False
+            max_depth=config.ray_tracing['max_depth'],
+            method="fibonacci",
+            num_samples=config.ray_tracing['num_samples'],
+            los=config.ray_tracing['los'],
+            reflection=config.ray_tracing['reflection'],
+            diffraction=config.ray_tracing['diffraction'],
+            scattering=config.ray_tracing['scattering']
         )
         
         # Get channel impulse responses
@@ -87,6 +86,7 @@ def generate_channel_data(scene, config):
             'agv_positions': tf.stack([rx.position for rx in scene.receivers.values()])
         }
         
+        print("Channel data generation completed")
         return channel_data
         
     except Exception as e:
