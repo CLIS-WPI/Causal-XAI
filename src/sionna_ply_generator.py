@@ -65,11 +65,11 @@ class SionnaPLYGenerator:
 
         # Shelf generation
         shelf_positions = [
-            [5, 5, 0],   
-            [10, 10, 0], 
-            [15, 15, 0],
-            [5, 15, 0],
-            [15, 5, 0]
+            [5.0, 5.0, 0.0], 
+            [15.0, 5.0, 0.0],
+            [10.0, 10.0, 0.0],
+            [5.0, 15.0, 0.0],
+            [15.0, 15.0, 0.0]
         ]
 
         for i, pos in enumerate(shelf_positions):
