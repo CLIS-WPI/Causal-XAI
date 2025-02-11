@@ -77,7 +77,6 @@ class SceneManager:
             orientation=orientation,
             num_rows=self.config.ris_elements[0],
             num_cols=self.config.ris_elements[1],
-            element_spacing=self.config.ris_spacing,
             pattern=self.config.ris_pattern,
             polarization=self.config.ris_polarization,
             dtype=self._scene.dtype
