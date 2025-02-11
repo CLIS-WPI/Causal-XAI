@@ -457,8 +457,10 @@ def main():
     """Main execution function"""
     result_dir = ensure_result_dir()
     scene = None  # Ensure scene is defined in outer scope for cleanup
+    
     try:
         logger.info("Starting Smart Factory Channel Analysis")
+        print("[DEBUG] Starting main execution...")
         
         # Set random seed for reproducibility
         seed = 42
@@ -468,137 +470,193 @@ def main():
         
         # Initialize and validate configuration with additional checks
         try:
+            print("[DEBUG] Initializing configuration...")
             config = SmartFactoryConfig()
+            
+            # Log configuration details before validation
+            print("[DEBUG] Configuration parameters:")
+            print(f"[DEBUG] - Carrier frequency: {config.carrier_frequency/1e9:.2f} GHz")
+            print(f"[DEBUG] - Room dimensions: {config.room_dim}")
+            print(f"[DEBUG] - Number of AGVs: {config.num_agvs}")
+            
             validate_config(config)
             
             # Add model and scenario attributes if not present
             if not hasattr(config, 'model'):
                 config.model = 'ray_tracing'
+                print("[DEBUG] Added default model: ray_tracing")
             if not hasattr(config, 'scenario'):
                 config.scenario = 'indoor_factory'
+                print("[DEBUG] Added default scenario: indoor_factory")
                 
             logger.info("Configuration initialized and validated")
             
         except Exception as e:
+            print(f"[ERROR] Configuration initialization failed: {str(e)}")
             logger.error(f"Configuration initialization failed: {str(e)}")
-            logger.error(traceback.format_exc())  # Add full traceback
+            logger.error(traceback.format_exc())
             raise
 
         # Setup scene with detailed logging and validation
         try:
+            print("[DEBUG] Starting scene setup...")
             logger.info("Starting scene setup...")
             scene = setup_scene(config)
             
             # Validate scene components
             if not scene:
+                print("[ERROR] Scene setup returned None")
                 raise ValueError("Scene setup returned None")
                 
             # Verify essential scene components
             required_components = ['transmitters', 'receivers', 'objects']
+            print("[DEBUG] Verifying scene components...")
             for component in required_components:
                 if not hasattr(scene, component):
+                    print(f"[ERROR] Missing required component: {component}")
                     raise ValueError(f"Scene missing required component: {component}")
+                print(f"[DEBUG] Found component: {component}")
             
             # Verify scene objects
             if hasattr(scene, 'objects'):
-                logger.info(f"Scene contains {len(scene.objects)} objects")
+                num_objects = len(scene.objects)
+                print(f"[DEBUG] Scene contains {num_objects} objects")
+                logger.info(f"Scene contains {num_objects} objects")
+                
                 # Verify essential objects
                 required_objects = ['bs', 'ris']
                 for obj_name in required_objects:
                     if not any(obj_name in name.lower() for name in scene.objects.keys()):
+                        print(f"[WARNING] Scene missing recommended object: {obj_name}")
                         logger.warning(f"Scene missing recommended object: {obj_name}")
                 
+                # Log object details
+                print("[DEBUG] Scene objects:")
                 for name, obj in scene.objects.items():
+                    print(f"[DEBUG] - {name}: {type(obj)}")
                     logger.debug(f"Scene object: {name}, Type: {type(obj)}")
             else:
+                print("[ERROR] Scene has no objects attribute")
                 raise ValueError("Scene has no objects attribute")
                 
             logger.info("Scene setup completed successfully")
+            print("[DEBUG] Scene setup completed successfully")
             
         except Exception as e:
+            print(f"[ERROR] Failed to setup scene: {str(e)}")
             logger.error(f"Failed to setup scene: {str(e)}")
             logger.error(traceback.format_exc())
             raise
         
         # Create and validate channel generator
         try:
+            print("[DEBUG] Initializing channel generator...")
             logger.info("Initializing channel generator...")
             
             # Verify scene configuration before channel generator initialization
             if not hasattr(scene, 'frequency'):
+                print("[DEBUG] Setting scene frequency from config")
                 scene.frequency = tf.cast(config.carrier_frequency, tf.float32)
                 
             channel_gen = SmartFactoryChannel(config, scene=scene)
+            print("[DEBUG] Channel generator instance created")
             
             # Verify channel generator initialization
             required_attrs = ['scene', 'config', 'positions_history', 'agv_positions']
+            print("[DEBUG] Verifying channel generator attributes...")
             missing_attrs = [attr for attr in required_attrs if not hasattr(channel_gen, attr)]
             if missing_attrs:
+                print(f"[ERROR] Missing channel generator attributes: {missing_attrs}")
                 raise ValueError(f"Channel generator missing attributes: {missing_attrs}")
+                
+            print(f"[DEBUG] Initial AGV positions: {channel_gen.agv_positions}")
+            print(f"[DEBUG] Positions history length: {len(channel_gen.positions_history)}")
             logger.debug(f"Initial AGV positions: {channel_gen.agv_positions}")
-            logger.debug(f"Positions history length: {len(channel_gen.positions_history)}")    
+            logger.debug(f"Positions history length: {len(channel_gen.positions_history)}")
             logger.info("Channel generator initialized successfully")
             
             # Optional: Log additional diagnostic information
             try:
+                print(f"[DEBUG] Scene frequency: {scene.frequency}")
+                print(f"[DEBUG] Channel generator initial AGV positions: {channel_gen.agv_positions}")
                 logger.debug(f"Scene frequency: {scene.frequency}")
                 logger.debug(f"Channel generator initial AGV positions: {channel_gen.agv_positions}")
             except Exception as diag_error:
+                print(f"[WARNING] Could not log diagnostic information: {diag_error}")
                 logger.warning(f"Could not log diagnostic information: {diag_error}")
                 
         except Exception as e:
+            print(f"[ERROR] Failed to initialize channel generator: {str(e)}")
             logger.error(f"Failed to initialize channel generator: {str(e)}")
-            logger.error(traceback.format_exc())  # Comprehensive error logging
+            logger.error(traceback.format_exc())
             
             # Optional: Log more context about the configuration and scene
             try:
+                print(f"[DEBUG] Scene details: frequency={getattr(scene, 'frequency', 'N/A')}")
+                print(f"[DEBUG] Scene type: {type(scene)}")
                 logger.error(f"Scene details: frequency={getattr(scene, 'frequency', 'N/A')}")
                 logger.error(f"Configuration details: {vars(config)}")
                 logger.error(f"Scene type: {type(scene)}")
             except Exception:
+                print("[ERROR] Could not log additional configuration details")
                 logger.error("Could not log additional configuration details")
             
             raise
         
         # Generate and validate CSI dataset
         try:
+            print("[DEBUG] Starting CSI dataset generation...")
             logger.info("Starting CSI dataset generation...")
             csi_filepath = os.path.join(result_dir, 'csi_dataset.h5')
             
             # Verify channel generator methods
+            print("[DEBUG] Verifying channel generator methods...")
             if not hasattr(channel_gen, 'save_csi_dataset'):
+                print("[ERROR] Channel generator missing save_csi_dataset method")
                 raise AttributeError("Channel generator missing save_csi_dataset method")
                 
             channel_gen.save_csi_dataset(csi_filepath)
+            print(f"[DEBUG] CSI dataset saved to: {csi_filepath}")
             logger.info(f"CSI dataset saved to: {csi_filepath}")
             
             # Load and verify the saved dataset
+            print("[DEBUG] Loading CSI dataset for verification...")
             logger.info("Loading CSI dataset for verification...")
             loaded_data = channel_gen.load_csi_dataset(csi_filepath)
             
             # Verify dataset contents
+            print("[DEBUG] Verifying dataset contents...")
             required_keys = ['channel_matrices', 'path_delays', 'los_conditions', 'agv_positions']
             missing_keys = [key for key in required_keys if key not in loaded_data]
             if missing_keys:
+                print(f"[ERROR] Dataset missing required keys: {missing_keys}")
                 raise ValueError(f"Dataset missing required keys: {missing_keys}")
                 
+            print("[DEBUG] CSI dataset loaded and verified successfully")
             logger.info("CSI dataset loaded and verified successfully")
             
             # Process and validate channel responses
+            print("[DEBUG] Processing channel responses...")
             logger.info("Processing channel responses...")
             channel_responses = process_channel_responses(loaded_data)
             if not channel_responses:
+                print("[ERROR] No channel responses generated")
                 raise ValueError("No channel responses generated")
+            print(f"[DEBUG] Processed {len(channel_responses)} channel responses")
             logger.info(f"Processed {len(channel_responses)} channel responses")
             
             # Initialize and validate analyzer
+            print("[DEBUG] Initializing channel analyzer...")
             logger.info("Initializing channel analyzer...")
             analyzer = ChannelAnalyzer(scene)
             if not hasattr(analyzer, 'scene'):
+                print("[ERROR] Channel analyzer not properly initialized")
                 raise ValueError("Channel analyzer not properly initialized")
+            print("[DEBUG] Channel analyzer initialized")
             logger.info("Channel analyzer initialized")
             
             # Run analysis pipeline with validation
+            print("[DEBUG] Starting analysis pipeline...")
             logger.info("Starting analysis pipeline...")
             validator = ChannelValidator(config)
             validation_results, validation_passed = run_validation_pipeline(
@@ -606,31 +664,42 @@ def main():
             )
             
             if validation_passed:
+                print("[DEBUG] Validation passed, running analysis pipeline...")
                 run_analysis_pipeline(analyzer, channel_responses, channel_gen, 
                                 config, result_dir, validation_results)
             else:
+                print("[WARNING] Validation failed, but continuing with analysis")
                 logger.warning("Validation failed, but continuing with analysis")
                 run_analysis_pipeline(analyzer, channel_responses, channel_gen, 
                                 config, result_dir, validation_results)
             
         except Exception as e:
+            print(f"[ERROR] Error in analysis pipeline: {str(e)}")
             logger.error(f"Error in analysis pipeline: {str(e)}")
             logger.error(traceback.format_exc())
             raise
         
+        print("[DEBUG] Analysis completed successfully")
         logger.info("Analysis completed successfully")
         
     except Exception as e:
+        print(f"[ERROR] Fatal error in main execution: {str(e)}")
         logger.error(f"Fatal error in main execution: {str(e)}")
         traceback.print_exc()
     finally:
         # Cleanup
+        print("[DEBUG] Performing cleanup...")
         logger.info("Performing cleanup...")
         if scene:
             scene.cleanup()
+            print("[DEBUG] Scene cleanup completed successfully")
             logger.info("Scene cleanup completed successfully.")
         plt.close('all')
+        print(f"[DEBUG] All results saved in {result_dir}")
         logger.info(f"All results saved in {result_dir}")
+
+if __name__ == "__main__":
+    main()
 
 
 def process_channel_responses(loaded_data):
