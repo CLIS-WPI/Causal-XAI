@@ -192,9 +192,8 @@ class SceneManager:
             print(f"[DEBUG PRINT] Generated new ID: {object_id}")
             return object_id
 
-    def _register_object(self, obj: Any, obj_type: ObjectType,
-                        radio_material: Optional[str] = None) -> int:
-        """Register a new object in the scene, with extra debug prints."""
+    def _register_object(self, obj: Any, obj_type: ObjectType, radio_material: Optional[str] = None) -> int:
+        """Register a new object in the scene, with improved debugging and error handling."""
         print("[DEBUG PRINT] Entering _register_object()")
         print(f"[DEBUG PRINT] _register_object() called with obj_type={obj_type}, radio_material={radio_material}")
 
@@ -214,20 +213,20 @@ class SceneManager:
                 except Exception as e:
                     logger.error(f"ID generation failed: {str(e)}")
                     print(f"[DEBUG PRINT] Exception generating object ID: {e}")
-                    raise
+                    raise RuntimeError("Failed to generate object ID.") from e
 
-                # Get object name
+                # Extract object name
                 print("[DEBUG PRINT] Extracting object name...")
                 try:
                     name = obj.name if hasattr(obj, 'name') else f"object_{object_id}"
-                    logger.debug(f"Object name: {name}")
+                    logger.debug(f"Object name extracted: {name}")
                     print(f"[DEBUG PRINT] _register_object() got name='{name}'")
                 except Exception as e:
-                    logger.error(f"Name extraction failed: {str(e)}")
+                    logger.error(f"Failed to extract object name: {str(e)}")
                     print(f"[DEBUG PRINT] Exception extracting name: {e}")
-                    raise
+                    raise RuntimeError("Failed to extract object name.") from e
 
-                # Check object state
+                # Validate object state
                 print("[DEBUG PRINT] Checking object state (scene, array, position)...")
                 try:
                     logger.debug(f"Object state check:")
@@ -238,9 +237,9 @@ class SceneManager:
                 except Exception as e:
                     logger.error(f"State check failed: {str(e)}")
                     print(f"[DEBUG PRINT] Exception in object state check: {e}")
-                    raise
+                    raise RuntimeError("Failed to validate object state.") from e
 
-                # Create registration
+                # Create and register SceneObject
                 print("[DEBUG PRINT] Creating SceneObject...")
                 try:
                     scene_object = SceneObject(
@@ -253,21 +252,21 @@ class SceneManager:
                     logger.debug("SceneObject created successfully")
                     print("[DEBUG PRINT] SceneObject created successfully")
                 except Exception as e:
-                    logger.error(f"SceneObject creation failed: {str(e)}")
+                    logger.error(f"Failed to create SceneObject: {str(e)}")
                     logger.error(f"Creation parameters: id={object_id}, name={name}, type={obj_type}")
                     print(f"[DEBUG PRINT] Exception creating SceneObject: {e}")
-                    raise
+                    raise RuntimeError("Failed to create SceneObject.") from e
 
-                # Registry update
+                # Add object to registry
                 print("[DEBUG PRINT] Adding to object registry...")
                 try:
                     self._object_registry[object_id] = scene_object
-                    logger.debug("Added to object registry")
+                    logger.debug(f"Added object with ID {object_id} to registry")
                     print(f"[DEBUG PRINT] Successfully added object_id={object_id} to registry")
                 except Exception as e:
-                    logger.error(f"Registry update failed: {str(e)}")
+                    logger.error(f"Failed to update object registry: {str(e)}")
                     print(f"[DEBUG PRINT] Exception updating registry: {e}")
-                    raise
+                    raise RuntimeError("Failed to update object registry.") from e
 
                 logger.debug("=== REGISTRATION COMPLETE ===")
                 print(f"[DEBUG PRINT] Registration complete for object_id={object_id}")
@@ -279,7 +278,8 @@ class SceneManager:
                 logger.error(f"Error: {str(e)}")
                 logger.error("Traceback:", exc_info=True)
                 print(f"[DEBUG PRINT] EXCEPTION in _register_object(): {e}")
-                raise
+                raise RuntimeError(f"Registration failed for object: {str(e)}") from e
+
             
     def _get_or_create_material(self, material_name: str, 
                             dtype=tf.complex64) -> RadioMaterial:
@@ -360,7 +360,7 @@ class SceneManager:
                 logger.debug(f"Registering transmitter {name} in the object registry...")
                 print(f"[DEBUG PRINT] About to call _register_object() for '{name}'")
                 try:
-                    object_id = self._register_object_unlocked(tx, ObjectType.TRANSMITTER)
+                    object_id = self._register_object(tx, ObjectType.TRANSMITTER)
                     tx.object_id = object_id
                     logger.debug(f"Object registered and ID {object_id} assigned to {name}")
                     print(f"[DEBUG PRINT] Transmitter '{name}' registered with object ID = {object_id}")
@@ -483,7 +483,7 @@ class SceneManager:
                 # Register the RIS object in the object registry
                 logger.debug(f"Registering RIS '{name}' in the object registry...")
                 try:
-                    object_id = self._register_object_unlocked(ris, ObjectType.RIS, "itu_metal")
+                    object_id = self._register_object(ris, ObjectType.RIS, "itu_metal")
                     ris.object_id = object_id
                     logger.debug(f"RIS '{name}' registered with object ID {object_id}")
                     print(f"[DEBUG PRINT] RIS '{name}' registered with object ID = {object_id}")
