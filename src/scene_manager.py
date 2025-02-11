@@ -588,13 +588,18 @@ class SceneManager:
                 
                 # Step 6: Phase Profile Configuration
                 print(f"[DEBUG PRINT] Configuring phase profile for '{name}'")
-                phase_profile = DiscretePhaseProfile(
-                    size=num_rows * num_cols,
-                    bits=2,
-                    dtype=dtype
-                )
-                print("[DEBUG PRINT] Phase profile created successfully")
-                ris.phase_profile = phase_profile
+                try:
+                    # Create phase profile directly with the total number of elements
+                    phase_profile = DiscretePhaseProfile(
+                        bits=2,  # Number of bits for phase quantization
+                        size=num_rows * num_cols,  # Total number of elements
+                        dtype=dtype
+                    )
+                    print("[DEBUG PRINT] Phase profile created successfully")
+                    ris.phase_profile = phase_profile
+                except Exception as e:
+                    print(f"[DEBUG PRINT] Error creating phase profile: {str(e)}")
+                    raise RuntimeError(f"Failed to configure phase profile: {str(e)}") from e
                 
                 # Step 7: RIS Configuration Validation
                 print("[DEBUG PRINT] Validating RIS configuration")
