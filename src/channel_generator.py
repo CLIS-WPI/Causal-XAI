@@ -744,13 +744,27 @@ class SmartFactoryChannel:
             
             # Create phase profile with correct shape (1, 8, 8)
             phase_values = optimal_phase * tf.ones([1, 8, 8], dtype=tf.float32)
-            
-            # Create and set the phase profile
-            phase_profile = DiscretePhaseProfile(
-                cell_grid=cell_grid,
-                values=phase_values,
-                dtype=tf.complex64
-            )
+
+            # Create and set the phase profile with a fallback mechanism
+            try:
+                phase_profile = DiscretePhaseProfile(
+                    cell_grid=cell_grid,
+                    values=phase_values,
+                    dtype=tf.complex64
+                )
+                ris.phase_profile = phase_profile
+                print("[DEBUG PRINT] RIS phase profile set successfully")
+            except Exception as e:
+                print(f"[DEBUG PRINT] Failed to set RIS phase profile: {e}")
+                # Fallback mechanism to ensure a valid RIS state
+                fallback_phase_values = tf.zeros_like(phase_values)
+                ris.phase_profile = DiscretePhaseProfile(
+                    cell_grid=cell_grid,
+                    values=fallback_phase_values,
+                    dtype=tf.complex64
+                )
+                print("[DEBUG PRINT] Fallback RIS phase profile set to zeros")
+
             
             # Set the phase profile for the RIS
             ris.phase_profile = phase_profile

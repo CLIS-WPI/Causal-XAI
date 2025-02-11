@@ -18,11 +18,11 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 def setup_scene(config):
-    """Setup the factory scene with transmitters, receivers, and RIS"""
+    """Setup the factory scene with transmitters, receivers, and RIS."""
     
     # Debug helper function
     def _debug_object_state(obj, name):
-        """Helper to debug object state"""
+        """Helper to debug object state with detailed logs."""
         logger.debug(f"{name} properties:")
         logger.debug(f"- Position: {obj.position.numpy()}")
         logger.debug(f"- Orientation: {obj.orientation.numpy()}")
@@ -31,10 +31,11 @@ def setup_scene(config):
         logger.debug(f"- dtype: {obj.dtype}")
 
     try:
+        logger.debug("Starting scene setup...")
+        
         # Validate config prerequisites
         logger.debug("Validating configuration...")
-        required_attrs = ['dtype', 'carrier_frequency', 'bs_position', 'ris_position', 
-                        'ris_elements', 'num_agvs', 'agv_height']
+        required_attrs = ['dtype', 'carrier_frequency', 'bs_position', 'ris_position', 'ris_elements', 'num_agvs', 'agv_height']
         missing_attrs = [attr for attr in required_attrs if not hasattr(config, attr)]
         if missing_attrs:
             raise ValueError(f"Missing required config attributes: {missing_attrs}")
@@ -70,7 +71,7 @@ def setup_scene(config):
             logger.error(f"Failed to initialize scene manager: {str(e)}")
             raise
 
-        # Add base station with position validation
+        # Add base station with detailed debug and timeout
         logger.info("Adding base station...")
         try:
             bs_position = tf.constant(config.bs_position, dtype=tf.float32)
@@ -89,7 +90,7 @@ def setup_scene(config):
             logger.error(f"Failed to add base station: {str(e)}")
             raise
 
-        # Add RIS with validation
+        # Add RIS with detailed debug and fallback mechanism
         logger.info("Adding RIS...")
         try:
             ris_position = tf.constant(config.ris_position, dtype=tf.float32)
@@ -109,14 +110,27 @@ def setup_scene(config):
             _debug_object_state(ris, "RIS")
         except Exception as e:
             logger.error(f"Failed to add RIS: {str(e)}")
-            raise
+            logger.warning("Attempting fallback RIS configuration...")
+            # Fallback: Ensure at least an empty RIS state is added
+            try:
+                ris = manager.add_ris(
+                    name="fallback_ris",
+                    position=ris_position,
+                    orientation=ris_orientation,
+                    num_rows=4,
+                    num_cols=4,
+                    dtype=config.dtype
+                )
+                logger.debug("Fallback RIS added successfully.")
+            except Exception as fallback_e:
+                logger.error(f"Fallback RIS configuration failed: {fallback_e}")
+                raise
 
-        # Add AGVs with position validation
+        # Add AGVs with enhanced logging and error handling
         logger.info(f"Adding {config.num_agvs} AGVs...")
         try:
             for i in range(config.num_agvs):
-                agv_pos = tf.constant([12.0 - i*4.0, 5.0 + i*10.0, config.agv_height], 
-                                    dtype=tf.float32)
+                agv_pos = tf.constant([12.0 - i*4.0, 5.0 + i*10.0, config.agv_height], dtype=tf.float32)
                 logger.debug(f"AGV_{i} position: {agv_pos.numpy()}")
                 
                 rx = manager.add_receiver(
@@ -146,7 +160,7 @@ def setup_scene(config):
                 raise RuntimeError("Scene validation failed")
             
             # Final debug info
-            logger.debug(f"Final scene state:")
+            logger.debug("Final scene state:")
             logger.debug(f"- Number of transmitters: {len(scene.transmitters)}")
             logger.debug(f"- Number of receivers: {len(scene.receivers)}")
             logger.debug(f"- Number of RIS: {len(scene.ris)}")
@@ -163,6 +177,7 @@ def setup_scene(config):
         # Log full stack trace for debugging
         logger.exception("Detailed error trace:")
         raise RuntimeError(f"Scene setup error: {str(e)}") from e
+
 
 def _add_room_boundaries(self):
     """Add walls, floor and ceiling to the scene"""

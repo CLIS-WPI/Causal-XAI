@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 import logging
 from datetime import datetime
+import time
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -184,9 +185,11 @@ class SceneManager:
 
     def _generate_object_id(self) -> int:
         """Thread-safe generation of next available object ID"""
+        print("[DEBUG PRINT] Entering _generate_object_id()")
         with self._lock:
             object_id = self._next_id
             self._next_id += 1
+            print(f"[DEBUG PRINT] Generated new ID: {object_id}")
             return object_id
 
     def _register_object(self, obj: Any, obj_type: ObjectType,
@@ -290,46 +293,44 @@ class SceneManager:
                 self._material_registry[material_name] = set()
             return material
 
-    def add_transmitter(self, name: str, position: tf.Tensor,
-                        orientation: tf.Tensor, dtype=tf.complex64) -> Transmitter:
-        """Add a transmitter to the scene"""
+    def add_transmitter(self, name: str, position: tf.Tensor, orientation: tf.Tensor, dtype=tf.complex64) -> Transmitter:
+        """Add a transmitter to the scene with detailed debugging and error handling."""
         print(f"[DEBUG PRINT] Entering add_transmitter() for '{name}'")
-        print(f"[DEBUG PRINT] About to acquire lock in add_transmitter() for '{name}'")
+        print(f"[DEBUG PRINT] Attempting to acquire lock in add_transmitter() for '{name}'")
 
         with self._lock:  # Keep the high-level lock
             print(f"[DEBUG PRINT] Lock acquired for add_transmitter() - {name}")
             try:
-                # High-level logging
                 logger.debug(f"Starting to create transmitter {name}...")
                 logger.debug(f"Position: {position.numpy()}, Orientation: {orientation.numpy()}, dtype: {dtype}")
 
                 print(f"[DEBUG PRINT] Creating Transmitter object: {name}")
-                tx = Transmitter(
-                    name=name,
-                    position=position,
-                    orientation=orientation,
-                    dtype=dtype
-                )
-                logger.debug(f"Transmitter {name} object created successfully")
+                tx = Transmitter(name=name, position=position, orientation=orientation, dtype=dtype)
+                logger.debug(f"Transmitter object '{name}' created successfully")
                 print(f"[DEBUG PRINT] Finished creating Transmitter object: {name}")
 
+                # Set scene reference for the transmitter
                 logger.debug(f"Setting scene reference for {name}...")
                 tx.scene = self._scene
                 logger.debug(f"Scene reference set successfully for {name}")
                 print(f"[DEBUG PRINT] Transmitter '{name}' scene reference assigned")
 
-                # Convert spacing to proper tensor
-                logger.debug(f"Converting array spacing. Original value: {self._config.bs_array_spacing}")
-                array_spacing = tf.cast(self._config.bs_array_spacing, dtype=tf.float32)
-                logger.debug(f"Array spacing converted to tensor: {array_spacing}")
-                print(f"[DEBUG PRINT] BS array spacing (float32): {array_spacing.numpy()}")
-
-                # Configure antenna array
+                # Convert spacing to proper tensor and log the process
                 try:
-                    logger.debug(f"Creating antenna array with params:")
+                    logger.debug(f"Converting array spacing. Original value: {self._config.bs_array_spacing}")
+                    array_spacing = tf.cast(self._config.bs_array_spacing, dtype=tf.float32)
+                    logger.debug(f"Array spacing converted to tensor: {array_spacing.numpy()}")
+                    print(f"[DEBUG PRINT] BS array spacing (float32): {array_spacing.numpy()}")
+                except Exception as spacing_error:
+                    logger.error(f"Failed to convert array spacing: {spacing_error}")
+                    raise
+
+                # Configure and assign the antenna array
+                try:
+                    logger.debug("Creating antenna array with the following parameters:")
                     logger.debug(f"- Rows: {self._config.bs_array[0]}")
                     logger.debug(f"- Cols: {self._config.bs_array[1]}")
-                    logger.debug(f"- Spacing: {array_spacing}")
+                    logger.debug(f"- Spacing: {array_spacing.numpy()}")
 
                     print(f"[DEBUG PRINT] About to create PlanarArray for '{name}'")
                     tx_array = PlanarArray(
@@ -337,8 +338,8 @@ class SceneManager:
                         num_cols=self._config.bs_array[1],
                         vertical_spacing=array_spacing,
                         horizontal_spacing=array_spacing,
-                        pattern="tr38901",  # Hardcode known working pattern
-                        polarization="V",   # Simplify polarization
+                        pattern="tr38901",  # Hardcoded known working pattern
+                        polarization="V",
                         dtype=dtype
                     )
                     logger.debug("Antenna array object created successfully")
@@ -350,31 +351,40 @@ class SceneManager:
                     print(f"[DEBUG PRINT] Antenna array assigned to transmitter '{name}'")
 
                 except Exception as array_error:
-                    logger.error(f"Failed to create/assign antenna array: {str(array_error)}")
+                    logger.error(f"Failed to create/assign antenna array: {array_error}")
                     logger.error("Array error traceback:", exc_info=True)
                     print(f"[DEBUG PRINT] Exception while creating PlanarArray: {array_error}")
                     raise
 
-                logger.debug(f"Registering {name} in object registry...")
-                print(f"[DEBUG PRINT] About to _register_object() for '{name}'")
-                # Call _register_object without its own lock since we're already in a locked section
-                object_id = self._register_object_unlocked(tx, ObjectType.TRANSMITTER)  # Changed to unlocked version
-                tx.object_id = object_id
-                logger.debug(f"Object registered and ID {object_id} assigned to {name}")
-                print(f"[DEBUG PRINT] Done registering '{name}' with object ID = {object_id}")
+                # Register the transmitter in the object registry
+                logger.debug(f"Registering transmitter {name} in the object registry...")
+                print(f"[DEBUG PRINT] About to call _register_object() for '{name}'")
+                try:
+                    object_id = self._register_object_unlocked(tx, ObjectType.TRANSMITTER)
+                    tx.object_id = object_id
+                    logger.debug(f"Object registered and ID {object_id} assigned to {name}")
+                    print(f"[DEBUG PRINT] Transmitter '{name}' registered with object ID = {object_id}")
+                except Exception as registry_error:
+                    logger.error(f"Failed to register transmitter {name}: {registry_error}")
+                    raise
 
-                logger.debug(f"Adding {name} to scene...")
+                # Add the transmitter to the scene
+                logger.debug(f"Adding transmitter {name} to the scene...")
                 print(f"[DEBUG PRINT] About to call self._scene.add(tx) for '{name}'")
-                self._scene.add(tx)
-                logger.debug(f"Successfully added {name} to scene")
-                print(f"[DEBUG PRINT] Done calling self._scene.add(tx) for '{name}'")
+                try:
+                    self._scene.add(tx)
+                    logger.debug(f"Successfully added transmitter {name} to scene")
+                    print(f"[DEBUG PRINT] Done calling self._scene.add(tx) for '{name}'")
+                except Exception as scene_add_error:
+                    logger.error(f"Failed to add transmitter {name} to scene: {scene_add_error}")
+                    raise
 
                 logger.info(f"Successfully completed transmitter {name} setup with ID {object_id}")
                 print(f"[DEBUG PRINT] Exiting add_transmitter() for '{name}' with success")
                 return tx
 
             except Exception as e:
-                logger.error(f"Failed to add transmitter {name}: {str(e)}")
+                logger.error(f"Failed to add transmitter {name}: {e}")
                 logger.error("Full error traceback:", exc_info=True)
                 print(f"[DEBUG PRINT] ERROR in add_transmitter() for '{name}': {e}")
                 if 'object_id' in locals():
@@ -383,83 +393,137 @@ class SceneManager:
                     self._unregister_object(object_id)
                 raise
 
-    def _register_object_unlocked(self, obj: Any, obj_type: ObjectType,
-                            radio_material: Optional[str] = None) -> int:
-        """Register a new object in the scene without acquiring a lock"""
-        print("[DEBUG PRINT] Entering _register_object_unlocked()")
-        print(f"[DEBUG PRINT] _register_object_unlocked() called with obj_type={obj_type}, radio_material={radio_material}")
-        
-        try:
-            # Generate unique ID (this method should still use its own lock)
-            object_id = self._generate_object_id()
-            
-            # Create registration
-            scene_object = SceneObject(
-                id=object_id,
-                name=obj.name if hasattr(obj, 'name') else f"object_{object_id}",
-                obj_type=obj_type,
-                radio_material=radio_material,
-                reference=obj
-            )
-            
-            # Add to registry
-            self._object_registry[object_id] = scene_object
-            
-            # Register material if specified
-            if radio_material:
-                if radio_material not in self._material_registry:
-                    self._material_registry[radio_material] = set()
-                self._material_registry[radio_material].add(object_id)
-                
-            logger.debug(f"Registered object {scene_object.name} with ID {object_id}")
-            return object_id
-            
-        except Exception as e:
-            logger.error(f"Registration failed: {str(e)}")
-            raise
+
+    def _register_object(self, obj: Any, obj_type: ObjectType, radio_material: Optional[str] = None) -> int:
+        """Register a new object in the scene with additional logging and timeout handling."""
+        print("[DEBUG PRINT] Entering _register_object()")
+        start_time = time.time()  # Record start time
+
+        with self._lock:
+            print("[DEBUG PRINT] Lock acquired for _register_object()")
+            try:
+                object_id = self._generate_object_id()
+                print(f"[DEBUG PRINT] Generated object_id={object_id}")
+
+                name = obj.name if hasattr(obj, 'name') else f"object_{object_id}"
+                print(f"[DEBUG PRINT] Object name determined: {name}")
+
+                # Create the SceneObject and log all attributes
+                scene_object = SceneObject(
+                    id=object_id,
+                    name=name,
+                    obj_type=obj_type,
+                    radio_material=radio_material,
+                    reference=obj
+                )
+                print(f"[DEBUG PRINT] SceneObject created: id={object_id}, name={name}")
+
+                # Add to registry with timeout check
+                if time.time() - start_time > 5:  # Timeout after 5 seconds
+                    raise TimeoutError(f"[ERROR] Timeout while registering object: {name}")
+
+                self._object_registry[object_id] = scene_object
+                print(f"[DEBUG PRINT] Successfully registered object_id={object_id}")
+
+                return object_id
+
+            except TimeoutError as e:
+                print(f"[DEBUG PRINT] Timeout Error: {e}")
+                raise e
+
+            except Exception as e:
+                print(f"[DEBUG PRINT] Exception in _register_object(): {e}")
+                raise
 
     def add_ris(self, name: str, position: tf.Tensor, orientation: tf.Tensor,
-                num_rows: int, num_cols: int, dtype=tf.complex64) -> RIS:
-        """Add a RIS to the scene"""
+            num_rows: int, num_cols: int, dtype=tf.complex64) -> RIS:
+        """Add a RIS to the scene with enhanced debugging and error handling."""
         print(f"[DEBUG PRINT] Entering add_ris() for '{name}'")
-        print(f"[DEBUG PRINT] About to acquire lock in add_ris() for '{name}'")
-        
+        print(f"[DEBUG PRINT] Attempting to acquire lock in add_ris() for '{name}'")
+
         with self._lock:
             print(f"[DEBUG PRINT] Lock acquired for add_ris() - {name}")
             try:
-                # First get/create material
-                metal_material = self._get_or_create_material("itu_metal", dtype)
-                
-                # Create RIS
-                ris = RIS(
-                    name=name,
-                    position=position,
-                    orientation=orientation,
-                    num_rows=num_rows,
-                    num_cols=num_cols,
-                    dtype=dtype
-                )
-                
-                # Set scene reference before material
-                ris.scene = self._scene
-                
-                # Register object without lock since we're already in locked section
-                object_id = self._register_object_unlocked(ris, ObjectType.RIS, "itu_metal")
-                ris.object_id = object_id
-                
-                # Set material after ID assigned
-                ris.radio_material = metal_material
-                
-                # Add to scene
-                self._scene.add(ris)
-                logger.info(f"Added RIS {name} with ID {object_id}")
+                # Create or retrieve the material
+                logger.debug(f"Getting or creating material for RIS '{name}'...")
+                try:
+                    metal_material = self._get_or_create_material("itu_metal", dtype)
+                    logger.debug(f"Material 'itu_metal' retrieved or created successfully for {name}")
+                except Exception as material_error:
+                    logger.error(f"Failed to get or create material for RIS '{name}': {material_error}")
+                    raise
+
+                # Create the RIS object
+                logger.debug(f"Creating RIS '{name}' with {num_rows} rows and {num_cols} columns...")
+                try:
+                    ris = RIS(
+                        name=name,
+                        position=position,
+                        orientation=orientation,
+                        num_rows=num_rows,
+                        num_cols=num_cols,
+                        dtype=dtype
+                    )
+                    logger.debug(f"RIS '{name}' object created successfully")
+                    print(f"[DEBUG PRINT] RIS object '{name}' created successfully")
+                except Exception as ris_creation_error:
+                    logger.error(f"Failed to create RIS '{name}': {ris_creation_error}")
+                    raise
+
+                # Set scene reference before assigning material
+                logger.debug(f"Setting scene reference for RIS '{name}'...")
+                try:
+                    ris.scene = self._scene
+                    logger.debug(f"Scene reference set for RIS '{name}'")
+                    print(f"[DEBUG PRINT] Scene reference assigned to RIS '{name}'")
+                except Exception as scene_ref_error:
+                    logger.error(f"Failed to set scene reference for RIS '{name}': {scene_ref_error}")
+                    raise
+
+                # Register the RIS object in the object registry
+                logger.debug(f"Registering RIS '{name}' in the object registry...")
+                try:
+                    object_id = self._register_object_unlocked(ris, ObjectType.RIS, "itu_metal")
+                    ris.object_id = object_id
+                    logger.debug(f"RIS '{name}' registered with object ID {object_id}")
+                    print(f"[DEBUG PRINT] RIS '{name}' registered with object ID = {object_id}")
+                except Exception as registry_error:
+                    logger.error(f"Failed to register RIS '{name}': {registry_error}")
+                    raise
+
+                # Assign material after registration
+                logger.debug(f"Assigning material to RIS '{name}'...")
+                try:
+                    ris.radio_material = metal_material
+                    logger.debug(f"Material 'itu_metal' assigned to RIS '{name}'")
+                except Exception as material_assignment_error:
+                    logger.error(f"Failed to assign material to RIS '{name}': {material_assignment_error}")
+                    raise
+
+                # Add the RIS to the scene
+                logger.debug(f"Adding RIS '{name}' to the scene...")
+                try:
+                    self._scene.add(ris)
+                    logger.debug(f"RIS '{name}' added to the scene successfully")
+                    print(f"[DEBUG PRINT] RIS '{name}' added to the scene")
+                except Exception as scene_add_error:
+                    logger.error(f"Failed to add RIS '{name}' to the scene: {scene_add_error}")
+                    raise
+
+                logger.info(f"Successfully added RIS '{name}' with ID {object_id}")
+                print(f"[DEBUG PRINT] Exiting add_ris() for '{name}' with success")
                 return ris
-                
+
             except Exception as e:
-                logger.error(f"Failed to add RIS {name}: {str(e)}")
+                logger.error(f"Failed to add RIS '{name}': {e}")
+                logger.error("Full error traceback:", exc_info=True)
+                print(f"[DEBUG PRINT] ERROR in add_ris() for '{name}': {e}")
                 if 'object_id' in locals():
+                    logger.debug(f"Cleaning up - unregistering object ID {object_id}")
+                    print(f"[DEBUG PRINT] Unregistering object ID {object_id}")
                     self._unregister_object(object_id)
                 raise
+
 
     def add_receiver(self, name: str, position: tf.Tensor,
                     orientation: tf.Tensor, dtype=tf.complex64) -> Receiver:

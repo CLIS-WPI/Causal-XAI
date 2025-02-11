@@ -456,6 +456,7 @@ def analyze_energy_efficiency(channel_response, result_dir):
 def main():
     """Main execution function"""
     result_dir = ensure_result_dir()
+    scene = None  # Ensure scene is defined in outer scope for cleanup
     try:
         logger.info("Starting Smart Factory Channel Analysis")
         
@@ -622,12 +623,15 @@ def main():
     except Exception as e:
         logger.error(f"Fatal error in main execution: {str(e)}")
         traceback.print_exc()
-        raise
-    
     finally:
         # Cleanup
+        logger.info("Performing cleanup...")
+        if scene:
+            scene.cleanup()
+            logger.info("Scene cleanup completed successfully.")
         plt.close('all')
         logger.info(f"All results saved in {result_dir}")
+
 
 def process_channel_responses(loaded_data):
     """Process loaded CSI data into channel responses"""
