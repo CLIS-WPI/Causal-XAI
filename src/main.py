@@ -13,6 +13,9 @@ import sionna
 from sionna.rt import Scene, PlanarArray, Transmitter, Receiver, RIS, SceneObject
 import logging
 from validation import ChannelValidator
+from config import SmartFactoryConfig
+from scene_manager import SceneManager
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress TF warnings
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN custom operations
 
@@ -392,6 +395,7 @@ def plot_agv_trajectories(channel_gen, result_dir):
     
     plt.savefig(os.path.join(result_dir, f'agv_trajectories_{timestamp}.png'))
     plt.close()
+
 def analyze_causal_relationships(channel_response, result_dir):
     """Analyze and visualize causal relationships in channel response"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
