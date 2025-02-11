@@ -137,6 +137,57 @@ class SceneManager:
             logger.error(f"Failed to add room boundaries: {str(e)}")
             raise
 
+    def _get_or_create_material(self, material_name: str, dtype=tf.complex64) -> RadioMaterial:
+        """Get existing material or create new one with detailed error handling."""
+        print(f"[DEBUG PRINT] Attempting to get/create material: {material_name}")
+        print(f"[DEBUG PRINT] Using dtype: {dtype}")
+        
+        with self._lock:
+            try:
+                # First try to get existing material
+                print(f"[DEBUG PRINT] Checking for existing material: {material_name}")
+                material = next((mat for mat in self._scene.materials.values() if mat.name == material_name), None)
+                
+                if material is not None:
+                    print(f"[DEBUG PRINT] Found existing material: {material_name}")
+                    print(f"[DEBUG PRINT] Material memory address: {hex(id(material))}")
+                    return material
+                
+                # Create new material if not found
+                print(f"[DEBUG PRINT] Creating new material: {material_name}")
+                material = RadioMaterial(
+                    name=material_name,
+                    relative_permittivity=4.5,  # Default value for metal
+                    conductivity=0.01,         # Default value for metal
+                    dtype=dtype
+                )
+                
+                # Set scene reference
+                print(f"[DEBUG PRINT] Setting scene reference for material: {material_name}")
+                material.scene = self._scene
+                
+                # Add to scene
+                print(f"[DEBUG PRINT] Adding material to scene: {material_name}")
+                self._scene.add(material)
+                
+                # Initialize empty set in registry if needed
+                if material_name not in self._material_registry:
+                    print(f"[DEBUG PRINT] Initializing material registry entry for: {material_name}")
+                    self._material_registry[material_name] = set()
+                
+                print(f"[DEBUG PRINT] Successfully created material: {material_name}")
+                print(f"[DEBUG PRINT] New material memory address: {hex(id(material))}")
+                return material
+                
+            except Exception as e:
+                print(f"[DEBUG PRINT] Error in get_or_create_material: {str(e)}")
+                print(f"[DEBUG PRINT] Material name: {material_name}")
+                print(f"[DEBUG PRINT] Error type: {type(e)}")
+                print("[DEBUG PRINT] Stack trace:")
+                import traceback
+                traceback.print_exc()
+                raise RuntimeError(f"Failed to get/create material {material_name}: {str(e)}") from e
+                    
     def _initialize_registries(self):
         """Initialize object and material registries from existing scene state"""
         with self._lock:
@@ -183,289 +234,298 @@ class SceneManager:
                 self._material_registry[scene_obj.radio_material] = set()
             self._material_registry[scene_obj.radio_material].add(obj.object_id)
 
+    def _register_object_unlocked(self, obj: Any, obj_type: ObjectType, radio_material: Optional[str] = None) -> int:
+        """Register object without acquiring lock (for use when lock is already held)."""
+        try:
+            print(f"[DEBUG PRINT] Registering object without lock: {obj_type}")
+            
+            # Generate ID (without lock since we already have it)
+            object_id = self._next_id
+            self._next_id += 1
+            
+            # Create scene object
+            name = obj.name if hasattr(obj, 'name') else f"object_{object_id}"
+            scene_object = SceneObject(
+                id=object_id,
+                name=name,
+                obj_type=obj_type,
+                radio_material=radio_material,
+                reference=obj
+            )
+            
+            # Add to registry
+            self._object_registry[object_id] = scene_object
+            
+            # Track material association
+            if radio_material:
+                if radio_material not in self._material_registry:
+                    self._material_registry[radio_material] = set()
+                self._material_registry[radio_material].add(object_id)
+                
+            print(f"[DEBUG PRINT] Object registered successfully with ID: {object_id}")
+            return object_id
+            
+        except Exception as e:
+            print(f"[DEBUG PRINT] Error in _register_object_unlocked: {str(e)}")
+            raise RuntimeError(f"Failed to register object without lock: {str(e)}") from e
+    
     def _generate_object_id(self) -> int:
-        """Thread-safe generation of the next available object ID with detailed logging."""
+        """Thread-safe generation of the next available object ID with detailed logging and safety checks."""
         print("[DEBUG PRINT] Entering _generate_object_id()")
         start_time = time.time()
+        
         with self._lock:
             try:
+                # Log the current state of the object registry and next_id
+                print(f"[DEBUG PRINT] Current next_id: {self._next_id}")
+                print(f"[DEBUG PRINT] Current registry size: {len(self._object_registry)}")
+                
+                # Generate a unique object ID
                 object_id = self._next_id
                 self._next_id += 1
+                
+                # Check for potential ID overflow or large jumps
+                if object_id >= 1e7:  # Arbitrary large value for safety
+                    raise ValueError(f"[DEBUG PRINT] Object ID {object_id} exceeds safe limit!")
+
+                # Log time taken to generate ID
                 duration = time.time() - start_time
                 print(f"[DEBUG PRINT] Generated new ID: {object_id} in {duration:.4f} seconds")
+                
                 return object_id
+
+            except ValueError as e:
+                print(f"[DEBUG PRINT] ValueError in _generate_object_id: {e}")
+                raise
+
             except Exception as e:
                 print(f"[DEBUG PRINT] Failed to generate object ID: {e}")
                 raise RuntimeError("Failed to generate object ID.") from e
 
-
     def _register_object(self, obj: Any, obj_type: ObjectType, radio_material: Optional[str] = None) -> int:
-        """Register a new object in the scene, with improved debugging and error handling."""
+        """Register a new object in the scene with detailed timing, registry validation, deadlock prevention, and debug."""
         print("[DEBUG PRINT] Entering _register_object()")
-        print(f"[DEBUG PRINT] _register_object() called with obj_type={obj_type}, radio_material={radio_material}")
+        print(f"[DEBUG PRINT] Input parameters: obj_type={obj_type}, radio_material={radio_material}")
+        print(f"[DEBUG PRINT] Object details: type={type(obj)}, memory_addr={hex(id(obj))}")
+        start_time = time.time()
 
-        with self._lock:
-            print("[DEBUG PRINT] _register_object() lock acquired")
+        # Debug lock state
+        lock_owner_id = id(threading.current_thread())
+        print(f"[DEBUG PRINT] Current thread ID: {lock_owner_id}")
+        print(f"[DEBUG PRINT] Lock state: {self._lock.locked()}")
+        print(f"[DEBUG PRINT] Current registry state:")
+        print(f"[DEBUG PRINT] - Registry size: {len(self._object_registry)}")
+        print(f"[DEBUG PRINT] - Existing IDs: {list(self._object_registry.keys())}")
+
+        try:
+            # Step 1: Generate Object ID
+            print("[DEBUG PRINT] Step 1: Generating object ID - Start")
+            id_start = time.time()
+            object_id = self._next_id
+            self._next_id += 1
+            id_duration = time.time() - id_start
+            print(f"[DEBUG PRINT] Generated object_id={object_id} in {id_duration:.4f} seconds")
+
+            # Step 2: Registry Validation Check
+            print("[DEBUG PRINT] Step 2: Validating object ID in the registry...")
+            if object_id in self._object_registry:
+                raise RuntimeError(f"Duplicate object_id detected: {object_id}")
+            print("[DEBUG PRINT] Object ID validation passed")
+
+            # Step 3: Determine Object Name
+            print("[DEBUG PRINT] Step 3: Determining object name")
+            name_start = time.time()
             try:
-                logger.debug("=== START REGISTRATION PROCESS ===")
-                logger.debug(f"Object type: {obj_type}")
-                logger.debug(f"Object details: {type(obj)}")
-                print("[DEBUG PRINT] Generating a new object ID...")
+                print(f"[DEBUG PRINT] Object hasattr('name'): {hasattr(obj, 'name')}")
+                if hasattr(obj, 'name'):
+                    print(f"[DEBUG PRINT] Object name attribute value: {obj.name}")
+                name = obj.name if hasattr(obj, 'name') else f"object_{object_id}"
+                print(f"[DEBUG PRINT] Final determined name: {name}")
+            except Exception as name_error:
+                print(f"[DEBUG PRINT] Error getting object name: {str(name_error)}")
+                raise
+            name_duration = time.time() - name_start
+            print(f"[DEBUG PRINT] Name determination completed in {name_duration:.4f} seconds")
 
-                # Generate unique ID
-                try:
-                    object_id = self._generate_object_id()
-                    logger.debug(f"Generated ID: {object_id}")
-                    print(f"[DEBUG PRINT] _register_object() generated object_id={object_id}")
-                except Exception as e:
-                    logger.error(f"ID generation failed: {str(e)}")
-                    print(f"[DEBUG PRINT] Exception generating object ID: {e}")
-                    raise RuntimeError("Failed to generate object ID.") from e
+            # Step 4: Create SceneObject
+            print(f"[DEBUG PRINT] Step 4: Creating SceneObject")
+            create_start = time.time()
+            scene_object = SceneObject(
+                id=object_id,
+                name=name,
+                obj_type=obj_type,
+                radio_material=radio_material,
+                reference=obj
+            )
+            create_duration = time.time() - create_start
+            print(f"[DEBUG PRINT] SceneObject created at {hex(id(scene_object))}")
+            print(f"[DEBUG PRINT] Creation took {create_duration:.4f} seconds")
 
-                # Extract object name
-                print("[DEBUG PRINT] Extracting object name...")
-                try:
-                    name = obj.name if hasattr(obj, 'name') else f"object_{object_id}"
-                    logger.debug(f"Object name extracted: {name}")
-                    print(f"[DEBUG PRINT] _register_object() got name='{name}'")
-                except Exception as e:
-                    logger.error(f"Failed to extract object name: {str(e)}")
-                    print(f"[DEBUG PRINT] Exception extracting name: {e}")
-                    raise RuntimeError("Failed to extract object name.") from e
+            # Step 5: Timeout Check
+            elapsed_time = time.time() - start_time
+            print(f"[DEBUG PRINT] Current elapsed time: {elapsed_time:.4f} seconds")
+            if elapsed_time > 5:
+                print(f"[DEBUG PRINT] Operation timed out after {elapsed_time:.4f} seconds")
+                raise TimeoutError(f"Timeout while registering object: {name}")
 
-                # Validate object state
-                print("[DEBUG PRINT] Checking object state (scene, array, position)...")
-                try:
-                    logger.debug(f"Object state check:")
-                    logger.debug(f"- Has scene: {hasattr(obj, 'scene')}")
-                    logger.debug(f"- Has array: {hasattr(obj, 'array')}")
-                    logger.debug(f"- Has position: {hasattr(obj, 'position')}")
-                    print("[DEBUG PRINT] Object state check complete")
-                except Exception as e:
-                    logger.error(f"State check failed: {str(e)}")
-                    print(f"[DEBUG PRINT] Exception in object state check: {e}")
-                    raise RuntimeError("Failed to validate object state.") from e
+            # Step 6: Add to Object Registry
+            print(f"[DEBUG PRINT] Step 6: Adding to registry")
+            print(f"[DEBUG PRINT] Registry state before addition:")
+            print(f"[DEBUG PRINT] - Current size: {len(self._object_registry)}")
+            print(f"[DEBUG PRINT] - Current keys: {list(self._object_registry.keys())}")
+            reg_start = time.time()
+            self._object_registry[object_id] = scene_object
+            reg_duration = time.time() - reg_start
+            print(f"[DEBUG PRINT] Registry state after addition:")
+            print(f"[DEBUG PRINT] - New size: {len(self._object_registry)}")
+            print(f"[DEBUG PRINT] - New keys: {list(self._object_registry.keys())}")
+            print(f"[DEBUG PRINT] - Addition took {reg_duration:.4f} seconds")
 
-                # Create and register SceneObject
-                print("[DEBUG PRINT] Creating SceneObject...")
-                try:
-                    scene_object = SceneObject(
-                        id=object_id,
-                        name=name,
-                        obj_type=obj_type,
-                        radio_material=radio_material,
-                        reference=obj
-                    )
-                    logger.debug("SceneObject created successfully")
-                    print("[DEBUG PRINT] SceneObject created successfully")
-                except Exception as e:
-                    logger.error(f"Failed to create SceneObject: {str(e)}")
-                    logger.error(f"Creation parameters: id={object_id}, name={name}, type={obj_type}")
-                    print(f"[DEBUG PRINT] Exception creating SceneObject: {e}")
-                    raise RuntimeError("Failed to create SceneObject.") from e
+            total_duration = time.time() - start_time
+            print(f"[DEBUG PRINT] Total registration time: {total_duration:.4f} seconds")
+            print("[DEBUG PRINT] Registration completed successfully")
+            return object_id
 
-                # Add object to registry
-                
-                try:
-                    print("[DEBUG PRINT] Adding to object registry...")
-                    self._object_registry[object_id] = scene_object
-                    logger.debug(f"Added object with ID {object_id} to registry")
-                    print(f"[DEBUG PRINT] Successfully added object_id={object_id} to registry")
-                except Exception as e:
-                    logger.error(f"Failed to update object registry: {str(e)}")
-                    print(f"[DEBUG PRINT] Exception updating registry: {e}")
-                    raise RuntimeError("Failed to update object registry.") from e
+        except TimeoutError as e:
+            print(f"[DEBUG PRINT] Timeout Error occurred: {str(e)}")
+            raise
 
-                logger.debug("=== REGISTRATION COMPLETE ===")
-                print(f"[DEBUG PRINT] Registration complete for object_id={object_id}")
-                print("[DEBUG PRINT] Exiting _register_object() normally...")
-                return object_id
+        except Exception as e:
+            print(f"[DEBUG PRINT] Error during registration:")
+            print(f"[DEBUG PRINT] - Error type: {type(e)}")
+            print(f"[DEBUG PRINT] - Error message: {str(e)}")
+            print("[DEBUG PRINT] - Stack trace:")
+            import traceback
+            traceback.print_exc()
+            raise RuntimeError(f"Registration failed: {str(e)}") from e
 
-            except Exception as e:
-                logger.error("!!! REGISTRATION FAILED !!!")
-                logger.error(f"Error: {str(e)}")
-                logger.error("Traceback:", exc_info=True)
-                print(f"[DEBUG PRINT] EXCEPTION in _register_object(): {e}")
-                raise RuntimeError(f"Registration failed for object: {str(e)}") from e
+        finally:
+            elapsed = time.time() - start_time
+            print(f"[DEBUG PRINT] _register_object() completed in {elapsed:.4f} seconds")
 
-            
-    def _get_or_create_material(self, material_name: str, 
-                            dtype=tf.complex64) -> RadioMaterial:
-        """Get existing material or create new one"""
-        with self._lock:
-            material = self._scene.get(material_name)
-            if material is None:
-                material = RadioMaterial(material_name, dtype=dtype)
-                material.scene = self._scene
-                self._scene.add(material)
-                self._material_registry[material_name] = set()
-            return material
+
 
     def add_transmitter(self, name: str, position: tf.Tensor, orientation: tf.Tensor, dtype=tf.complex64) -> Transmitter:
-        """Add a transmitter to the scene with detailed debugging and error handling."""
+        """Add a transmitter to the scene with detailed debugging and deadlock prevention."""
         print(f"[DEBUG PRINT] Entering add_transmitter() for '{name}'")
-        print(f"[DEBUG PRINT] Attempting to acquire lock in add_transmitter() for '{name}'")
+        print(f"[DEBUG PRINT] Thread ID: {id(threading.current_thread())}")
+        print(f"[DEBUG PRINT] Initial lock state: {self._lock.locked()}")
+        start_time = time.time()
 
-        with self._lock:  # Keep the high-level lock
-            print(f"[DEBUG PRINT] Lock acquired for add_transmitter() - {name}")
+        with self._lock:
+            print(f"[DEBUG PRINT] Lock acquired in add_transmitter() - {name}")
+            print(f"[DEBUG PRINT] Lock acquisition time: {time.time() - start_time:.4f} seconds")
+            
             try:
-                logger.debug(f"Starting to create transmitter {name}...")
-                logger.debug(f"Position: {position.numpy()}, Orientation: {orientation.numpy()}, dtype: {dtype}")
-
-                print(f"[DEBUG PRINT] Creating Transmitter object: {name}")
-                tx = Transmitter(name=name, position=position, orientation=orientation, dtype=dtype)
-                logger.debug(f"Transmitter object '{name}' created successfully")
-                print(f"[DEBUG PRINT] Finished creating Transmitter object: {name}")
-
-                # Set scene reference for the transmitter
-                logger.debug(f"Setting scene reference for {name}...")
-                tx.scene = self._scene
-                logger.debug(f"Scene reference set successfully for {name}")
-                print(f"[DEBUG PRINT] Transmitter '{name}' scene reference assigned")
-
-                # Convert spacing to proper tensor and log the process
+                # Step 1: Create Transmitter object
+                print(f"[DEBUG PRINT] Step 1: Creating Transmitter object for {name}")
+                tx_start = time.time()
                 try:
-                    logger.debug(f"Converting array spacing. Original value: {self._config.bs_array_spacing}")
-                    array_spacing = tf.cast(self._config.bs_array_spacing, dtype=tf.float32)
-                    logger.debug(f"Array spacing converted to tensor: {array_spacing.numpy()}")
-                    print(f"[DEBUG PRINT] BS array spacing (float32): {array_spacing.numpy()}")
-                except Exception as spacing_error:
-                    logger.error(f"Failed to convert array spacing: {spacing_error}")
+                    tx = Transmitter(name=name, position=position, orientation=orientation, dtype=dtype)
+                    print(f"[DEBUG PRINT] Transmitter object created at {hex(id(tx))}")
+                    logger.debug(f"Transmitter '{name}' created successfully")
+                except Exception as tx_error:
+                    print(f"[DEBUG PRINT] Error creating Transmitter: {str(tx_error)}")
+                    logger.error(f"Failed to create Transmitter: {str(tx_error)}")
                     raise
+                print(f"[DEBUG PRINT] Transmitter creation took {time.time() - tx_start:.4f} seconds")
 
-                # Configure and assign the antenna array
+                # Step 2: Set scene reference
+                print(f"[DEBUG PRINT] Step 2: Setting scene reference")
+                scene_start = time.time()
                 try:
-                    logger.debug("Creating antenna array with the following parameters:")
-                    logger.debug(f"- Rows: {self._config.bs_array[0]}")
-                    logger.debug(f"- Cols: {self._config.bs_array[1]}")
-                    logger.debug(f"- Spacing: {array_spacing.numpy()}")
+                    tx.scene = self._scene
+                    print(f"[DEBUG PRINT] Scene reference set successfully")
+                except Exception as scene_error:
+                    print(f"[DEBUG PRINT] Error setting scene reference: {str(scene_error)}")
+                    raise
+                print(f"[DEBUG PRINT] Scene reference assignment took {time.time() - scene_start:.4f} seconds")
 
-                    print(f"[DEBUG PRINT] About to create PlanarArray for '{name}'")
+                # Step 3: Configure antenna array
+                print(f"[DEBUG PRINT] Step 3: Configuring antenna array")
+                array_start = time.time()
+                try:
+                    # Convert spacing
+                    print(f"[DEBUG PRINT] Converting array spacing from {self._config.bs_array_spacing}")
+                    array_spacing = tf.cast(self._config.bs_array_spacing, dtype=tf.float32)
+                    print(f"[DEBUG PRINT] Array spacing converted to {array_spacing.numpy()}")
+
+                    # Create array
+                    print(f"[DEBUG PRINT] Creating PlanarArray with configuration:")
+                    print(f"[DEBUG PRINT] - Rows: {self._config.bs_array[0]}")
+                    print(f"[DEBUG PRINT] - Columns: {self._config.bs_array[1]}")
+                    print(f"[DEBUG PRINT] - Spacing: {array_spacing.numpy()}")
+                    print(f"[DEBUG PRINT] - Pattern: tr38901")
+                    
                     tx_array = PlanarArray(
                         num_rows=self._config.bs_array[0],
                         num_cols=self._config.bs_array[1],
                         vertical_spacing=array_spacing,
                         horizontal_spacing=array_spacing,
-                        pattern="tr38901",  # Hardcoded known working pattern
+                        pattern="tr38901",
                         polarization="V",
                         dtype=dtype
                     )
-                    logger.debug("Antenna array object created successfully")
-                    print(f"[DEBUG PRINT] PlanarArray created successfully for '{name}'")
+                    print(f"[DEBUG PRINT] PlanarArray created at {hex(id(tx_array))}")
 
-                    logger.debug(f"Assigning antenna array to transmitter {name}...")
+                    # Assign array
                     tx.array = tx_array
-                    logger.debug("Antenna array assigned successfully")
-                    print(f"[DEBUG PRINT] Antenna array assigned to transmitter '{name}'")
-
+                    print(f"[DEBUG PRINT] Array assigned to transmitter")
+                    
                 except Exception as array_error:
-                    logger.error(f"Failed to create/assign antenna array: {array_error}")
-                    logger.error("Array error traceback:", exc_info=True)
-                    print(f"[DEBUG PRINT] Exception while creating PlanarArray: {array_error}")
+                    print(f"[DEBUG PRINT] Error in antenna array setup: {str(array_error)}")
+                    logger.error(f"Antenna array configuration failed: {str(array_error)}")
                     raise
+                print(f"[DEBUG PRINT] Antenna array setup took {time.time() - array_start:.4f} seconds")
 
-                # Register the transmitter in the object registry
-                logger.debug(f"Registering transmitter {name} in the object registry...")
-                print(f"[DEBUG PRINT] About to call _register_object() for '{name}'")
+                # Step 4: Register object
+                print(f"[DEBUG PRINT] Step 4: Registering object in registry")
+                reg_start = time.time()
                 try:
+                    print(f"[DEBUG PRINT] Calling _register_object() for {name}")
                     object_id = self._register_object(tx, ObjectType.TRANSMITTER)
                     tx.object_id = object_id
-                    logger.debug(f"Object registered and ID {object_id} assigned to {name}")
-                    print(f"[DEBUG PRINT] Transmitter '{name}' registered with object ID = {object_id}")
-                except Exception as registry_error:
-                    logger.error(f"Failed to register transmitter {name}: {registry_error}")
+                    print(f"[DEBUG PRINT] Registration successful with ID {object_id}")
+                except Exception as reg_error:
+                    print(f"[DEBUG PRINT] Error in object registration: {str(reg_error)}")
+                    logger.error(f"Object registration failed: {str(reg_error)}")
                     raise
+                print(f"[DEBUG PRINT] Object registration took {time.time() - reg_start:.4f} seconds")
 
-                # Add the transmitter to the scene
-                logger.debug(f"Adding transmitter {name} to the scene...")
-                print(f"[DEBUG PRINT] About to call self._scene.add(tx) for '{name}'")
+                # Step 5: Add to scene
+                print(f"[DEBUG PRINT] Step 5: Adding to scene")
+                scene_add_start = time.time()
                 try:
                     self._scene.add(tx)
-                    logger.debug(f"Successfully added transmitter {name} to scene")
-                    print(f"[DEBUG PRINT] Done calling self._scene.add(tx) for '{name}'")
-                except Exception as scene_add_error:
-                    logger.error(f"Failed to add transmitter {name} to scene: {scene_add_error}")
+                    print(f"[DEBUG PRINT] Successfully added to scene")
+                except Exception as add_error:
+                    print(f"[DEBUG PRINT] Error adding to scene: {str(add_error)}")
+                    logger.error(f"Scene addition failed: {str(add_error)}")
                     raise
+                print(f"[DEBUG PRINT] Scene addition took {time.time() - scene_add_start:.4f} seconds")
 
-                logger.info(f"Successfully completed transmitter {name} setup with ID {object_id}")
-                print(f"[DEBUG PRINT] Exiting add_transmitter() for '{name}' with success")
+                total_time = time.time() - start_time
+                print(f"[DEBUG PRINT] Total transmitter setup time: {total_time:.4f} seconds")
                 return tx
 
             except Exception as e:
-                logger.error(f"Failed to add transmitter {name}: {e}")
-                logger.error("Full error traceback:", exc_info=True)
-                print(f"[DEBUG PRINT] ERROR in add_transmitter() for '{name}': {e}")
+                print(f"[DEBUG PRINT] Error in add_transmitter:")
+                print(f"[DEBUG PRINT] - Error type: {type(e)}")
+                print(f"[DEBUG PRINT] - Error message: {str(e)}")
+                print("[DEBUG PRINT] - Stack trace:")
+                import traceback
+                traceback.print_exc()
+                
                 if 'object_id' in locals():
-                    logger.debug(f"Cleaning up - unregistering object ID {object_id}")
-                    print(f"[DEBUG PRINT] Unregistering object ID {object_id}")
+                    print(f"[DEBUG PRINT] Cleaning up object {object_id}")
                     self._unregister_object(object_id)
+                
+                logger.error(f"Failed to add transmitter {name}: {e}", exc_info=True)
                 raise
 
-
-    def _register_object(self, obj: Any, obj_type: ObjectType, radio_material: Optional[str] = None) -> int:
-        """Register a new object in the scene with additional logging, timeout handling, and improved error handling."""
-        print("[DEBUG PRINT] Entering _register_object()")
-        start_time = time.time()  # Record start time for timeout tracking
-
-        with self._lock:
-            print("[DEBUG PRINT] Lock acquired for _register_object()")
-            try:
-                # Generate a unique object ID
-                print("[DEBUG PRINT] Generating a new object ID...")
-                try:
-                    object_id = self._generate_object_id()
-                    print(f"[DEBUG PRINT] Generated object_id={object_id}")
-                except Exception as id_error:
-                    print(f"[DEBUG PRINT] Failed to generate object ID: {id_error}")
-                    raise RuntimeError("Failed to generate object ID.") from id_error
-
-                # Determine the object name
-                print("[DEBUG PRINT] Determining object name...")
-                try:
-                    name = obj.name if hasattr(obj, 'name') else f"object_{object_id}"
-                    print(f"[DEBUG PRINT] Object name determined: {name}")
-                except Exception as name_error:
-                    print(f"[DEBUG PRINT] Failed to determine object name: {name_error}")
-                    raise RuntimeError("Failed to determine object name.") from name_error
-
-                # Create SceneObject
-                print("[DEBUG PRINT] Creating SceneObject...")
-                try:
-                    scene_object = SceneObject(
-                        id=object_id,
-                        name=name,
-                        obj_type=obj_type,
-                        radio_material=radio_material,
-                        reference=obj
-                    )
-                    print(f"[DEBUG PRINT] SceneObject created successfully: id={object_id}, name={name}")
-                except Exception as scene_object_error:
-                    print(f"[DEBUG PRINT] Failed to create SceneObject: {scene_object_error}")
-                    raise RuntimeError("Failed to create SceneObject.") from scene_object_error
-
-                # Add the SceneObject to the registry with timeout check
-                if time.time() - start_time > 5:  # Timeout after 5 seconds
-                    raise TimeoutError(f"[ERROR] Timeout while registering object: {name}")
-
-                print("[DEBUG PRINT] Adding SceneObject to object registry...")
-                try:
-                    self._object_registry[object_id] = scene_object
-                    print(f"[DEBUG PRINT] Successfully registered object_id={object_id}")
-                except Exception as registry_error:
-                    print(f"[DEBUG PRINT] Failed to add SceneObject to registry: {registry_error}")
-                    raise RuntimeError("Failed to update object registry.") from registry_error
-
-                print("[DEBUG PRINT] Exiting _register_object() successfully...")
-                return object_id
-
-            except TimeoutError as e:
-                print(f"[DEBUG PRINT] Timeout Error: {e}")
-                raise e
-
-            except Exception as e:
-                print(f"[DEBUG PRINT] Exception in _register_object(): {e}")
-                raise RuntimeError(f"Registration failed for object: {str(e)}") from e
-
+            finally:
+                print(f"[DEBUG PRINT] Exiting add_transmitter() after {time.time() - start_time:.4f} seconds")
+                print(f"[DEBUG PRINT] Final lock state: {self._lock.locked()}")
 
     def add_ris(self, name: str, position: tf.Tensor, orientation: tf.Tensor,
             num_rows: int, num_cols: int, dtype=tf.complex64) -> RIS:
@@ -578,7 +638,7 @@ class SceneManager:
                 rx.scene = self._scene
                 
                 # Register object without lock since we're already in locked section
-                object_id = self._register_object_unlocked(rx, ObjectType.RECEIVER)
+                object_id = self._register_object(rx, ObjectType.RECEIVER)
                 rx.object_id = object_id
                 
                 # Configure antenna array
@@ -654,6 +714,7 @@ class SceneManager:
     def _unregister_object(self, object_id: int):
         """Remove object registration and cleanup materials"""
         with self._lock:
+            print(f"[DEBUG PRINT] Current registry size: {len(self._object_registry)}")
             if object_id in self._object_registry:
                 obj = self._object_registry[object_id]
                 

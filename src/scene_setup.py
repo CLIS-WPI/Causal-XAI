@@ -17,67 +17,210 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
-def setup_scene(config):
-    """Setup the factory scene with transmitters, receivers, and RIS."""
+def _debug_object_state(obj, name):
+    """Helper to debug object state with detailed logs and safe attribute checking."""
+    print(f"[DEBUG PRINT] Debugging {name} state...")
+    logger.debug(f"{name} properties:")
     
-    # Debug helper function
-    def _debug_object_state(obj, name):
-        """Helper to debug object state with detailed logs."""
-        logger.debug(f"{name} properties:")
-        logger.debug(f"- Position: {obj.position.numpy()}")
-        logger.debug(f"- Orientation: {obj.orientation.numpy()}")
+    # Position check
+    try:
+        if hasattr(obj, 'position'):
+            pos = obj.position.numpy() if hasattr(obj.position, 'numpy') else obj.position
+            logger.debug(f"- Position: {pos}")
+            print(f"[DEBUG PRINT] {name} position: {pos}")
+    except Exception as e:
+        logger.debug(f"- Position: Unable to get position: {str(e)}")
+        print(f"[DEBUG PRINT] Error getting position: {str(e)}")
+
+    # Orientation check
+    try:
+        if hasattr(obj, 'orientation'):
+            orient = obj.orientation.numpy() if hasattr(obj.orientation, 'numpy') else obj.orientation
+            logger.debug(f"- Orientation: {orient}")
+            print(f"[DEBUG PRINT] {name} orientation: {orient}")
+    except Exception as e:
+        logger.debug(f"- Orientation: Unable to get orientation: {str(e)}")
+        print(f"[DEBUG PRINT] Error getting orientation: {str(e)}")
+
+    # Array configuration check
+    try:
         if hasattr(obj, 'array'):
             logger.debug(f"- Array config: {obj.array}")
-        logger.debug(f"- dtype: {obj.dtype}")
+            print(f"[DEBUG PRINT] {name} array config: {obj.array}")
+            if hasattr(obj.array, 'num_rows'):
+                print(f"[DEBUG PRINT] Array rows: {obj.array.num_rows}")
+            if hasattr(obj.array, 'num_cols'):
+                print(f"[DEBUG PRINT] Array columns: {obj.array.num_cols}")
+    except Exception as e:
+        logger.debug(f"- Array config: Unable to get array config: {str(e)}")
+        print(f"[DEBUG PRINT] Error getting array config: {str(e)}")
 
+    # Safe dtype check
     try:
-        logger.debug("Starting scene setup...")
+        if hasattr(obj, '_dtype'):
+            logger.debug(f"- dtype: {obj._dtype}")
+            print(f"[DEBUG PRINT] {name} _dtype: {obj._dtype}")
+        elif hasattr(obj, 'dtype'):
+            logger.debug(f"- dtype: {obj.dtype}")
+            print(f"[DEBUG PRINT] {name} dtype: {obj.dtype}")
+        else:
+            logger.debug("- dtype: Not available")
+            print(f"[DEBUG PRINT] {name} dtype not available")
+    except Exception as e:
+        logger.debug(f"- dtype: Unable to get dtype: {str(e)}")
+        print(f"[DEBUG PRINT] Error getting dtype: {str(e)}")
+
+    print(f"[DEBUG PRINT] {name} memory address: {hex(id(obj))}")
+    print(f"[DEBUG PRINT] Finished debugging {name} state")
+
+def _add_room_boundaries(scene, config):
+    """Add walls, floor and ceiling to the scene with enhanced error handling."""
+    print("[DEBUG PRINT] Starting room boundaries setup...")
+    
+    try:
+        # Create concrete material
+        print("[DEBUG PRINT] Creating concrete material...")
+        concrete = RadioMaterial(
+            name="concrete",
+            relative_permittivity=4.5,
+            conductivity=0.01,
+            dtype=scene.dtype
+        )
+        print(f"[DEBUG PRINT] Concrete material created at {hex(id(concrete))}")
         
+        # Add material to scene
+        print("[DEBUG PRINT] Adding concrete material to scene...")
+        scene.add(concrete)
+        
+        # Room dimensions
+        length, width, height = config.room_dim
+        print(f"[DEBUG PRINT] Room dimensions: {length}x{width}x{height}")
+        
+        # Floor
+        print("[DEBUG PRINT] Creating floor...")
+        floor_pos = tf.constant([length/2, width/2, 0], dtype=tf.float32)
+        floor = Transmitter(
+            name="floor",
+            position=floor_pos,
+            orientation=tf.constant([0, 0, 0], dtype=tf.float32),
+            dtype=scene.dtype
+        )
+        floor.scene = scene
+        floor.radio_material = concrete
+        scene.add(floor)
+        print(f"[DEBUG PRINT] Floor added at position: {floor_pos.numpy()}")
+        
+        # Ceiling
+        print("[DEBUG PRINT] Creating ceiling...")
+        ceiling_pos = tf.constant([length/2, width/2, height], dtype=tf.float32)
+        ceiling = Transmitter(
+            name="ceiling",
+            position=ceiling_pos,
+            orientation=tf.constant([0, 0, 0], dtype=tf.float32),
+            dtype=scene.dtype
+        )
+        ceiling.scene = scene
+        ceiling.radio_material = concrete
+        scene.add(ceiling)
+        print(f"[DEBUG PRINT] Ceiling added at position: {ceiling_pos.numpy()}")
+        
+        # Walls
+        wall_configs = [
+            ("wall_front", [length/2, 0, height/2]),
+            ("wall_back", [length/2, width, height/2]),
+            ("wall_left", [0, width/2, height/2]),
+            ("wall_right", [length, width/2, height/2])
+        ]
+        
+        print("[DEBUG PRINT] Creating walls...")
+        for name, position in wall_configs:
+            print(f"[DEBUG PRINT] Creating {name}...")
+            wall_pos = tf.constant(position, dtype=tf.float32)
+            wall = Transmitter(
+                name=name,
+                position=wall_pos,
+                orientation=tf.constant([0, 0, 0], dtype=tf.float32),
+                dtype=scene.dtype
+            )
+            wall.scene = scene
+            wall.radio_material = concrete
+            scene.add(wall)
+            print(f"[DEBUG PRINT] {name} added at position: {wall_pos.numpy()}")
+        
+        print("[DEBUG PRINT] Room boundaries setup completed successfully")
+        logger.info("Room boundaries added successfully")
+            
+    except Exception as e:
+        print(f"[DEBUG PRINT] Error in room boundaries setup: {str(e)}")
+        print("[DEBUG PRINT] Stack trace:")
+        import traceback
+        traceback.print_exc()
+        logger.error(f"Failed to add room boundaries: {str(e)}")
+        raise
+
+def setup_scene(config):
+    """Setup the factory scene with transmitters, receivers, and RIS."""
+    print("[DEBUG PRINT] Starting scene setup...")
+    logger.debug("Starting scene setup...")
+    
+    try:
         # Validate config prerequisites
-        logger.debug("Validating configuration...")
-        required_attrs = ['dtype', 'carrier_frequency', 'bs_position', 'ris_position', 'ris_elements', 'num_agvs', 'agv_height']
+        print("[DEBUG PRINT] Validating configuration...")
+        required_attrs = ['dtype', 'carrier_frequency', 'bs_position', 'ris_position', 
+                        'ris_elements', 'num_agvs', 'agv_height', 'room_dim']
         missing_attrs = [attr for attr in required_attrs if not hasattr(config, attr)]
         if missing_attrs:
-            raise ValueError(f"Missing required config attributes: {missing_attrs}")
+            error_msg = f"Missing required config attributes: {missing_attrs}"
+            print(f"[DEBUG PRINT] Configuration error: {error_msg}")
+            raise ValueError(error_msg)
         
+        print(f"[DEBUG PRINT] Using dtype: {config.dtype}")
+        print(f"[DEBUG PRINT] Carrier frequency: {config.carrier_frequency}")
         logger.debug(f"Using dtype: {config.dtype}")
         logger.debug(f"Carrier frequency: {config.carrier_frequency}")
 
         # Create scene with explicit error checking
-        logger.info("Creating new scene...")
+        print("[DEBUG PRINT] Creating new scene...")
         try:
             scene = Scene(env_filename="__empty__", dtype=config.dtype)
             if not hasattr(scene, '_dtype'):
                 raise AttributeError("Scene dtype not properly initialized")
+            print(f"[DEBUG PRINT] Scene created with dtype: {scene._dtype}")
             logger.debug(f"Scene created with dtype: {scene._dtype}")
         except Exception as e:
+            print(f"[DEBUG PRINT] Failed to create scene: {str(e)}")
             logger.error(f"Failed to create scene: {str(e)}")
             raise
 
         # Set frequency with validation
         try:
+            print("[DEBUG PRINT] Setting scene frequency...")
             scene.frequency = tf.cast(config.carrier_frequency, scene.dtype.real_dtype)
+            print(f"[DEBUG PRINT] Scene frequency set to {scene.frequency.numpy()} Hz")
             logger.debug(f"Scene frequency set to {scene.frequency.numpy()} Hz")
         except Exception as e:
+            print(f"[DEBUG PRINT] Failed to set scene frequency: {str(e)}")
             logger.error(f"Failed to set scene frequency: {str(e)}")
             raise
 
         # Initialize scene manager with validation
-        logger.info("Initializing scene manager...")
+        print("[DEBUG PRINT] Initializing scene manager...")
         try:
             manager = SceneManager(scene, config)
+            print("[DEBUG PRINT] Scene manager initialized successfully")
             logger.debug("Scene manager state initialized")
         except Exception as e:
+            print(f"[DEBUG PRINT] Failed to initialize scene manager: {str(e)}")
             logger.error(f"Failed to initialize scene manager: {str(e)}")
             raise
 
         # Add base station with detailed debug and timeout
-        logger.info("Adding base station...")
+        print("[DEBUG PRINT] Adding base station...")
         try:
             bs_position = tf.constant(config.bs_position, dtype=tf.float32)
             bs_orientation = tf.constant(config.bs_orientation, dtype=tf.float32)
-            logger.debug(f"BS position: {bs_position.numpy()}")
-            logger.debug(f"BS orientation: {bs_orientation.numpy()}")
+            print(f"[DEBUG PRINT] BS position: {bs_position.numpy()}")
+            print(f"[DEBUG PRINT] BS orientation: {bs_orientation.numpy()}")
             
             bs = manager.add_transmitter(
                 name="bs",
@@ -87,17 +230,18 @@ def setup_scene(config):
             )
             _debug_object_state(bs, "Base station")
         except Exception as e:
+            print(f"[DEBUG PRINT] Failed to add base station: {str(e)}")
             logger.error(f"Failed to add base station: {str(e)}")
             raise
 
         # Add RIS with detailed debug and fallback mechanism
-        logger.info("Adding RIS...")
+        print("[DEBUG PRINT] Adding RIS...")
         try:
             ris_position = tf.constant(config.ris_position, dtype=tf.float32)
             ris_orientation = tf.constant(config.ris_orientation, dtype=tf.float32)
-            logger.debug(f"RIS position: {ris_position.numpy()}")
-            logger.debug(f"RIS orientation: {ris_orientation.numpy()}")
-            logger.debug(f"RIS elements: {config.ris_elements}")
+            print(f"[DEBUG PRINT] RIS position: {ris_position.numpy()}")
+            print(f"[DEBUG PRINT] RIS orientation: {ris_orientation.numpy()}")
+            print(f"[DEBUG PRINT] RIS elements: {config.ris_elements}")
             
             ris = manager.add_ris(
                 name="ris",
@@ -109,9 +253,10 @@ def setup_scene(config):
             )
             _debug_object_state(ris, "RIS")
         except Exception as e:
+            print(f"[DEBUG PRINT] Failed to add RIS: {str(e)}")
+            print("[DEBUG PRINT] Attempting fallback RIS configuration...")
             logger.error(f"Failed to add RIS: {str(e)}")
             logger.warning("Attempting fallback RIS configuration...")
-            # Fallback: Ensure at least an empty RIS state is added
             try:
                 ris = manager.add_ris(
                     name="fallback_ris",
@@ -121,17 +266,22 @@ def setup_scene(config):
                     num_cols=4,
                     dtype=config.dtype
                 )
-                logger.debug("Fallback RIS added successfully.")
+                print("[DEBUG PRINT] Fallback RIS added successfully")
+                logger.debug("Fallback RIS added successfully")
             except Exception as fallback_e:
+                print(f"[DEBUG PRINT] Fallback RIS configuration failed: {fallback_e}")
                 logger.error(f"Fallback RIS configuration failed: {fallback_e}")
                 raise
 
         # Add AGVs with enhanced logging and error handling
-        logger.info(f"Adding {config.num_agvs} AGVs...")
+        agv_count = config.num_agvs
+        print(f"[DEBUG PRINT] Adding {agv_count} AGVs...")
         try:
-            for i in range(config.num_agvs):
-                agv_pos = tf.constant([12.0 - i*4.0, 5.0 + i*10.0, config.agv_height], dtype=tf.float32)
-                logger.debug(f"AGV_{i} position: {agv_pos.numpy()}")
+            for i in range(agv_count):
+                print(f"[DEBUG PRINT] Adding AGV_{i}...")
+                agv_pos = tf.constant([12.0 - i*4.0, 5.0 + i*10.0, config.agv_height], 
+                                    dtype=tf.float32)
+                print(f"[DEBUG PRINT] AGV_{i} position: {agv_pos.numpy()}")
                 
                 rx = manager.add_receiver(
                     name=f"agv_{i}",
@@ -141,107 +291,53 @@ def setup_scene(config):
                 )
                 _debug_object_state(rx, f"AGV_{i}")
         except Exception as e:
+            print(f"[DEBUG PRINT] Failed to add AGV {i}: {str(e)}")
             logger.error(f"Failed to add AGV {i}: {str(e)}")
             raise
 
         # Add room boundaries with validation
-        logger.info("Adding room boundaries...")
+        print("[DEBUG PRINT] Adding room boundaries...")
         try:
             _add_room_boundaries(scene, config)
+            print("[DEBUG PRINT] Room boundaries added successfully")
             logger.debug("Room boundaries added successfully")
         except Exception as e:
+            print(f"[DEBUG PRINT] Failed to add room boundaries: {str(e)}")
             logger.error(f"Failed to add room boundaries: {str(e)}")
             raise
 
         # Validate final scene state
-        logger.info("Validating scene...")
+        print("[DEBUG PRINT] Validating final scene state...")
         try:
             if not manager.validate_scene():
                 raise RuntimeError("Scene validation failed")
             
             # Final debug info
+            print("[DEBUG PRINT] Final scene state:")
+            print(f"[DEBUG PRINT] - Number of transmitters: {len(scene.transmitters)}")
+            print(f"[DEBUG PRINT] - Number of receivers: {len(scene.receivers)}")
+            print(f"[DEBUG PRINT] - Number of RIS: {len(scene.ris)}")
+            print(f"[DEBUG PRINT] - Number of objects: {len(scene.objects)}")
+            
             logger.debug("Final scene state:")
             logger.debug(f"- Number of transmitters: {len(scene.transmitters)}")
             logger.debug(f"- Number of receivers: {len(scene.receivers)}")
             logger.debug(f"- Number of RIS: {len(scene.ris)}")
             logger.debug(f"- Number of objects: {len(scene.objects)}")
         except Exception as e:
+            print(f"[DEBUG PRINT] Scene validation failed: {str(e)}")
             logger.error(f"Scene validation failed: {str(e)}")
             raise
 
+        print("[DEBUG PRINT] Scene setup completed successfully")
         logger.info("Scene setup completed successfully")
         return scene
 
     except Exception as e:
+        print(f"[DEBUG PRINT] Scene setup failed: {str(e)}")
+        print("[DEBUG PRINT] Stack trace:")
+        import traceback
+        traceback.print_exc()
         logger.error(f"Scene setup failed: {str(e)}")
-        # Log full stack trace for debugging
         logger.exception("Detailed error trace:")
         raise RuntimeError(f"Scene setup error: {str(e)}") from e
-
-
-def _add_room_boundaries(self):
-    """Add walls, floor and ceiling to the scene"""
-    try:
-        # Create concrete material
-        concrete = RadioMaterial(
-            name="concrete",
-            relative_permittivity=4.5,
-            conductivity=0.01,
-            dtype=self._scene.dtype
-        )
-        
-        # Add material to scene
-        self._scene.add(concrete)
-        
-        # Room dimensions
-        length, width, height = self._config.room_dim
-        
-        # Create walls using Transmitter objects (as placeholders for surfaces)
-        # This is a workaround since Sionna doesn't have a direct wall object
-        
-        # Floor
-        floor = Transmitter(
-            name="floor",
-            position=tf.constant([length/2, width/2, 0], dtype=tf.float32),
-            orientation=tf.constant([0, 0, 0], dtype=tf.float32),
-            dtype=self._scene.dtype
-        )
-        floor.scene = self._scene
-        floor.radio_material = concrete
-        self._scene.add(floor)
-        
-        # Ceiling
-        ceiling = Transmitter(
-            name="ceiling",
-            position=tf.constant([length/2, width/2, height], dtype=tf.float32),
-            orientation=tf.constant([0, 0, 0], dtype=tf.float32),
-            dtype=self._scene.dtype
-        )
-        ceiling.scene = self._scene
-        ceiling.radio_material = concrete
-        self._scene.add(ceiling)
-        
-        # Walls
-        wall_configs = [
-            ("wall_front", [length/2, 0, height/2]),
-            ("wall_back", [length/2, width, height/2]),
-            ("wall_left", [0, width/2, height/2]),
-            ("wall_right", [length, width/2, height/2])
-        ]
-        
-        for name, position in wall_configs:
-            wall = Transmitter(
-                name=name,
-                position=tf.constant(position, dtype=tf.float32),
-                orientation=tf.constant([0, 0, 0], dtype=tf.float32),
-                dtype=self._scene.dtype
-            )
-            wall.scene = self._scene
-            wall.radio_material = concrete
-            self._scene.add(wall)
-            
-        logger.info("Room boundaries added successfully")
-            
-    except Exception as e:
-        logger.error(f"Failed to add room boundaries: {str(e)}")
-        raise
