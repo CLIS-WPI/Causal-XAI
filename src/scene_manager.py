@@ -296,7 +296,7 @@ class SceneManager:
         print(f"[DEBUG PRINT] Entering add_transmitter() for '{name}'")
         print(f"[DEBUG PRINT] About to acquire lock in add_transmitter() for '{name}'")
 
-        with self._lock:
+        with self._lock:  # Keep the high-level lock
             print(f"[DEBUG PRINT] Lock acquired for add_transmitter() - {name}")
             try:
                 # High-level logging
@@ -357,7 +357,8 @@ class SceneManager:
 
                 logger.debug(f"Registering {name} in object registry...")
                 print(f"[DEBUG PRINT] About to _register_object() for '{name}'")
-                object_id = self._register_object(tx, ObjectType.TRANSMITTER)
+                # Call _register_object without its own lock since we're already in a locked section
+                object_id = self._register_object_unlocked(tx, ObjectType.TRANSMITTER)  # Changed to unlocked version
                 tx.object_id = object_id
                 logger.debug(f"Object registered and ID {object_id} assigned to {name}")
                 print(f"[DEBUG PRINT] Done registering '{name}' with object ID = {object_id}")
@@ -382,6 +383,40 @@ class SceneManager:
                     self._unregister_object(object_id)
                 raise
 
+    def _register_object_unlocked(self, obj: Any, obj_type: ObjectType,
+                            radio_material: Optional[str] = None) -> int:
+        """Register a new object in the scene without acquiring a lock"""
+        print("[DEBUG PRINT] Entering _register_object_unlocked()")
+        print(f"[DEBUG PRINT] _register_object_unlocked() called with obj_type={obj_type}, radio_material={radio_material}")
+        
+        try:
+            # Generate unique ID (this method should still use its own lock)
+            object_id = self._generate_object_id()
+            
+            # Create registration
+            scene_object = SceneObject(
+                id=object_id,
+                name=obj.name if hasattr(obj, 'name') else f"object_{object_id}",
+                obj_type=obj_type,
+                radio_material=radio_material,
+                reference=obj
+            )
+            
+            # Add to registry
+            self._object_registry[object_id] = scene_object
+            
+            # Register material if specified
+            if radio_material:
+                if radio_material not in self._material_registry:
+                    self._material_registry[radio_material] = set()
+                self._material_registry[radio_material].add(object_id)
+                
+            logger.debug(f"Registered object {scene_object.name} with ID {object_id}")
+            return object_id
+            
+        except Exception as e:
+            logger.error(f"Registration failed: {str(e)}")
+            raise
 
     def add_ris(self, name: str, position: tf.Tensor, orientation: tf.Tensor,
                 num_rows: int, num_cols: int, dtype=tf.complex64) -> RIS:
