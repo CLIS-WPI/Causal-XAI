@@ -3,6 +3,7 @@ import sionna
 import logging
 from sionna.rt import Scene, RadioMaterial
 from scene_manager import SceneManager
+from config import SmartFactoryConfig
 
 # Setup logger
 logging.basicConfig(level=logging.DEBUG)
@@ -21,21 +22,13 @@ def _debug_object_state(obj, name):
     if hasattr(obj, 'dtype'):
         logger.debug(f"- dtype: {obj.dtype}")
 
-def setup_scene(config):
-    """Setup the factory scene using Sionna's built-in management"""
+def setup_scene(config: SmartFactoryConfig):
+    """Setup the factory scene"""
     logger.info("Starting scene setup...")
     
     try:
-        # Validate config
-        required_attrs = ['dtype', 'carrier_frequency', 'bs_position', 'ris_position', 
-                        'ris_elements', 'num_agvs', 'agv_height', 'room_dim']
-        missing_attrs = [attr for attr in required_attrs if not hasattr(config, attr)]
-        if missing_attrs:
-            raise ValueError(f"Missing required config attributes: {missing_attrs}")
-
         # Create scene
         scene = Scene(env_filename="__empty__", dtype=config.dtype)
-        scene.frequency = tf.cast(config.carrier_frequency, scene.dtype.real_dtype)
         
         # Initialize scene manager
         manager = SceneManager(scene, config)
@@ -52,14 +45,13 @@ def setup_scene(config):
         ris = manager.add_ris(
             name="ris",
             position=tf.constant(config.ris_position, dtype=tf.float32),
-            orientation=tf.constant(config.ris_orientation, dtype=tf.float32),
-            num_rows=config.ris_elements[0],
-            num_cols=config.ris_elements[1]
+            orientation=tf.constant(config.ris_orientation, dtype=tf.float32)
         )
         _debug_object_state(ris, "RIS")
 
         # Add AGVs
         for i in range(config.num_agvs):
+            # Calculate AGV positions based on your requirements
             agv_pos = tf.constant([12.0 - i*4.0, 5.0 + i*10.0, config.agv_height], 
                                 dtype=tf.float32)
             rx = manager.add_receiver(
@@ -69,6 +61,9 @@ def setup_scene(config):
             )
             _debug_object_state(rx, f"AGV_{i}")
 
+        # Configure ray-tracing parameters
+        scene.synthetic_array = True
+        
         # Log final scene state
         logger.info("Scene setup completed successfully")
         logger.info(f"- Transmitters: {len(scene.transmitters)}")
