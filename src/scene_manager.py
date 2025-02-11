@@ -591,8 +591,8 @@ class SceneManager:
                 try:
                     # Create phase profile directly with the total number of elements
                     phase_profile = DiscretePhaseProfile(
-                        bits=2,  # Number of bits for phase quantization
-                        size=num_rows * num_cols,  # Total number of elements
+                        cell_grid=CellGrid(num_rows=num_rows, num_cols=num_cols, dtype=dtype),
+                        num_bits=2,  # Number of bits for phase quantization
                         dtype=dtype
                     )
                     print("[DEBUG PRINT] Phase profile created successfully")
@@ -600,7 +600,7 @@ class SceneManager:
                 except Exception as e:
                     print(f"[DEBUG PRINT] Error creating phase profile: {str(e)}")
                     raise RuntimeError(f"Failed to configure phase profile: {str(e)}") from e
-                
+                                
                 # Step 7: RIS Configuration Validation
                 print("[DEBUG PRINT] Validating RIS configuration")
                 self._validate_ris_configuration(ris)
