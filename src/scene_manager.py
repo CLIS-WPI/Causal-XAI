@@ -538,17 +538,25 @@ class SceneManager:
                 print(f"[DEBUG PRINT] Final lock state: {self._lock.locked()}")
 
     def add_ris(self, name: str, position: tf.Tensor, orientation: tf.Tensor,
-            num_rows: int, num_cols: int, dtype=tf.complex64) -> RIS:
+                num_rows: int, num_cols: int, dtype=tf.complex64) -> RIS:
         """Add a RIS to the scene with enhanced debugging and error handling."""
         print(f"[DEBUG PRINT] Entering add_ris() for '{name}'")
         
+        # Input validation first
+        if not isinstance(name, str) or not name:
+            raise ValueError("Invalid RIS name")
+        if not isinstance(num_rows, int) or not isinstance(num_cols, int):
+            raise ValueError("num_rows and num_cols must be integers")
+        if num_rows <= 0 or num_cols <= 0:
+            raise ValueError("num_rows and num_cols must be positive")
+
         with self._lock:
             print(f"[DEBUG PRINT] Lock acquired for add_ris() - {name}")
             object_id = None
             ris = None
             
             try:
-                # Step 1: Material Creation/Retrieval
+                # Step 1: Material Creation/Retrieval and Validation
                 print(f"[DEBUG PRINT] Creating/retrieving material for RIS '{name}'")
                 metal_material = self._get_or_create_material("itu_metal", dtype)
                 if not metal_material:
@@ -578,13 +586,7 @@ class SceneManager:
                 object_id = self._register_object(ris, ObjectType.RIS, "itu_metal")
                 ris.object_id = object_id
                 
-                # Step 6: Update material registry
-                print(f"[DEBUG PRINT] Updating material registry for '{name}'")
-                if "itu_metal" not in self._material_registry:
-                    self._material_registry["itu_metal"] = set()
-                self._material_registry["itu_metal"].add(object_id)
-                
-                # Step 7: Phase Profile Configuration
+                # Step 6: Phase Profile Configuration
                 print(f"[DEBUG PRINT] Configuring phase profile for '{name}'")
                 phase_profile = DiscretePhaseProfile(
                     size=num_rows * num_cols,
@@ -594,13 +596,17 @@ class SceneManager:
                 print("[DEBUG PRINT] Phase profile created successfully")
                 ris.phase_profile = phase_profile
                 
-                # Step 8: Configuration Validation
+                # Step 7: RIS Configuration Validation
                 print("[DEBUG PRINT] Validating RIS configuration")
                 self._validate_ris_configuration(ris)
                 
-                # Step 9: Scene Addition
+                # Step 8: Scene Addition and Final Validation
                 print(f"[DEBUG PRINT] Adding RIS '{name}' to scene")
                 self._scene.add(ris)
+                
+                # Verify RIS was added successfully
+                if name not in self._scene.ris:
+                    raise RuntimeError("RIS was not properly added to scene")
                 
                 print(f"[DEBUG PRINT] Successfully configured RIS '{name}'")
                 logger.info(f"RIS '{name}' added successfully with ID {object_id}")
@@ -616,7 +622,6 @@ class SceneManager:
                 if object_id is not None:
                     try:
                         print(f"[DEBUG PRINT] Cleaning up - unregistering object ID {object_id}")
-                        # Remove from material registry first
                         if "itu_metal" in self._material_registry:
                             self._material_registry["itu_metal"].discard(object_id)
                         self._unregister_object(object_id)
