@@ -23,15 +23,12 @@ def _debug_object_state(obj, name):
         logger.debug(f"- dtype: {obj.dtype}")
 
 def setup_scene(config: SmartFactoryConfig):
-    """Setup the factory scene with ray tracing capabilities"""
+    """Setup the factory scene with ray tracing"""
     logger.info("Starting scene setup with ray tracing...")
     
     try:
-        # Create scene with ray tracing configuration
-        scene = Scene(max_depth=config.ray_tracing['max_depth'], dtype=config.dtype)
-        
-        # Load the factory scene geometry
-        scene.load("src/factory_scene.xml")
+        # Create scene - remove max_depth parameter
+        scene = Scene(env_filename="__empty__", dtype=config.dtype)
         
         # Initialize scene manager
         manager = SceneManager(scene, config)
@@ -83,31 +80,17 @@ def setup_scene(config: SmartFactoryConfig):
         scene.diffraction = config.ray_tracing['diffraction']
         scene.scattering = config.ray_tracing['scattering']
         
-        # Configure radio materials for ray tracing
-        for material_name, properties in config.materials.items():
-            if material_name not in scene.radio_materials:
-                material = RadioMaterial(
-                    name=properties['name'],
-                    relative_permittivity=properties['relative_permittivity'],
-                    conductivity=properties['conductivity']
-                )
-                scene.add(material)
-        
-        # Set frequency for material properties
-        scene.frequency = config.carrier_frequency
-        
-        # Log final scene state with ray tracing info
-        logger.info("Scene setup completed successfully with ray tracing")
+        # Log final scene state
+        logger.info("Scene setup completed successfully")
         logger.info(f"- Transmitters: {len(scene.transmitters)}")
         logger.info(f"- Receivers: {len(scene.receivers)}")
         logger.info(f"- RIS: {len(scene.ris)}")
         logger.info(f"- Objects: {len(scene.objects)}")
-        logger.info(f"- Ray tracing depth: {config.ray_tracing['max_depth']}")
-        logger.info(f"- Ray tracing method: {config.ray_tracing['method']}")
-        logger.info(f"- Enabled phenomena: LOS={config.ray_tracing['los']}, "
-                f"Reflection={config.ray_tracing['reflection']}, "
-                f"Diffraction={config.ray_tracing['diffraction']}, "
-                f"Scattering={config.ray_tracing['scattering']}")
+        logger.info(f"- Ray tracing enabled with:")
+        logger.info(f"  - LOS: {config.ray_tracing['los']}")
+        logger.info(f"  - Reflection: {config.ray_tracing['reflection']}")
+        logger.info(f"  - Diffraction: {config.ray_tracing['diffraction']}")
+        logger.info(f"  - Scattering: {config.ray_tracing['scattering']}")
 
         return scene
 
