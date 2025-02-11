@@ -145,51 +145,53 @@ class SceneManager:
         
         with self._lock:
             try:
-                # First check if material exists in scene's radio_materials
-                if material_name in self._scene.radio_materials:
+                # First try to get existing material
+                print(f"[DEBUG PRINT] Checking for existing material: {material_name}")
+                if hasattr(self._scene, 'radio_materials') and material_name in self._scene.radio_materials:
+                    material = self._scene.radio_materials[material_name]
                     print(f"[DEBUG PRINT] Found existing material: {material_name}")
-                    return self._scene.radio_materials[material_name]
-
+                    return material
+                
                 # Create new material with specific properties for ITU metal
                 print(f"[DEBUG PRINT] Creating new material: {material_name}")
                 if material_name == "itu_metal":
                     material = RadioMaterial(
                         name=material_name,
-                        relative_permittivity=1.0,
-                        conductivity=1e7,
+                        relative_permittivity=1.0,  # Metal properties
+                        conductivity=1e7,           # High conductivity for metal
                         dtype=dtype
                     )
-                    print("[DEBUG PRINT] Created ITU metal material with properties:")
-                    print("[DEBUG PRINT] - Relative permittivity: 1.0")
-                    print("[DEBUG PRINT] - Conductivity: 1e7")
+                    print("[DEBUG PRINT] Created ITU metal material")
                 else:
                     material = RadioMaterial(
                         name=material_name,
-                        relative_permittivity=4.5,
-                        conductivity=0.01,
+                        relative_permittivity=4.5,  # Default value
+                        conductivity=0.01,          # Default value
                         dtype=dtype
                     )
                 
-                # Add material to scene (this handles scene reference and frequency updates)
+                # Add to scene
                 print(f"[DEBUG PRINT] Adding material to scene: {material_name}")
                 self._scene.add(material)
                 
                 # Initialize material registry if needed
+                if not hasattr(self, '_material_registry'):
+                    self._material_registry = {}
                 if material_name not in self._material_registry:
                     print(f"[DEBUG PRINT] Initializing material registry entry for: {material_name}")
                     self._material_registry[material_name] = set()
                 
                 print(f"[DEBUG PRINT] Successfully created material: {material_name}")
                 return material
-                
+                    
             except Exception as e:
-                error_msg = f"Failed to get/create material {material_name}: {str(e)}"
-                print(f"[DEBUG PRINT] Error in get_or_create_material: {error_msg}")
+                print(f"[DEBUG PRINT] Error in get_or_create_material: {str(e)}")
+                print(f"[DEBUG PRINT] Material name: {material_name}")
                 print(f"[DEBUG PRINT] Error type: {type(e)}")
                 print("[DEBUG PRINT] Stack trace:")
                 import traceback
                 traceback.print_exc()
-                raise RuntimeError(error_msg) from e
+                raise RuntimeError(f"Failed to get/create material {material_name}: {str(e)}") from e
             
     def _initialize_registries(self):
         """Initialize object and material registries from existing scene state"""
