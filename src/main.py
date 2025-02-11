@@ -8,6 +8,7 @@ import sionna
 from sionna.rt import Scene
 import logging
 import h5py
+from sionna.channel.utils import cir_to_ofdm_channel
 
 # Environment setup
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -81,11 +82,12 @@ def generate_channel_data(scene, config):
         )
         
         # Create channel data dictionary
+        # Use scene.receivers.values() to get the actual Receiver objects
         channel_data = {
             'channel_matrices': h,
             'path_delays': tau,
-            'los_conditions': paths.los,
-            'agv_positions': tf.stack([rx.position for rx in scene.receivers])
+            'los_conditions': paths.LOS,  # Note: using uppercase LOS
+            'agv_positions': tf.stack([rx.position for rx in scene.receivers.values()])  # Changed to .values()
         }
         
         return channel_data
