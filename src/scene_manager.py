@@ -587,24 +587,18 @@ class SceneManager:
                     # Assign material to RIS
                     ris.radio_material = metal_material
                     
-                    # Step 5: Object Registration with material
+                    # Step 5: Object Registration with material (SINGLE REGISTRATION)
                     print(f"[DEBUG PRINT] Registering RIS '{name}'")
                     object_id = self._register_object(ris, ObjectType.RIS, "itu_metal")
                     ris.object_id = object_id
                     
-                    # Explicitly add object ID to material registry
-                    self._material_registry["itu_metal"].add(object_id)
-                    print(f"[DEBUG PRINT] Added RIS (ID: {object_id}) to itu_metal material registry")
+                    # Material registry is already updated in _register_object
+                    print(f"[DEBUG PRINT] RIS registered with ID: {object_id}")
                     print(f"[DEBUG PRINT] Current itu_metal registry: {self._material_registry['itu_metal']}")
                     
                 except Exception as e:
                     print(f"[DEBUG PRINT] Error in material assignment: {str(e)}")
                     raise RuntimeError(f"Failed to assign material: {str(e)}") from e
-                
-                # Step 5: Object Registration with material
-                print(f"[DEBUG PRINT] Registering RIS '{name}'")
-                object_id = self._register_object(ris, ObjectType.RIS, "itu_metal")
-                ris.object_id = object_id
                 
                 # Step 6: Phase Profile Configuration
                 print(f"[DEBUG PRINT] Configuring phase profile for '{name}'")
