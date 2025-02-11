@@ -539,34 +539,9 @@ class SceneManager:
 
     def add_ris(self, name: str, position: tf.Tensor, orientation: tf.Tensor,
             num_rows: int, num_cols: int, dtype=tf.complex64) -> RIS:
-        """
-        Add a RIS to the scene with enhanced debugging and error handling.
-        
-        Args:
-            name (str): Name of the RIS
-            position (tf.Tensor): Position coordinates [x, y, z]
-            orientation (tf.Tensor): Orientation angles [θ, φ, ψ]
-            num_rows (int): Number of rows in RIS array
-            num_cols (int): Number of columns in RIS array
-            dtype (tf.dtype): Data type for RIS (default: tf.complex64)
-            
-        Returns:
-            RIS: Configured RIS object
-            
-        Raises:
-            ValueError: If input parameters are invalid
-            RuntimeError: If RIS creation or configuration fails
-        """
+        """Add a RIS to the scene with enhanced debugging and error handling."""
         print(f"[DEBUG PRINT] Entering add_ris() for '{name}'")
         
-        # Input validation
-        if not isinstance(name, str) or not name:
-            raise ValueError("Invalid RIS name")
-        if not isinstance(num_rows, int) or not isinstance(num_cols, int):
-            raise ValueError("num_rows and num_cols must be integers")
-        if num_rows <= 0 or num_cols <= 0:
-            raise ValueError("num_rows and num_cols must be positive")
-
         with self._lock:
             print(f"[DEBUG PRINT] Lock acquired for add_ris() - {name}")
             object_id = None
@@ -598,42 +573,34 @@ class SceneManager:
                 print(f"[DEBUG PRINT] Assigning material to '{name}'")
                 ris.radio_material = metal_material
                 
-                # Step 5: Object Registration
+                # Step 5: Object Registration with material
                 print(f"[DEBUG PRINT] Registering RIS '{name}'")
                 object_id = self._register_object(ris, ObjectType.RIS, "itu_metal")
                 ris.object_id = object_id
                 
-                # Step 6: Create Cell Grid and Phase Profile
-                print(f"[DEBUG PRINT] Creating cell grid for RIS")
-                cell_grid = CellGrid(
-                    num_rows=num_rows,
-                    num_cols=num_cols,
+                # Step 6: Update material registry
+                print(f"[DEBUG PRINT] Updating material registry for '{name}'")
+                if "itu_metal" not in self._material_registry:
+                    self._material_registry["itu_metal"] = set()
+                self._material_registry["itu_metal"].add(object_id)
+                
+                # Step 7: Phase Profile Configuration
+                print(f"[DEBUG PRINT] Configuring phase profile for '{name}'")
+                phase_profile = DiscretePhaseProfile(
+                    size=num_rows * num_cols,
+                    bits=2,
                     dtype=dtype
                 )
+                print("[DEBUG PRINT] Phase profile created successfully")
+                ris.phase_profile = phase_profile
                 
-                print(f"[DEBUG PRINT] Configuring phase profile for '{name}'")
-                try:
-                    phase_profile = DiscretePhaseProfile(
-                        cell_grid=cell_grid,  # Pass the cell grid
-                        num_modes=1,          # Single mode operation
-                        dtype=dtype
-                    )
-                    print("[DEBUG PRINT] Phase profile created successfully")
-                    ris.phase_profile = phase_profile
-                except Exception as phase_error:
-                    raise RuntimeError(f"Failed to configure phase profile: {str(phase_error)}") from phase_error
-                
-                # Step 7: Configuration Validation
+                # Step 8: Configuration Validation
                 print("[DEBUG PRINT] Validating RIS configuration")
                 self._validate_ris_configuration(ris)
                 
-                # Step 8: Scene Addition
+                # Step 9: Scene Addition
                 print(f"[DEBUG PRINT] Adding RIS '{name}' to scene")
                 self._scene.add(ris)
-                
-                # Verify RIS was added successfully
-                if name not in self._scene.ris:
-                    raise RuntimeError("RIS was not properly added to scene")
                 
                 print(f"[DEBUG PRINT] Successfully configured RIS '{name}'")
                 logger.info(f"RIS '{name}' added successfully with ID {object_id}")
@@ -649,6 +616,9 @@ class SceneManager:
                 if object_id is not None:
                     try:
                         print(f"[DEBUG PRINT] Cleaning up - unregistering object ID {object_id}")
+                        # Remove from material registry first
+                        if "itu_metal" in self._material_registry:
+                            self._material_registry["itu_metal"].discard(object_id)
                         self._unregister_object(object_id)
                     except Exception as cleanup_error:
                         logger.error(f"Cleanup failed: {cleanup_error}")
