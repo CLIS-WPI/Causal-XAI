@@ -5,7 +5,16 @@ Handles thread-safe scene object management and validation.
 #scene_manager.py
 import tensorflow as tf
 import numpy as np
-from sionna.rt import Scene, Transmitter, Receiver, RIS, RadioMaterial, PlanarArray
+from sionna.rt import (
+    Scene, 
+    Transmitter, 
+    Receiver, 
+    RIS, 
+    RadioMaterial, 
+    PlanarArray,
+    CellGrid,  # Add this import
+    DiscretePhaseProfile
+)
 from typing import Dict, List, Optional, Set, Tuple, Any
 import threading
 from dataclasses import dataclass
@@ -143,56 +152,52 @@ class SceneManager:
         print(f"[DEBUG PRINT] Attempting to get/create material: {material_name}")
         print(f"[DEBUG PRINT] Using dtype: {dtype}")
         
-        with self._lock:
-            try:
-                # First try to get existing material
-                print(f"[DEBUG PRINT] Checking for existing material: {material_name}")
-                if hasattr(self._scene, 'radio_materials') and material_name in self._scene.radio_materials:
-                    material = self._scene.radio_materials[material_name]
-                    print(f"[DEBUG PRINT] Found existing material: {material_name}")
-                    return material
-                
-                # Create new material with specific properties for ITU metal
-                print(f"[DEBUG PRINT] Creating new material: {material_name}")
-                if material_name == "itu_metal":
-                    material = RadioMaterial(
-                        name=material_name,
-                        relative_permittivity=1.0,  # Metal properties
-                        conductivity=1e7,           # High conductivity for metal
-                        dtype=dtype
-                    )
-                    print("[DEBUG PRINT] Created ITU metal material")
-                else:
-                    material = RadioMaterial(
-                        name=material_name,
-                        relative_permittivity=4.5,  # Default value
-                        conductivity=0.01,          # Default value
-                        dtype=dtype
-                    )
-                
-                # Add to scene
-                print(f"[DEBUG PRINT] Adding material to scene: {material_name}")
-                self._scene.add(material)
-                
-                # Initialize material registry if needed
-                if not hasattr(self, '_material_registry'):
-                    self._material_registry = {}
-                if material_name not in self._material_registry:
-                    print(f"[DEBUG PRINT] Initializing material registry entry for: {material_name}")
-                    self._material_registry[material_name] = set()
-                
-                print(f"[DEBUG PRINT] Successfully created material: {material_name}")
-                return material
-                    
-            except Exception as e:
-                print(f"[DEBUG PRINT] Error in get_or_create_material: {str(e)}")
-                print(f"[DEBUG PRINT] Material name: {material_name}")
-                print(f"[DEBUG PRINT] Error type: {type(e)}")
-                print("[DEBUG PRINT] Stack trace:")
-                import traceback
-                traceback.print_exc()
-                raise RuntimeError(f"Failed to get/create material {material_name}: {str(e)}") from e
-            
+        try:
+            # First check if material exists in scene's radio_materials
+            if material_name in self._scene.radio_materials:
+                print(f"[DEBUG PRINT] Found existing material: {material_name}")
+                return self._scene.radio_materials[material_name]
+
+            # Create new material with specific properties
+            print(f"[DEBUG PRINT] Creating new material: {material_name}")
+            if material_name == "itu_metal":
+                material = RadioMaterial(
+                    name=material_name,
+                    relative_permittivity=1.0,
+                    conductivity=1e7,
+                    dtype=dtype
+                )
+                print("[DEBUG PRINT] Created ITU metal material")
+            else:
+                material = RadioMaterial(
+                    name=material_name,
+                    relative_permittivity=4.5,
+                    conductivity=0.01,
+                    dtype=dtype
+                )
+
+            # Add material to scene
+            print(f"[DEBUG PRINT] Adding material to scene: {material_name}")
+            self._scene.add(material)
+            print(f"[DEBUG PRINT] Material added to scene successfully")
+
+            # Initialize material registry if needed
+            if material_name not in self._material_registry:
+                print(f"[DEBUG PRINT] Initializing material registry entry for: {material_name}")
+                self._material_registry[material_name] = set()
+
+            print(f"[DEBUG PRINT] Successfully created material: {material_name}")
+            return material
+
+        except Exception as e:
+            print(f"[DEBUG PRINT] Error in get_or_create_material: {str(e)}")
+            print(f"[DEBUG PRINT] Material name: {material_name}")
+            print(f"[DEBUG PRINT] Error type: {type(e)}")
+            print("[DEBUG PRINT] Stack trace:")
+            import traceback
+            traceback.print_exc()
+            raise RuntimeError(f"Failed to get/create material {material_name}: {str(e)}") from e
+                        
     def _initialize_registries(self):
         """Initialize object and material registries from existing scene state"""
         with self._lock:
@@ -598,22 +603,37 @@ class SceneManager:
                 object_id = self._register_object(ris, ObjectType.RIS, "itu_metal")
                 ris.object_id = object_id
                 
-                # Step 6: Phase Profile Configuration
-                print(f"[DEBUG PRINT] Configuring phase profile for '{name}'")
-                phase_profile = DiscretePhaseProfile(
+                # Step 6: Create Cell Grid and Phase Profile
+                print(f"[DEBUG PRINT] Creating cell grid for RIS")
+                cell_grid = CellGrid(
                     num_rows=num_rows,
                     num_cols=num_cols,
-                    bits=2,
                     dtype=dtype
                 )
-                ris.phase_profile = phase_profile
+                
+                print(f"[DEBUG PRINT] Configuring phase profile for '{name}'")
+                try:
+                    phase_profile = DiscretePhaseProfile(
+                        cell_grid=cell_grid,  # Pass the cell grid
+                        num_modes=1,          # Single mode operation
+                        dtype=dtype
+                    )
+                    print("[DEBUG PRINT] Phase profile created successfully")
+                    ris.phase_profile = phase_profile
+                except Exception as phase_error:
+                    raise RuntimeError(f"Failed to configure phase profile: {str(phase_error)}") from phase_error
                 
                 # Step 7: Configuration Validation
+                print("[DEBUG PRINT] Validating RIS configuration")
                 self._validate_ris_configuration(ris)
                 
                 # Step 8: Scene Addition
                 print(f"[DEBUG PRINT] Adding RIS '{name}' to scene")
                 self._scene.add(ris)
+                
+                # Verify RIS was added successfully
+                if name not in self._scene.ris:
+                    raise RuntimeError("RIS was not properly added to scene")
                 
                 print(f"[DEBUG PRINT] Successfully configured RIS '{name}'")
                 logger.info(f"RIS '{name}' added successfully with ID {object_id}")
@@ -634,17 +654,34 @@ class SceneManager:
                         logger.error(f"Cleanup failed: {cleanup_error}")
                 
                 raise RuntimeError(error_msg) from e
-            
-        def _validate_ris_configuration(self, ris: RIS) -> None:
-            """Validate RIS configuration"""
+
+    def _validate_ris_configuration(self, ris: RIS) -> None:
+        """Validate RIS configuration with enhanced checks"""
+        try:
+            # Check radio material
             if not hasattr(ris, 'radio_material') or ris.radio_material is None:
                 raise ValueError("RIS material not properly assigned")
+                
+            # Check phase profile
             if not hasattr(ris, 'phase_profile') or ris.phase_profile is None:
                 raise ValueError("RIS phase profile not configured")
+                
+            # Verify phase profile size matches RIS dimensions
+            expected_size = ris.num_rows * ris.num_cols
+            if hasattr(ris.phase_profile, 'size'):
+                actual_size = ris.phase_profile.size
+                if actual_size != expected_size:
+                    raise ValueError(f"Phase profile size mismatch. Expected {expected_size}, got {actual_size}")
+                    
+            # Check scene reference
             if not hasattr(ris, 'scene') or ris.scene is None:
                 raise ValueError("RIS scene reference not set")
+                
             print(f"[DEBUG PRINT] RIS configuration validated successfully")
-
+            
+        except Exception as e:
+            print(f"[DEBUG PRINT] RIS validation failed: {str(e)}")
+            raise ValueError(f"RIS configuration validation failed: {str(e)}") from e
 
     def add_receiver(self, name: str, position: tf.Tensor,
                     orientation: tf.Tensor, dtype=tf.complex64) -> Receiver:
