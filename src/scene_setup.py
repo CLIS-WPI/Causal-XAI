@@ -72,91 +72,114 @@ def _debug_object_state(obj, name):
 
     print(f"[DEBUG PRINT] {name} memory address: {hex(id(obj))}")
     print(f"[DEBUG PRINT] Finished debugging {name} state")
-
+    
 def _add_room_boundaries(scene, config):
-    """Add walls, floor and ceiling to the scene with enhanced error handling."""
+    """Add walls, floor and ceiling to the scene with proper material handling."""
     print("[DEBUG PRINT] Starting room boundaries setup...")
+    logger.debug("Starting room boundaries setup")
     
     try:
-        # Create concrete material
-        print("[DEBUG PRINT] Creating concrete material...")
-        concrete = RadioMaterial(
-            name="concrete",
-            relative_permittivity=4.5,
-            conductivity=0.01,
-            dtype=scene.dtype
-        )
-        print(f"[DEBUG PRINT] Concrete material created at {hex(id(concrete))}")
+        # Check if concrete material already exists in scene
+        concrete_name = "concrete"
+        print(f"[DEBUG PRINT] Checking for existing {concrete_name} material...")
         
-        # Add material to scene
-        print("[DEBUG PRINT] Adding concrete material to scene...")
-        scene.add(concrete)
+        if concrete_name in scene.radio_materials:
+            print(f"[DEBUG PRINT] Reusing existing {concrete_name} material")
+            logger.debug(f"Reusing existing {concrete_name} material")
+            concrete = scene.radio_materials[concrete_name]
+        else:
+            print(f"[DEBUG PRINT] Creating new {concrete_name} material...")
+            logger.debug(f"Creating new {concrete_name} material")
+            concrete = RadioMaterial(
+                name=concrete_name,
+                relative_permittivity=4.5,
+                conductivity=0.01,
+                dtype=scene.dtype
+            )
+            print(f"[DEBUG PRINT] {concrete_name} material created at {hex(id(concrete))}")
+            
+            # Add material to scene
+            print(f"[DEBUG PRINT] Adding {concrete_name} material to scene...")
+            scene.add(concrete)
+            print(f"[DEBUG PRINT] {concrete_name} material added successfully")
         
-        # Room dimensions
-        length, width, height = config.room_dim
-        print(f"[DEBUG PRINT] Room dimensions: {length}x{width}x{height}")
+        # Room dimensions validation and setup
+        try:
+            length, width, height = config.room_dim
+            if any(dim <= 0 for dim in [length, width, height]):
+                raise ValueError("Room dimensions must be positive")
+            print(f"[DEBUG PRINT] Room dimensions: {length}x{width}x{height}")
+            logger.debug(f"Room dimensions set to {length}x{width}x{height}")
+        except Exception as dim_error:
+            print(f"[DEBUG PRINT] Error in room dimensions setup: {str(dim_error)}")
+            logger.error(f"Room dimensions error: {str(dim_error)}")
+            raise
         
-        # Floor
-        print("[DEBUG PRINT] Creating floor...")
-        floor_pos = tf.constant([length/2, width/2, 0], dtype=tf.float32)
-        floor = Transmitter(
-            name="floor",
-            position=floor_pos,
-            orientation=tf.constant([0, 0, 0], dtype=tf.float32),
-            dtype=scene.dtype
-        )
-        floor.scene = scene
-        floor.radio_material = concrete
-        scene.add(floor)
-        print(f"[DEBUG PRINT] Floor added at position: {floor_pos.numpy()}")
-        
-        # Ceiling
-        print("[DEBUG PRINT] Creating ceiling...")
-        ceiling_pos = tf.constant([length/2, width/2, height], dtype=tf.float32)
-        ceiling = Transmitter(
-            name="ceiling",
-            position=ceiling_pos,
-            orientation=tf.constant([0, 0, 0], dtype=tf.float32),
-            dtype=scene.dtype
-        )
-        ceiling.scene = scene
-        ceiling.radio_material = concrete
-        scene.add(ceiling)
-        print(f"[DEBUG PRINT] Ceiling added at position: {ceiling_pos.numpy()}")
-        
-        # Walls
-        wall_configs = [
+        # Define surfaces with their properties
+        surfaces = [
+            ("floor", [length/2, width/2, 0]),
+            ("ceiling", [length/2, width/2, height]),
             ("wall_front", [length/2, 0, height/2]),
             ("wall_back", [length/2, width, height/2]),
             ("wall_left", [0, width/2, height/2]),
             ("wall_right", [length, width/2, height/2])
         ]
         
-        print("[DEBUG PRINT] Creating walls...")
-        for name, position in wall_configs:
-            print(f"[DEBUG PRINT] Creating {name}...")
-            wall_pos = tf.constant(position, dtype=tf.float32)
-            wall = Transmitter(
-                name=name,
-                position=wall_pos,
-                orientation=tf.constant([0, 0, 0], dtype=tf.float32),
-                dtype=scene.dtype
-            )
-            wall.scene = scene
-            wall.radio_material = concrete
-            scene.add(wall)
-            print(f"[DEBUG PRINT] {name} added at position: {wall_pos.numpy()}")
+        # Create all surfaces
+        print("[DEBUG PRINT] Creating room boundaries...")
+        logger.debug("Creating room boundaries")
+        
+        for name, position in surfaces:
+            try:
+                print(f"[DEBUG PRINT] Creating {name}...")
+                logger.debug(f"Creating {name}")
+                
+                # Convert position to tensor
+                pos = tf.constant(position, dtype=tf.float32)
+                print(f"[DEBUG PRINT] Position for {name}: {pos.numpy()}")
+                
+                # Create surface
+                surface = Transmitter(
+                    name=name,
+                    position=pos,
+                    orientation=tf.constant([0, 0, 0], dtype=tf.float32),
+                    dtype=scene.dtype
+                )
+                
+                # Set scene reference
+                print(f"[DEBUG PRINT] Setting scene reference for {name}")
+                surface.scene = scene
+                
+                # Set material
+                print(f"[DEBUG PRINT] Assigning material to {name}")
+                surface.radio_material = concrete
+                
+                # Add to scene
+                print(f"[DEBUG PRINT] Adding {name} to scene")
+                scene.add(surface)
+                
+                print(f"[DEBUG PRINT] Successfully added {name} at position: {pos.numpy()}")
+                logger.debug(f"Added {name} at position {pos.numpy()}")
+                
+            except Exception as surface_error:
+                print(f"[DEBUG PRINT] Error creating {name}: {str(surface_error)}")
+                logger.error(f"Failed to create {name}: {str(surface_error)}")
+                raise
         
         print("[DEBUG PRINT] Room boundaries setup completed successfully")
-        logger.info("Room boundaries added successfully")
-            
+        logger.info("Room boundaries setup completed successfully")
+        
     except Exception as e:
-        print(f"[DEBUG PRINT] Error in room boundaries setup: {str(e)}")
+        print(f"[DEBUG PRINT] Critical error in room boundaries setup: {str(e)}")
         print("[DEBUG PRINT] Stack trace:")
         import traceback
         traceback.print_exc()
-        logger.error(f"Failed to add room boundaries: {str(e)}")
-        raise
+        logger.error(f"Failed to setup room boundaries: {str(e)}")
+        raise RuntimeError(f"Room boundaries setup failed: {str(e)}") from e
+    
+    finally:
+        print("[DEBUG PRINT] Room boundaries setup process finished")
+        logger.debug("Room boundaries setup process finished")
 
 def setup_scene(config):
     """Setup the factory scene with transmitters, receivers, and RIS."""
