@@ -13,6 +13,7 @@ from enum import Enum, auto
 import logging
 from datetime import datetime
 import time
+from sionna.rt import DiscretePhaseProfile
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -146,21 +147,27 @@ class SceneManager:
             try:
                 # First try to get existing material
                 print(f"[DEBUG PRINT] Checking for existing material: {material_name}")
-                material = next((mat for mat in self._scene.materials.values() if mat.name == material_name), None)
-                
-                if material is not None:
+                if material_name in self._scene.radio_materials:
+                    material = self._scene.radio_materials[material_name]
                     print(f"[DEBUG PRINT] Found existing material: {material_name}")
-                    print(f"[DEBUG PRINT] Material memory address: {hex(id(material))}")
                     return material
                 
-                # Create new material if not found
+                # Create new material with specific properties for ITU metal
                 print(f"[DEBUG PRINT] Creating new material: {material_name}")
-                material = RadioMaterial(
-                    name=material_name,
-                    relative_permittivity=4.5,  # Default value for metal
-                    conductivity=0.01,         # Default value for metal
-                    dtype=dtype
-                )
+                if material_name == "itu_metal":
+                    material = RadioMaterial(
+                        name=material_name,
+                        relative_permittivity=1.0,  # Metal properties
+                        conductivity=1e7,           # High conductivity for metal
+                        dtype=dtype
+                    )
+                else:
+                    material = RadioMaterial(
+                        name=material_name,
+                        relative_permittivity=4.5,  # Default value
+                        conductivity=0.01,          # Default value
+                        dtype=dtype
+                    )
                 
                 # Set scene reference
                 print(f"[DEBUG PRINT] Setting scene reference for material: {material_name}")
@@ -176,18 +183,14 @@ class SceneManager:
                     self._material_registry[material_name] = set()
                 
                 print(f"[DEBUG PRINT] Successfully created material: {material_name}")
-                print(f"[DEBUG PRINT] New material memory address: {hex(id(material))}")
                 return material
                 
             except Exception as e:
                 print(f"[DEBUG PRINT] Error in get_or_create_material: {str(e)}")
                 print(f"[DEBUG PRINT] Material name: {material_name}")
                 print(f"[DEBUG PRINT] Error type: {type(e)}")
-                print("[DEBUG PRINT] Stack trace:")
-                import traceback
-                traceback.print_exc()
                 raise RuntimeError(f"Failed to get/create material {material_name}: {str(e)}") from e
-                    
+    
     def _initialize_registries(self):
         """Initialize object and material registries from existing scene state"""
         with self._lock:
@@ -529,92 +532,116 @@ class SceneManager:
 
     def add_ris(self, name: str, position: tf.Tensor, orientation: tf.Tensor,
             num_rows: int, num_cols: int, dtype=tf.complex64) -> RIS:
-        """Add a RIS to the scene with enhanced debugging and error handling."""
+        """
+        Add a RIS to the scene with enhanced debugging and error handling.
+        
+        Args:
+            name (str): Name of the RIS
+            position (tf.Tensor): Position coordinates [x, y, z]
+            orientation (tf.Tensor): Orientation angles [θ, φ, ψ]
+            num_rows (int): Number of rows in RIS array
+            num_cols (int): Number of columns in RIS array
+            dtype (tf.dtype): Data type for RIS (default: tf.complex64)
+            
+        Returns:
+            RIS: Configured RIS object
+            
+        Raises:
+            ValueError: If input parameters are invalid
+            RuntimeError: If RIS creation or configuration fails
+        """
         print(f"[DEBUG PRINT] Entering add_ris() for '{name}'")
-        print(f"[DEBUG PRINT] Attempting to acquire lock in add_ris() for '{name}'")
+        
+        # Input validation
+        if not isinstance(name, str) or not name:
+            raise ValueError("Invalid RIS name")
+        if not isinstance(num_rows, int) or not isinstance(num_cols, int):
+            raise ValueError("num_rows and num_cols must be integers")
+        if num_rows <= 0 or num_cols <= 0:
+            raise ValueError("num_rows and num_cols must be positive")
 
         with self._lock:
             print(f"[DEBUG PRINT] Lock acquired for add_ris() - {name}")
+            object_id = None
+            ris = None
+            
             try:
-                # Create or retrieve the material
-                logger.debug(f"Getting or creating material for RIS '{name}'...")
-                try:
-                    metal_material = self._get_or_create_material("itu_metal", dtype)
-                    logger.debug(f"Material 'itu_metal' retrieved or created successfully for {name}")
-                except Exception as material_error:
-                    logger.error(f"Failed to get or create material for RIS '{name}': {material_error}")
-                    raise
-
-                # Create the RIS object
-                logger.debug(f"Creating RIS '{name}' with {num_rows} rows and {num_cols} columns...")
-                try:
-                    ris = RIS(
-                        name=name,
-                        position=position,
-                        orientation=orientation,
-                        num_rows=num_rows,
-                        num_cols=num_cols,
-                        dtype=dtype
-                    )
-                    logger.debug(f"RIS '{name}' object created successfully")
-                    print(f"[DEBUG PRINT] RIS object '{name}' created successfully")
-                except Exception as ris_creation_error:
-                    logger.error(f"Failed to create RIS '{name}': {ris_creation_error}")
-                    raise
-
-                # Set scene reference before assigning material
-                logger.debug(f"Setting scene reference for RIS '{name}'...")
-                try:
-                    ris.scene = self._scene
-                    logger.debug(f"Scene reference set for RIS '{name}'")
-                    print(f"[DEBUG PRINT] Scene reference assigned to RIS '{name}'")
-                except Exception as scene_ref_error:
-                    logger.error(f"Failed to set scene reference for RIS '{name}': {scene_ref_error}")
-                    raise
-
-                # Register the RIS object in the object registry
-                logger.debug(f"Registering RIS '{name}' in the object registry...")
-                try:
-                    object_id = self._register_object(ris, ObjectType.RIS, "itu_metal")
-                    ris.object_id = object_id
-                    logger.debug(f"RIS '{name}' registered with object ID {object_id}")
-                    print(f"[DEBUG PRINT] RIS '{name}' registered with object ID = {object_id}")
-                except Exception as registry_error:
-                    logger.error(f"Failed to register RIS '{name}': {registry_error}")
-                    raise
-
-                # Assign material after registration
-                logger.debug(f"Assigning material to RIS '{name}'...")
-                try:
-                    ris.radio_material = metal_material
-                    logger.debug(f"Material 'itu_metal' assigned to RIS '{name}'")
-                except Exception as material_assignment_error:
-                    logger.error(f"Failed to assign material to RIS '{name}': {material_assignment_error}")
-                    raise
-
-                # Add the RIS to the scene
-                logger.debug(f"Adding RIS '{name}' to the scene...")
-                try:
-                    self._scene.add(ris)
-                    logger.debug(f"RIS '{name}' added to the scene successfully")
-                    print(f"[DEBUG PRINT] RIS '{name}' added to the scene")
-                except Exception as scene_add_error:
-                    logger.error(f"Failed to add RIS '{name}' to the scene: {scene_add_error}")
-                    raise
-
-                logger.info(f"Successfully added RIS '{name}' with ID {object_id}")
-                print(f"[DEBUG PRINT] Exiting add_ris() for '{name}' with success")
+                # Step 1: Material Creation/Retrieval
+                print(f"[DEBUG PRINT] Creating/retrieving material for RIS '{name}'")
+                metal_material = self._get_or_create_material("itu_metal", dtype)
+                if not metal_material:
+                    raise RuntimeError("Failed to create/retrieve ITU metal material")
+                
+                # Step 2: RIS Object Creation
+                print(f"[DEBUG PRINT] Creating RIS object '{name}'")
+                ris = RIS(
+                    name=name,
+                    position=position,
+                    orientation=orientation,
+                    num_rows=num_rows,
+                    num_cols=num_cols,
+                    dtype=dtype
+                )
+                
+                # Step 3: Scene Reference Assignment
+                print(f"[DEBUG PRINT] Setting scene reference for '{name}'")
+                ris.scene = self._scene
+                
+                # Step 4: Material Assignment
+                print(f"[DEBUG PRINT] Assigning material to '{name}'")
+                ris.radio_material = metal_material
+                
+                # Step 5: Object Registration
+                print(f"[DEBUG PRINT] Registering RIS '{name}'")
+                object_id = self._register_object(ris, ObjectType.RIS, "itu_metal")
+                ris.object_id = object_id
+                
+                # Step 6: Phase Profile Configuration
+                print(f"[DEBUG PRINT] Configuring phase profile for '{name}'")
+                phase_profile = DiscretePhaseProfile(
+                    num_rows=num_rows,
+                    num_cols=num_cols,
+                    bits=2,
+                    dtype=dtype
+                )
+                ris.phase_profile = phase_profile
+                
+                # Step 7: Configuration Validation
+                self._validate_ris_configuration(ris)
+                
+                # Step 8: Scene Addition
+                print(f"[DEBUG PRINT] Adding RIS '{name}' to scene")
+                self._scene.add(ris)
+                
+                print(f"[DEBUG PRINT] Successfully configured RIS '{name}'")
+                logger.info(f"RIS '{name}' added successfully with ID {object_id}")
+                
                 return ris
-
+                
             except Exception as e:
-                logger.error(f"Failed to add RIS '{name}': {e}")
-                logger.error("Full error traceback:", exc_info=True)
-                print(f"[DEBUG PRINT] ERROR in add_ris() for '{name}': {e}")
-                if 'object_id' in locals():
-                    logger.debug(f"Cleaning up - unregistering object ID {object_id}")
-                    print(f"[DEBUG PRINT] Unregistering object ID {object_id}")
-                    self._unregister_object(object_id)
-                raise
+                error_msg = f"Failed to add RIS '{name}': {str(e)}"
+                logger.error(error_msg)
+                print(f"[DEBUG PRINT] Error: {error_msg}")
+                
+                # Cleanup on failure
+                if object_id is not None:
+                    try:
+                        print(f"[DEBUG PRINT] Cleaning up - unregistering object ID {object_id}")
+                        self._unregister_object(object_id)
+                    except Exception as cleanup_error:
+                        logger.error(f"Cleanup failed: {cleanup_error}")
+                
+                raise RuntimeError(error_msg) from e
+            
+        def _validate_ris_configuration(self, ris: RIS) -> None:
+            """Validate RIS configuration"""
+            if not hasattr(ris, 'radio_material') or ris.radio_material is None:
+                raise ValueError("RIS material not properly assigned")
+            if not hasattr(ris, 'phase_profile') or ris.phase_profile is None:
+                raise ValueError("RIS phase profile not configured")
+            if not hasattr(ris, 'scene') or ris.scene is None:
+                raise ValueError("RIS scene reference not set")
+            print(f"[DEBUG PRINT] RIS configuration validated successfully")
 
 
     def add_receiver(self, name: str, position: tf.Tensor,
