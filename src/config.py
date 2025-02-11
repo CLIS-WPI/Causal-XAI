@@ -25,8 +25,8 @@ class SmartFactoryConfig:
         self.wavelength = tf.cast(SPEED_OF_LIGHT/self.carrier_frequency, tf.float32)
         
         # Enhanced Base station configuration
-        self.bs_position = [10.0, 0.5, 4.5]
-        self.bs_orientation = [0.0, 0.0, 0.0]
+        self.bs_position = [10.0, 10.0, 4.5]  # Center of ceiling
+        self.bs_orientation = [0.0, 0.0, -90.0]  # Facing down
         self.bs_array = [16, 4]  # 16x4 UPA
         self.bs_array_spacing = 0.5 * self.wavelength
         self.bs_array_pattern = "tr38901"  # Added antenna pattern type
@@ -34,7 +34,7 @@ class SmartFactoryConfig:
         
         # Enhanced RIS configuration
         self.ris_position = [10.0, 19.5, 2.5] # 3D position array [x, y, z]
-        self.ris_orientation = [0.0, 0.0, 0.0] # 3D orientation array [rx, ry, rz] 
+        self.ris_orientation = [0.0, -90.0, 0.0]  # Facing south # 3D orientation array [rx, ry, rz] 
         self.ris_elements = [8, 8]  # 8x8 elements # 2D array [num_rows, num_cols]
         self.ris_spacing = 0.5 * self.wavelength # RIS element spacing
         self.ris_modes = 1  # Number of modes for RIS # Number of modes for RIS
@@ -69,28 +69,28 @@ class SmartFactoryConfig:
 
         # Enhanced Ray tracing parameters
         self.ray_tracing = {
-            'max_depth': 5,
-            'method': "fibonacci",          # Added ray tracing method
-            'num_samples': int(1e6),        # Added number of rays
+            'max_depth': 3,         # Changed from 5 to 3 for efficiency
+            'method': "fibonacci",
+            'num_samples': int(1e5), # Changed from 1e6 to 1e5 for better performance
             'diffraction': True,
             'scattering': True,
-            'los': True,                    # Added LOS path option
-            'reflection': True,             # Added reflection option
-            'ris': True,                    # Added RIS path option
+            'los': True,
+            'reflection': True,
+            'ris': True,
             'scene_type': "indoor"
         }
 
         # Scene objects with enhanced configuration
         self.scene_objects = {
             'num_shelves': 5,
-            'shelf_dimensions': [2.0, 1.0, 4.0],  # Updated dimensions
+            'shelf_dimensions': [2.0, 1.0, 4.0],  # This is correct
             'shelf_material': 'metal',
             'shelf_positions': [
-                [5.0, 5.0, 1.5],
-                [15.0, 5.0, 1.5],
-                [10.0, 10.0, 1.5],
-                [5.0, 15.0, 1.5],
-                [15.0, 15.0, 1.5]
+                [5.0, 5.0, 0.0],    # Changed z from 1.5 to 0.0 (on floor)
+                [15.0, 5.0, 0.0],
+                [10.0, 10.0, 0.0],
+                [5.0, 15.0, 0.0],
+                [15.0, 15.0, 0.0]
             ]
         }
 
