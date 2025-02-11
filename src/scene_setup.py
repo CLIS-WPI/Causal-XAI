@@ -72,7 +72,7 @@ def _debug_object_state(obj, name):
 
     print(f"[DEBUG PRINT] {name} memory address: {hex(id(obj))}")
     print(f"[DEBUG PRINT] Finished debugging {name} state")
-    
+
 def _add_room_boundaries(scene, config):
     """Add walls, floor and ceiling to the scene with proper material handling."""
     print("[DEBUG PRINT] Starting room boundaries setup...")
@@ -97,12 +97,9 @@ def _add_room_boundaries(scene, config):
                 dtype=scene.dtype
             )
             print(f"[DEBUG PRINT] {concrete_name} material created at {hex(id(concrete))}")
-            
-            # Add material to scene
-            print(f"[DEBUG PRINT] Adding {concrete_name} material to scene...")
             scene.add(concrete)
             print(f"[DEBUG PRINT] {concrete_name} material added successfully")
-        
+
         # Room dimensions validation and setup
         try:
             length, width, height = config.room_dim
@@ -114,31 +111,34 @@ def _add_room_boundaries(scene, config):
             print(f"[DEBUG PRINT] Error in room dimensions setup: {str(dim_error)}")
             logger.error(f"Room dimensions error: {str(dim_error)}")
             raise
-        
-        # Define surfaces with their properties
+
+        # Define surfaces with unique names
         surfaces = [
-            ("floor", [length/2, width/2, 0]),
-            ("ceiling", [length/2, width/2, height]),
-            ("wall_front", [length/2, 0, height/2]),
-            ("wall_back", [length/2, width, height/2]),
-            ("wall_left", [0, width/2, height/2]),
-            ("wall_right", [length, width/2, height/2])
+            ("boundary_floor", [length/2, width/2, 0]),
+            ("boundary_ceiling", [length/2, width/2, height]),
+            ("boundary_wall_front", [length/2, 0, height/2]),
+            ("boundary_wall_back", [length/2, width, height/2]),
+            ("boundary_wall_left", [0, width/2, height/2]),
+            ("boundary_wall_right", [length, width/2, height/2])
         ]
-        
+
         # Create all surfaces
         print("[DEBUG PRINT] Creating room boundaries...")
         logger.debug("Creating room boundaries")
-        
+
         for name, position in surfaces:
             try:
+                # Check if surface already exists
+                if name in scene.objects or name in scene.transmitters or name in scene.receivers:
+                    print(f"[DEBUG PRINT] Surface {name} already exists, skipping...")
+                    continue
+
                 print(f"[DEBUG PRINT] Creating {name}...")
                 logger.debug(f"Creating {name}")
                 
-                # Convert position to tensor
                 pos = tf.constant(position, dtype=tf.float32)
                 print(f"[DEBUG PRINT] Position for {name}: {pos.numpy()}")
                 
-                # Create surface
                 surface = Transmitter(
                     name=name,
                     position=pos,
@@ -146,15 +146,12 @@ def _add_room_boundaries(scene, config):
                     dtype=scene.dtype
                 )
                 
-                # Set scene reference
                 print(f"[DEBUG PRINT] Setting scene reference for {name}")
                 surface.scene = scene
                 
-                # Set material
                 print(f"[DEBUG PRINT] Assigning material to {name}")
                 surface.radio_material = concrete
                 
-                # Add to scene
                 print(f"[DEBUG PRINT] Adding {name} to scene")
                 scene.add(surface)
                 
@@ -165,7 +162,7 @@ def _add_room_boundaries(scene, config):
                 print(f"[DEBUG PRINT] Error creating {name}: {str(surface_error)}")
                 logger.error(f"Failed to create {name}: {str(surface_error)}")
                 raise
-        
+
         print("[DEBUG PRINT] Room boundaries setup completed successfully")
         logger.info("Room boundaries setup completed successfully")
         
