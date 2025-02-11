@@ -51,30 +51,48 @@ def validate_config(config):
 
 def generate_channel_data(scene, config):
     """Generate channel data using ray tracing"""
-    # Compute paths
-    paths = scene.compute_paths(
-        max_depth=config.ray_tracing['max_depth'],
-        method=config.ray_tracing['method'],
-        num_samples=config.ray_tracing['num_samples'],
-        los=config.ray_tracing['los'],
-        reflection=config.ray_tracing['reflection'],
-        diffraction=config.ray_tracing['diffraction'],
-        scattering=config.ray_tracing['scattering'],
-        ris=config.ray_tracing['ris']
-    )
-    
-    # Get channel impulse responses
-    a, tau = paths.cir()
-    
-    # Create channel matrices and other data
-    channel_data = {
-        'channel_matrices': a,
-        'path_delays': tau,
-        'los_conditions': paths.los,
-        'agv_positions': [rx.position for rx in scene.receivers]
-    }
-    
-    return channel_data
+    try:
+        # Compute paths with proper configuration
+        paths = scene.compute_paths(
+            max_depth=config.ray_tracing['max_depth'],
+            method=config.ray_tracing['method'],
+            num_samples=config.ray_tracing['num_samples'],
+            los=config.ray_tracing['los'],
+            reflection=config.ray_tracing['reflection'],
+            diffraction=config.ray_tracing['diffraction'],
+            scattering=config.ray_tracing['scattering']
+        )
+        
+        # Get channel impulse responses
+        a, tau = paths.cir()
+        
+        # Calculate frequencies for OFDM
+        frequencies = tf.range(
+            start=0,
+            limit=config.num_subcarriers,
+            dtype=tf.float32
+        ) * config.subcarrier_spacing
+        
+        # Generate OFDM channel
+        h = cir_to_ofdm_channel(
+            frequencies=frequencies,
+            a=a,
+            tau=tau
+        )
+        
+        # Create channel data dictionary
+        channel_data = {
+            'channel_matrices': h,
+            'path_delays': tau,
+            'los_conditions': paths.los,
+            'agv_positions': tf.stack([rx.position for rx in scene.receivers])
+        }
+        
+        return channel_data
+        
+    except Exception as e:
+        logger.error(f"Error generating channel data: {str(e)}")
+        raise
 
 def save_channel_data(channel_data, filepath):
     """Save channel data to H5 file"""
@@ -127,8 +145,6 @@ def main():
         raise
         
     finally:
-        if scene:
-            scene.cleanup()
         print("Execution completed")
 
 if __name__ == "__main__":

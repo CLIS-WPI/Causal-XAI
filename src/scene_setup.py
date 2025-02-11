@@ -41,6 +41,9 @@ def setup_scene(config: SmartFactoryConfig):
         )
         _debug_object_state(bs, "Base station")
 
+        # Set transmitter array for the scene
+        scene.tx_array = bs.array
+
         # Add RIS
         ris = manager.add_ris(
             name="ris",
@@ -49,9 +52,9 @@ def setup_scene(config: SmartFactoryConfig):
         )
         _debug_object_state(ris, "RIS")
 
-        # Add AGVs
+        # Add AGVs and set receiver array
+        agv_array = None
         for i in range(config.num_agvs):
-            # Calculate AGV positions based on your requirements
             agv_pos = tf.constant([12.0 - i*4.0, 5.0 + i*10.0, config.agv_height], 
                                 dtype=tf.float32)
             rx = manager.add_receiver(
@@ -60,6 +63,13 @@ def setup_scene(config: SmartFactoryConfig):
                 orientation=tf.constant([0.0, 0.0, 0.0], dtype=tf.float32)
             )
             _debug_object_state(rx, f"AGV_{i}")
+            
+            # Store array configuration from first AGV
+            if i == 0:
+                agv_array = rx.array
+        
+        # Set receiver array for the scene
+        scene.rx_array = agv_array
 
         # Configure ray-tracing parameters
         scene.synthetic_array = True

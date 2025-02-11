@@ -77,15 +77,36 @@ class SceneManager:
             orientation=orientation,
             num_rows=self.config.ris_elements[0],
             num_cols=self.config.ris_elements[1],
-            pattern=self.config.ris_pattern,
-            polarization=self.config.ris_polarization,
             dtype=self._scene.dtype
         )
         
+        # Set up RIS phase profile
+        cell_grid = CellGrid(
+            num_rows=self.config.ris_elements[0],
+            num_cols=self.config.ris_elements[1],
+            dtype=self._scene.dtype
+        )
+        
+        # Initialize with zeros for phase values
+        phase_values = tf.zeros([1, self.config.ris_elements[0], 
+                            self.config.ris_elements[1]], 
+                            dtype=tf.float32)
+        
+        # Create phase profile
+        phase_profile = DiscretePhaseProfile(
+            cell_grid=cell_grid,
+            values=phase_values,
+            dtype=self._scene.dtype
+        )
+        
+        # Set phase profile
+        ris.phase_profile = phase_profile
+        
+        # Set scene and add to scene
         ris.scene = self._scene
         self._scene.add(ris)
         return ris
-
+    
     def add_receiver(self, name: str, position: tf.Tensor, orientation: tf.Tensor) -> Receiver:
         """Add AGV receiver"""
         rx = Receiver(name=name, position=position, orientation=orientation)
