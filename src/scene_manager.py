@@ -421,7 +421,11 @@ class SceneManager:
     def add_ris(self, name: str, position: tf.Tensor, orientation: tf.Tensor,
                 num_rows: int, num_cols: int, dtype=tf.complex64) -> RIS:
         """Add a RIS to the scene"""
+        print(f"[DEBUG PRINT] Entering add_ris() for '{name}'")
+        print(f"[DEBUG PRINT] About to acquire lock in add_ris() for '{name}'")
+        
         with self._lock:
+            print(f"[DEBUG PRINT] Lock acquired for add_ris() - {name}")
             try:
                 # First get/create material
                 metal_material = self._get_or_create_material("itu_metal", dtype)
@@ -439,8 +443,8 @@ class SceneManager:
                 # Set scene reference before material
                 ris.scene = self._scene
                 
-                # Register object
-                object_id = self._register_object(ris, ObjectType.RIS, "itu_metal")
+                # Register object without lock since we're already in locked section
+                object_id = self._register_object_unlocked(ris, ObjectType.RIS, "itu_metal")
                 ris.object_id = object_id
                 
                 # Set material after ID assigned
@@ -453,13 +457,18 @@ class SceneManager:
                 
             except Exception as e:
                 logger.error(f"Failed to add RIS {name}: {str(e)}")
-                self._unregister_object(object_id)
+                if 'object_id' in locals():
+                    self._unregister_object(object_id)
                 raise
 
     def add_receiver(self, name: str, position: tf.Tensor,
                     orientation: tf.Tensor, dtype=tf.complex64) -> Receiver:
         """Add a receiver to the scene"""
+        print(f"[DEBUG PRINT] Entering add_receiver() for '{name}'")
+        print(f"[DEBUG PRINT] About to acquire lock in add_receiver() for '{name}'")
+        
         with self._lock:
+            print(f"[DEBUG PRINT] Lock acquired for add_receiver() - {name}")
             try:
                 # Create receiver
                 rx = Receiver(
@@ -472,8 +481,8 @@ class SceneManager:
                 # Set scene reference
                 rx.scene = self._scene
                 
-                # Register object
-                object_id = self._register_object(rx, ObjectType.RECEIVER)
+                # Register object without lock since we're already in locked section
+                object_id = self._register_object_unlocked(rx, ObjectType.RECEIVER)
                 rx.object_id = object_id
                 
                 # Configure antenna array
@@ -495,7 +504,8 @@ class SceneManager:
                 
             except Exception as e:
                 logger.error(f"Failed to add receiver {name}: {str(e)}")
-                self._unregister_object(object_id)
+                if 'object_id' in locals():
+                    self._unregister_object(object_id)
                 raise
 
     def validate_scene(self):
