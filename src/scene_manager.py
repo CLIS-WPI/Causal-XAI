@@ -19,15 +19,21 @@ class SceneManager:
         
     def _add_materials(self):
         """Add materials to the scene"""
-        for material_name, properties in self.config.materials.items():
-            if material_name not in self._scene.radio_materials:
-                material = RadioMaterial(
-                    name=properties['name'],
-                    relative_permittivity=properties['relative_permittivity'],
-                    conductivity=properties['conductivity'],
-                    dtype=self._scene.dtype
-                )
-                self._scene.add(material)
+        # Add concrete material
+        concrete = RadioMaterial(
+            name="concrete",
+            relative_permittivity=self.config.materials['concrete']['relative_permittivity'],
+            conductivity=self.config.materials['concrete']['conductivity']
+        )
+        self._scene.add(concrete)
+        
+        # Add metal material
+        metal = RadioMaterial(
+            name="metal",
+            relative_permittivity=self.config.materials['metal']['relative_permittivity'],
+            conductivity=self.config.materials['metal']['conductivity']
+        )
+        self._scene.add(metal)
     
     def _add_room_boundaries(self):
         """Add walls, floor and ceiling"""

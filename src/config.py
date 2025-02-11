@@ -69,15 +69,29 @@ class SmartFactoryConfig:
 
         # Enhanced Ray tracing parameters
         self.ray_tracing = {
-            'max_depth': 3,         # Changed from 5 to 3 for efficiency
-            'method': "fibonacci",
-            'num_samples': int(1e5), # Changed from 1e6 to 1e5 for better performance
+            'max_depth': 5,         
+            'method': "image",
+            'num_samples': 1000, 
             'diffraction': True,
-            'scattering': True,
+            'scattering': False ,
             'los': True,
             'reflection': True,
             'ris': True,
             'scene_type': "indoor"
+        }
+
+        # Material properties for ray tracing
+        self.materials = {
+            'concrete': {
+                'name': 'concrete',
+                'relative_permittivity': 5.31,
+                'conductivity': 0.0462
+            },
+            'metal': {
+                'name': 'metal',
+                'relative_permittivity': 1.0,
+                'conductivity': 1e7
+            }
         }
 
         # Scene objects with enhanced configuration

@@ -54,41 +54,37 @@ def validate_config(config):
 def generate_channel_data(scene, config):
     """Generate channel data using ray tracing"""
     try:
-        # Compute paths with proper configuration
+        # Load the factory scene XML
+        scene.load("src/factory_scene.xml")
+        
+        # Compute paths using ray tracing
         paths = scene.compute_paths(
-            max_depth=config.ray_tracing['max_depth'],
-            method=config.ray_tracing['method'],
-            num_samples=config.ray_tracing['num_samples'],
-            los=config.ray_tracing['los'],
-            reflection=config.ray_tracing['reflection'],
-            diffraction=config.ray_tracing['diffraction'],
-            scattering=config.ray_tracing['scattering']
+            receivers=[rx.name for rx in scene.receivers.values()],
+            transmitters=['bs'],
+            max_depth=5,  # Number of reflections
+            los=True,
+            reflection=True,
+            diffraction=True,
+            scattering=False
         )
         
         # Get channel impulse responses
-        a, tau = paths.cir()
+        cir = paths.cir()
         
-        # Calculate frequencies for OFDM
-        frequencies = tf.range(
-            start=0,
-            limit=config.num_subcarriers,
-            dtype=tf.float32
-        ) * config.subcarrier_spacing
-        
-        # Generate OFDM channel
-        h = cir_to_ofdm_channel(
-            frequencies=frequencies,
-            a=a,
-            tau=tau
+        # Convert to OFDM channel
+        h_freq = cir_to_ofdm_channel(
+            cir,
+            num_subcarriers=config.num_subcarriers,
+            sampling_frequency=config.sampling_frequency,
+            fft_size=config.num_subcarriers
         )
         
         # Create channel data dictionary
-        # Use scene.receivers.values() to get the actual Receiver objects
         channel_data = {
-            'channel_matrices': h,
-            'path_delays': tau,
-            'los_conditions': paths.LOS,  # Note: using uppercase LOS
-            'agv_positions': tf.stack([rx.position for rx in scene.receivers.values()])  # Changed to .values()
+            'channel_matrices': h_freq,
+            'path_delays': paths.tau,
+            'los_conditions': paths.los,
+            'agv_positions': tf.stack([rx.position for rx in scene.receivers.values()])
         }
         
         return channel_data

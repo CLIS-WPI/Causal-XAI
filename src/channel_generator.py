@@ -4,7 +4,7 @@ import sionna
 from scene_setup import setup_scene
 from sionna.constants import SPEED_OF_LIGHT
 from sionna.channel.utils import cir_to_ofdm_channel
-from sionna.rt import Scene, Transmitter, Receiver, RIS, PlanarArray, RadioMaterial
+from sionna.rt import Scene, Transmitter, Receiver, RIS, PlanarArray, RadioMaterial, Paths
 from sionna.rt import DiscretePhaseProfile, CellGrid
 
 class SmartFactoryChannel:
