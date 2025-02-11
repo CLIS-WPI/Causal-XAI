@@ -10,7 +10,7 @@ from sionna.rt import Scene
 import logging
 import h5py
 from sionna.channel.utils import cir_to_ofdm_channel
-
+from sionna.channel.utils import subcarrier_frequencies
 # Environment setup
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
@@ -56,7 +56,7 @@ def generate_channel_data(scene, config):
     try:
         print("Generating channel data...")
         
-        # Compute paths using ray tracing
+        # Compute paths using ray tracing with correct parameters
         paths = scene.compute_paths(
             max_depth=config.ray_tracing['max_depth'],
             method="fibonacci",
@@ -64,18 +64,27 @@ def generate_channel_data(scene, config):
             los=config.ray_tracing['los'],
             reflection=config.ray_tracing['reflection'],
             diffraction=config.ray_tracing['diffraction'],
-            scattering=config.ray_tracing['scattering']
+            scattering=config.ray_tracing['scattering'],
+            ris=True,  # Enable RIS paths
+            scat_keep_prob=0.001,  # Default scattering keep probability
+            edge_diffraction=False  # Default edge diffraction setting
         )
         
         # Get channel impulse responses
         cir = paths.cir()
         
+        # Calculate frequencies for the subcarriers
+        frequencies = subcarrier_frequencies(
+            num_subcarriers=config.num_subcarriers,
+            subcarrier_spacing=config.subcarrier_spacing
+        )
+        
         # Convert to OFDM channel
         h_freq = cir_to_ofdm_channel(
-            cir,
-            num_subcarriers=config.num_subcarriers,
-            sampling_frequency=config.sampling_frequency,
-            fft_size=config.num_subcarriers
+            frequencies=frequencies,
+            a=cir,
+            tau=paths.tau,
+            normalize=False
         )
         
         # Create channel data dictionary
