@@ -184,13 +184,20 @@ class SceneManager:
             self._material_registry[scene_obj.radio_material].add(obj.object_id)
 
     def _generate_object_id(self) -> int:
-        """Thread-safe generation of next available object ID"""
+        """Thread-safe generation of the next available object ID with detailed logging."""
         print("[DEBUG PRINT] Entering _generate_object_id()")
+        start_time = time.time()
         with self._lock:
-            object_id = self._next_id
-            self._next_id += 1
-            print(f"[DEBUG PRINT] Generated new ID: {object_id}")
-            return object_id
+            try:
+                object_id = self._next_id
+                self._next_id += 1
+                duration = time.time() - start_time
+                print(f"[DEBUG PRINT] Generated new ID: {object_id} in {duration:.4f} seconds")
+                return object_id
+            except Exception as e:
+                print(f"[DEBUG PRINT] Failed to generate object ID: {e}")
+                raise RuntimeError("Failed to generate object ID.") from e
+
 
     def _register_object(self, obj: Any, obj_type: ObjectType, radio_material: Optional[str] = None) -> int:
         """Register a new object in the scene, with improved debugging and error handling."""
@@ -258,8 +265,9 @@ class SceneManager:
                     raise RuntimeError("Failed to create SceneObject.") from e
 
                 # Add object to registry
-                print("[DEBUG PRINT] Adding to object registry...")
+                
                 try:
+                    print("[DEBUG PRINT] Adding to object registry...")
                     self._object_registry[object_id] = scene_object
                     logger.debug(f"Added object with ID {object_id} to registry")
                     print(f"[DEBUG PRINT] Successfully added object_id={object_id} to registry")
@@ -395,36 +403,59 @@ class SceneManager:
 
 
     def _register_object(self, obj: Any, obj_type: ObjectType, radio_material: Optional[str] = None) -> int:
-        """Register a new object in the scene with additional logging and timeout handling."""
+        """Register a new object in the scene with additional logging, timeout handling, and improved error handling."""
         print("[DEBUG PRINT] Entering _register_object()")
-        start_time = time.time()  # Record start time
+        start_time = time.time()  # Record start time for timeout tracking
 
         with self._lock:
             print("[DEBUG PRINT] Lock acquired for _register_object()")
             try:
-                object_id = self._generate_object_id()
-                print(f"[DEBUG PRINT] Generated object_id={object_id}")
+                # Generate a unique object ID
+                print("[DEBUG PRINT] Generating a new object ID...")
+                try:
+                    object_id = self._generate_object_id()
+                    print(f"[DEBUG PRINT] Generated object_id={object_id}")
+                except Exception as id_error:
+                    print(f"[DEBUG PRINT] Failed to generate object ID: {id_error}")
+                    raise RuntimeError("Failed to generate object ID.") from id_error
 
-                name = obj.name if hasattr(obj, 'name') else f"object_{object_id}"
-                print(f"[DEBUG PRINT] Object name determined: {name}")
+                # Determine the object name
+                print("[DEBUG PRINT] Determining object name...")
+                try:
+                    name = obj.name if hasattr(obj, 'name') else f"object_{object_id}"
+                    print(f"[DEBUG PRINT] Object name determined: {name}")
+                except Exception as name_error:
+                    print(f"[DEBUG PRINT] Failed to determine object name: {name_error}")
+                    raise RuntimeError("Failed to determine object name.") from name_error
 
-                # Create the SceneObject and log all attributes
-                scene_object = SceneObject(
-                    id=object_id,
-                    name=name,
-                    obj_type=obj_type,
-                    radio_material=radio_material,
-                    reference=obj
-                )
-                print(f"[DEBUG PRINT] SceneObject created: id={object_id}, name={name}")
+                # Create SceneObject
+                print("[DEBUG PRINT] Creating SceneObject...")
+                try:
+                    scene_object = SceneObject(
+                        id=object_id,
+                        name=name,
+                        obj_type=obj_type,
+                        radio_material=radio_material,
+                        reference=obj
+                    )
+                    print(f"[DEBUG PRINT] SceneObject created successfully: id={object_id}, name={name}")
+                except Exception as scene_object_error:
+                    print(f"[DEBUG PRINT] Failed to create SceneObject: {scene_object_error}")
+                    raise RuntimeError("Failed to create SceneObject.") from scene_object_error
 
-                # Add to registry with timeout check
+                # Add the SceneObject to the registry with timeout check
                 if time.time() - start_time > 5:  # Timeout after 5 seconds
                     raise TimeoutError(f"[ERROR] Timeout while registering object: {name}")
 
-                self._object_registry[object_id] = scene_object
-                print(f"[DEBUG PRINT] Successfully registered object_id={object_id}")
+                print("[DEBUG PRINT] Adding SceneObject to object registry...")
+                try:
+                    self._object_registry[object_id] = scene_object
+                    print(f"[DEBUG PRINT] Successfully registered object_id={object_id}")
+                except Exception as registry_error:
+                    print(f"[DEBUG PRINT] Failed to add SceneObject to registry: {registry_error}")
+                    raise RuntimeError("Failed to update object registry.") from registry_error
 
+                print("[DEBUG PRINT] Exiting _register_object() successfully...")
                 return object_id
 
             except TimeoutError as e:
@@ -433,7 +464,8 @@ class SceneManager:
 
             except Exception as e:
                 print(f"[DEBUG PRINT] Exception in _register_object(): {e}")
-                raise
+                raise RuntimeError(f"Registration failed for object: {str(e)}") from e
+
 
     def add_ris(self, name: str, position: tf.Tensor, orientation: tf.Tensor,
             num_rows: int, num_cols: int, dtype=tf.complex64) -> RIS:
