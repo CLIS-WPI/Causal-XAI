@@ -91,113 +91,118 @@ class SceneManager:
         logger.info("Scene manager initialized successfully")
 
     def _add_room_boundaries(self):
-        """Add walls, floor and ceiling to the scene"""
+        """Add room boundaries with proper registration"""
         try:
             # Create concrete material
-            concrete = RadioMaterial(
-                name="concrete",
-                relative_permittivity=4.5,
-                conductivity=0.01,
-                dtype=self._scene.dtype
-            )
+            concrete = self._get_or_create_material("concrete", self._scene.dtype)
             
-            # Add material to scene
-            self._scene.add(concrete)
-            
-            # Room dimensions
             length, width, height = self._config.room_dim
-            
-            # Create rectangular surfaces for room boundaries using Sionna's built-in components
-            # Add floor
-            floor = RadioMaterial(
-                name="floor",
-                relative_permittivity=4.5,
-                conductivity=0.01,
-                dtype=self._scene.dtype
-            )
-            self._scene.add(floor)
-            
-            # Add ceiling
-            ceiling = RadioMaterial(
-                name="ceiling",
-                relative_permittivity=4.5,
-                conductivity=0.01,
-                dtype=self._scene.dtype
-            )
-            self._scene.add(ceiling)
-            
-            # Add walls
-            walls = [
-                "wall_front",
-                "wall_back", 
-                "wall_left",
-                "wall_right"
+            boundaries = [
+                ("floor", [length/2, width/2, 0]),
+                ("ceiling", [length/2, width/2, height]),
+                ("wall_front", [length/2, 0, height/2]),
+                ("wall_back", [length/2, width, height/2]),
+                ("wall_left", [0, width/2, height/2]),
+                ("wall_right", [length, width/2, height/2])
             ]
-            
-            for wall_name in walls:
-                wall = RadioMaterial(
-                    name=wall_name,
-                    relative_permittivity=4.5,
-                    conductivity=0.01,
-                    dtype=self._scene.dtype
+
+            for name, position in boundaries:
+                # Create boundary
+                boundary = Transmitter(
+                    name=name,
+                    position=tf.constant(position, dtype=tf.float32),
+                    orientation=tf.constant([0, 0, 0], dtype=tf.float32)
                 )
-                self._scene.add(wall)
                 
+                # Set scene and material
+                boundary.scene = self._scene
+                boundary.radio_material = concrete
+                
+                # Register in manager
+                object_id = self._register_object(boundary, ObjectType.SCENE_OBJECT, "concrete")
+                boundary.object_id = object_id
+                
+                # Add to scene
+                self._scene.add(boundary)
+                
+            logger.info("Room boundaries added successfully")
+            
         except Exception as e:
             logger.error(f"Failed to add room boundaries: {str(e)}")
             raise
 
     def _get_or_create_material(self, material_name: str, dtype=tf.complex64) -> RadioMaterial:
-        """Get existing material or create new one with detailed error handling."""
-        print(f"[DEBUG PRINT] Attempting to get/create material: {material_name}")
-        print(f"[DEBUG PRINT] Using dtype: {dtype}")
-        
+        """Get or create material with enhanced error handling"""
         try:
-            # First check if material exists in scene's radio_materials
+            # Check existing material
             if material_name in self._scene.radio_materials:
-                print(f"[DEBUG PRINT] Found existing material: {material_name}")
                 return self._scene.radio_materials[material_name]
 
-            # Create new material with specific properties
-            print(f"[DEBUG PRINT] Creating new material: {material_name}")
-            if material_name == "itu_metal":
-                material = RadioMaterial(
-                    name=material_name,
-                    relative_permittivity=1.0,
-                    conductivity=1e7,
-                    dtype=dtype
-                )
-                print("[DEBUG PRINT] Created ITU metal material")
-            else:
-                material = RadioMaterial(
-                    name=material_name,
-                    relative_permittivity=4.5,
-                    conductivity=0.01,
-                    dtype=dtype
-                )
+            # Create new material
+            properties = {
+                "itu_metal": {"permittivity": 1.0, "conductivity": 1e7},
+                "concrete": {"permittivity": 4.5, "conductivity": 0.01}
+            }.get(material_name, {"permittivity": 1.0, "conductivity": 0.0})
 
-            # Add material to scene
-            print(f"[DEBUG PRINT] Adding material to scene: {material_name}")
+            material = RadioMaterial(
+                name=material_name,
+                relative_permittivity=properties["permittivity"],
+                conductivity=properties["conductivity"],
+                dtype=dtype
+            )
+
+            # Add to scene
             self._scene.add(material)
-            print(f"[DEBUG PRINT] Material added to scene successfully")
 
-            # Initialize material registry if needed
+            # Initialize registry entry
             if material_name not in self._material_registry:
-                print(f"[DEBUG PRINT] Initializing material registry entry for: {material_name}")
                 self._material_registry[material_name] = set()
 
-            print(f"[DEBUG PRINT] Successfully created material: {material_name}")
             return material
 
         except Exception as e:
-            print(f"[DEBUG PRINT] Error in get_or_create_material: {str(e)}")
-            print(f"[DEBUG PRINT] Material name: {material_name}")
-            print(f"[DEBUG PRINT] Error type: {type(e)}")
-            print("[DEBUG PRINT] Stack trace:")
-            import traceback
-            traceback.print_exc()
-            raise RuntimeError(f"Failed to get/create material {material_name}: {str(e)}") from e
-                        
+            logger.error(f"Failed to get/create material {material_name}: {str(e)}")
+            raise 
+    
+    def validate_scene(self) -> bool:
+        """Comprehensive scene validation"""
+        with self._lock:
+            try:
+                # Check object counts
+                scene_objects = len(self._scene.objects)
+                registered_objects = len(self._object_registry)
+                
+                if scene_objects != registered_objects:
+                    logger.error(f"Object count mismatch: Scene={scene_objects}, Registry={registered_objects}")
+                    return False
+
+                # Validate object IDs
+                scene_ids = {obj.object_id for obj in self._scene.objects.values() 
+                            if hasattr(obj, 'object_id')}
+                registry_ids = set(self._object_registry.keys())
+                
+                if scene_ids != registry_ids:
+                    logger.error("Object ID mismatch between scene and registry")
+                    return False
+
+                # Validate materials
+                for obj_id, obj in self._object_registry.items():
+                    if obj.radio_material:
+                        if obj.radio_material not in self._material_registry:
+                            logger.error(f"Missing material registration for object {obj_id}")
+                            return False
+                        if obj_id not in self._material_registry[obj.radio_material]:
+                            logger.error(f"Inconsistent material registration for object {obj_id}")
+                            return False
+
+                logger.info("Scene validation passed")
+                return True
+
+            except Exception as e:
+                logger.error(f"Scene validation failed: {str(e)}")
+                return False
+
+
     def _initialize_registries(self):
         """Initialize object and material registries from existing scene state"""
         with self._lock:
@@ -313,105 +318,37 @@ class SceneManager:
                 raise RuntimeError("Failed to generate object ID.") from e
 
     def _register_object(self, obj: Any, obj_type: ObjectType, radio_material: Optional[str] = None) -> int:
-        """Register a new object in the scene with detailed timing, registry validation, deadlock prevention, and debug."""
-        print("[DEBUG PRINT] Entering _register_object()")
-        print(f"[DEBUG PRINT] Input parameters: obj_type={obj_type}, radio_material={radio_material}")
-        print(f"[DEBUG PRINT] Object details: type={type(obj)}, memory_addr={hex(id(obj))}")
-        start_time = time.time()
-
-        # Debug lock state
-        lock_owner_id = id(threading.current_thread())
-        print(f"[DEBUG PRINT] Current thread ID: {lock_owner_id}")
-        print(f"[DEBUG PRINT] Lock state: {self._lock.locked()}")
-        print(f"[DEBUG PRINT] Current registry state:")
-        print(f"[DEBUG PRINT] - Registry size: {len(self._object_registry)}")
-        print(f"[DEBUG PRINT] - Existing IDs: {list(self._object_registry.keys())}")
-
-        try:
-            # Step 1: Generate Object ID
-            print("[DEBUG PRINT] Step 1: Generating object ID - Start")
-            id_start = time.time()
-            object_id = self._next_id
-            self._next_id += 1
-            id_duration = time.time() - id_start
-            print(f"[DEBUG PRINT] Generated object_id={object_id} in {id_duration:.4f} seconds")
-
-            # Step 2: Registry Validation Check
-            print("[DEBUG PRINT] Step 2: Validating object ID in the registry...")
-            if object_id in self._object_registry:
-                raise RuntimeError(f"Duplicate object_id detected: {object_id}")
-            print("[DEBUG PRINT] Object ID validation passed")
-
-            # Step 3: Determine Object Name
-            print("[DEBUG PRINT] Step 3: Determining object name")
-            name_start = time.time()
+        """Thread-safe object registration with enhanced validation"""
+        with self._lock:
             try:
-                print(f"[DEBUG PRINT] Object hasattr('name'): {hasattr(obj, 'name')}")
-                if hasattr(obj, 'name'):
-                    print(f"[DEBUG PRINT] Object name attribute value: {obj.name}")
+                # Generate new ID
+                object_id = self._next_id
+                self._next_id += 1
+
+                # Create SceneObject
                 name = obj.name if hasattr(obj, 'name') else f"object_{object_id}"
-                print(f"[DEBUG PRINT] Final determined name: {name}")
-            except Exception as name_error:
-                print(f"[DEBUG PRINT] Error getting object name: {str(name_error)}")
-                raise
-            name_duration = time.time() - name_start
-            print(f"[DEBUG PRINT] Name determination completed in {name_duration:.4f} seconds")
+                scene_object = SceneObject(
+                    id=object_id,
+                    name=name,
+                    obj_type=obj_type,
+                    radio_material=radio_material,
+                    reference=obj
+                )
 
-            # Step 4: Create SceneObject
-            print(f"[DEBUG PRINT] Step 4: Creating SceneObject")
-            create_start = time.time()
-            scene_object = SceneObject(
-                id=object_id,
-                name=name,
-                obj_type=obj_type,
-                radio_material=radio_material,
-                reference=obj
-            )
-            create_duration = time.time() - create_start
-            print(f"[DEBUG PRINT] SceneObject created at {hex(id(scene_object))}")
-            print(f"[DEBUG PRINT] Creation took {create_duration:.4f} seconds")
+                # Add to registry
+                self._object_registry[object_id] = scene_object
 
-            # Step 5: Timeout Check
-            elapsed_time = time.time() - start_time
-            print(f"[DEBUG PRINT] Current elapsed time: {elapsed_time:.4f} seconds")
-            if elapsed_time > 5:
-                print(f"[DEBUG PRINT] Operation timed out after {elapsed_time:.4f} seconds")
-                raise TimeoutError(f"Timeout while registering object: {name}")
+                # Handle material registration
+                if radio_material:
+                    if radio_material not in self._material_registry:
+                        self._material_registry[radio_material] = set()
+                    self._material_registry[radio_material].add(object_id)
 
-            # Step 6: Add to Object Registry
-            print(f"[DEBUG PRINT] Step 6: Adding to registry")
-            print(f"[DEBUG PRINT] Registry state before addition:")
-            print(f"[DEBUG PRINT] - Current size: {len(self._object_registry)}")
-            print(f"[DEBUG PRINT] - Current keys: {list(self._object_registry.keys())}")
-            reg_start = time.time()
-            self._object_registry[object_id] = scene_object
-            reg_duration = time.time() - reg_start
-            print(f"[DEBUG PRINT] Registry state after addition:")
-            print(f"[DEBUG PRINT] - New size: {len(self._object_registry)}")
-            print(f"[DEBUG PRINT] - New keys: {list(self._object_registry.keys())}")
-            print(f"[DEBUG PRINT] - Addition took {reg_duration:.4f} seconds")
+                return object_id
 
-            total_duration = time.time() - start_time
-            print(f"[DEBUG PRINT] Total registration time: {total_duration:.4f} seconds")
-            print("[DEBUG PRINT] Registration completed successfully")
-            return object_id
-
-        except TimeoutError as e:
-            print(f"[DEBUG PRINT] Timeout Error occurred: {str(e)}")
-            raise
-
-        except Exception as e:
-            print(f"[DEBUG PRINT] Error during registration:")
-            print(f"[DEBUG PRINT] - Error type: {type(e)}")
-            print(f"[DEBUG PRINT] - Error message: {str(e)}")
-            print("[DEBUG PRINT] - Stack trace:")
-            import traceback
-            traceback.print_exc()
-            raise RuntimeError(f"Registration failed: {str(e)}") from e
-
-        finally:
-            elapsed = time.time() - start_time
-            print(f"[DEBUG PRINT] _register_object() completed in {elapsed:.4f} seconds")
+            except Exception as e:
+                logger.error(f"Failed to register object: {str(e)}")
+                raise RuntimeError(f"Object registration failed: {str(e)}") from e
 
 
 
