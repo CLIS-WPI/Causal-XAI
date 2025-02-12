@@ -1,5 +1,4 @@
-# First, import necessary libraries
-#%matplotlib inline
+# src/channel_analyzer.py
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
@@ -20,19 +19,25 @@ def plot_channel_magnitude(channel_matrix):
     """Plot channel magnitude response"""
     plt.figure(figsize=(10,6))
     
-    # Reshape the channel matrix to 2D for visualization
-    # Taking the first batch, first receiver, first receiver antenna, first transmitter
-    h_2d = channel_matrix[0, 0, 0, 0, :, 0, :]  # Extract a 2D slice (128, 1024)
+    # Extract a 2D slice from the 7D tensor
+    # Shape: (1, 2, 1, 7, 128, 1, 1024) -> (128, 1024)
+    h_2d = channel_matrix[0, 0, 0, 0, :, 0, :]
     
     # Calculate magnitude in dB
     magnitude_db = 20 * np.log10(np.abs(h_2d.numpy()))
     
+    # Plot the 2D magnitude response
     plt.imshow(magnitude_db, aspect='auto', cmap='viridis')
     plt.colorbar(label='Magnitude (dB)')
     plt.xlabel('Subcarrier Index')
     plt.ylabel('Antenna Index')
     plt.title('Channel Magnitude Response')
     plt.show()
+
+# Visualization code
+if 'h' in channel_data:
+    print(f"Channel matrix shape: {channel_data['h'].shape}")
+    plot_channel_magnitude(channel_data['h'])
 
 def plot_path_delays(path_delays):
     """Plot histogram of path delays"""
