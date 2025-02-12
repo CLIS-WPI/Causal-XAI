@@ -19,7 +19,7 @@ def plot_channel_magnitude(channel_matrix):
     """Plot channel magnitude response"""
     plt.figure(figsize=(10,6))
     
-    # Extract a 2D slice from the 7D tensor first
+    # First extract a 2D slice from the 7D tensor
     # Shape: (1, 2, 1, 7, 128, 1, 1024) -> (128, 1024)
     h_2d = channel_matrix[0, 0, 0, 0, :, 0, :].numpy()
     
