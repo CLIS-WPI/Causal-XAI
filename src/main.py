@@ -11,6 +11,7 @@ import logging
 import h5py
 from sionna.channel.utils import cir_to_ofdm_channel
 from sionna.channel.utils import subcarrier_frequencies
+from sionna_ply_generator import SionnaPLYGenerator
 # Environment setup
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
@@ -59,15 +60,15 @@ def generate_channel_data(scene, config):
         # Compute paths using ray tracing with correct parameters
         paths = scene.compute_paths(
             max_depth=config.ray_tracing['max_depth'],
-            method="fibonacci",
+            method=config.ray_tracing['method'],
             num_samples=config.ray_tracing['num_samples'],
             los=config.ray_tracing['los'],
             reflection=config.ray_tracing['reflection'],
             diffraction=config.ray_tracing['diffraction'],
             scattering=config.ray_tracing['scattering'],
-            ris=True,  # Enable RIS paths
-            scat_keep_prob=0.001,  # Default scattering keep probability
-            edge_diffraction=False  # Default edge diffraction setting
+            ris=config.ray_tracing['ris'],
+            scat_keep_prob=config.ray_tracing['scat_keep_prob'],
+            edge_diffraction=config.ray_tracing['edge_diffraction']
         )
         
         # Get channel impulse responses
@@ -119,6 +120,15 @@ def main():
         # Set random seed
         tf.random.set_seed(42)
         np.random.seed(42)
+        
+        # First generate PLY files in src/meshes
+        print("Generating PLY files...")
+        SionnaPLYGenerator.generate_factory_geometries(
+            room_dims=[20, 20, 5],
+            shelf_dims=[2, 1, 4],
+            output_dir=os.path.join(os.path.dirname(__file__), 'meshes')  # This ensures meshes is created in src
+        )
+        print("PLY files generated successfully")
         
         # Initialize configuration
         config = SmartFactoryConfig()

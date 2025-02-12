@@ -77,7 +77,10 @@ class SmartFactoryConfig:
             'los': True,
             'reflection': True,
             'ris': True,
-            'scene_type': "indoor"
+            'scene_type': "indoor",
+            'scat_keep_prob': 0.001,
+            'edge_diffraction': False
+
         }
 
         # Material properties for ray tracing
