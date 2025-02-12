@@ -33,7 +33,7 @@ def plot_channel_magnitude(channel_matrix):
     plt.ylabel('Antenna Index')
     plt.title('Channel Magnitude Response')
     plt.show()
-    
+
 # Visualization code
 if 'h' in channel_data:
     print(f"Channel matrix shape: {channel_data['h'].shape}")
