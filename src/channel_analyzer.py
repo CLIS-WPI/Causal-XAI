@@ -21,9 +21,8 @@ def plot_channel_magnitude(channel_matrix):
     plt.figure(figsize=(10,6))
     
     # Reshape the channel matrix to 2D for visualization
-    # Taking the first batch, first receiver, first transmitter antenna
-    # Shape: (1, 2, 1, 7, 128, 1, 1024) -> (128, 1024)
-    h_2d = channel_matrix[0, 0, 0, 0, :, 0, :]  
+    # Taking the first batch, first receiver, first receiver antenna, first transmitter
+    h_2d = channel_matrix[0, 0, 0, 0, :, 0, :]  # Shape becomes (128, 1024)
     
     # Calculate magnitude in dB
     magnitude_db = 20 * np.log10(np.abs(h_2d.numpy()))
