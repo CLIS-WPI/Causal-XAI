@@ -50,14 +50,16 @@ class SceneManager:
         ]
 
         for name, position in boundaries:
-            boundary = Transmitter(
-                name=name,
-                position=tf.constant(position, dtype=tf.float32),
-                orientation=tf.constant([0, 0, 0], dtype=tf.float32)
-            )
-            boundary.scene = self._scene
-            boundary.radio_material = self._scene.radio_materials["concrete"]
-            self._scene.add(boundary)
+            # Check if boundary already exists
+            if name not in self._scene.transmitters:
+                boundary = Transmitter(
+                    name=name,
+                    position=tf.constant(position, dtype=tf.float32),
+                    orientation=tf.constant([0, 0, 0], dtype=tf.float32)
+                )
+                boundary.scene = self._scene
+                boundary.radio_material = self._scene.radio_materials["concrete"]
+                self._scene.add(boundary)
 
     def add_transmitter(self, name: str, position: tf.Tensor, orientation: tf.Tensor) -> Transmitter:
         """Add base station"""
