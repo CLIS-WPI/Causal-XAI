@@ -6,7 +6,7 @@ from sionna.constants import SPEED_OF_LIGHT
 from sionna.channel.utils import cir_to_ofdm_channel
 from sionna.rt import Scene, Transmitter, Receiver, RIS, PlanarArray, RadioMaterial, Paths
 from sionna.rt import DiscretePhaseProfile, CellGrid
-
+import logger
 class SmartFactoryChannel:
     """Smart Factory Channel Generator using Sionna
     
@@ -95,32 +95,13 @@ class SmartFactoryChannel:
         try:
             # Update AGV positions
             current_positions = self._update_agv_positions(self.config.simulation['time_step'])
-            current_positions = tf.expand_dims(current_positions, axis=0)  # Add batch dimension
+            current_positions = tf.expand_dims(current_positions, axis=0)
 
             # Update AGV positions in scene
             for i in range(self.config.num_agvs):
                 agv = self.scene.get(f"agv_{i}")
                 if agv is not None:
                     agv.position = current_positions[0, i].numpy()
-
-            # Configure RIS
-            ris = self.scene.get("ris")
-            if ris is not None:
-                cell_grid = CellGrid(
-                    num_rows=self.config.ris_elements[0],
-                    num_cols=self.config.ris_elements[1],
-                    dtype=tf.complex64
-                )
-                
-                # Set optimal phase profile
-                phase_values = tf.zeros([1, self.config.ris_elements[0], 
-                                    self.config.ris_elements[1]], dtype=tf.float32)
-                phase_profile = DiscretePhaseProfile(
-                    cell_grid=cell_grid,
-                    values=phase_values,
-                    dtype=tf.complex64
-                )
-                ris.phase_profile = phase_profile
 
             # Generate paths using ray tracing
             paths = self.scene.compute_paths(
@@ -133,22 +114,47 @@ class SmartFactoryChannel:
                 scattering=self.config.ray_tracing['scattering']
             )
 
-            # Get channel impulse response
+            # Get channel impulse response with explicit type casting
             a, tau = paths.cir()
+            
+            # Handle potential NaN values in CIR components
+            a = tf.cast(a, tf.complex64)
+            tau = tf.cast(tau, tf.float32)
+            
+            # Replace NaN values with zeros
+            a = tf.where(tf.math.is_nan(a), tf.zeros_like(a, dtype=tf.complex64), a)
+            tau = tf.where(tf.math.is_nan(tau), tf.zeros_like(tau), tau)
 
-            # Calculate OFDM subcarrier frequencies
-            frequencies = tf.range(
-                start=0,
-                limit=self.config.num_subcarriers,
-                dtype=tf.float32
-            ) * self.config.subcarrier_spacing
+            # Calculate frequencies with proper type casting
+            frequencies = tf.cast(
+                tf.range(self.config.num_subcarriers, dtype=tf.float32) * 
+                self.config.subcarrier_spacing,
+                tf.float32
+            )
 
-            # Generate OFDM channel
-            h = cir_to_ofdm_channel(
+            # Add small epsilon to avoid numerical instability
+            epsilon = 1e-10
+            tau = tau + epsilon
+
+            # Generate OFDM channel with explicit normalization and type handling
+            h = sionna.channel.utils.cir_to_ofdm_channel(
                 frequencies=frequencies,
                 a=a,
                 tau=tau,
+                normalize=True  # Enable normalization for numerical stability
             )
+
+            # Post-process channel matrix
+            h = tf.where(tf.math.is_nan(h), tf.zeros_like(h, dtype=tf.complex64), h)
+            h = tf.where(tf.math.is_inf(h), tf.zeros_like(h, dtype=tf.complex64), h)
+
+            # Add small epsilon to avoid zero values
+            h = h + tf.cast(epsilon, tf.complex64)
+
+            # Verify channel matrix
+            if tf.reduce_any(tf.math.is_nan(h)):
+                logger.warning("NaN values detected in final channel matrix")
+                h = tf.where(tf.math.is_nan(h), tf.zeros_like(h, dtype=tf.complex64), h)
 
             return {
                 'h': h,
@@ -159,6 +165,7 @@ class SmartFactoryChannel:
             }
 
         except Exception as e:
+            logger.error(f"Error in generate_channel: {str(e)}")
             raise RuntimeError(f"Error generating channel response: {str(e)}")
 
     def save_csi_dataset(self, filepath, num_samples=None):
