@@ -15,10 +15,18 @@ channel_data = channel_gen.generate_channel()
 
 # Now let's create some basic visualization functions:
 
+# Visualization functions
 def plot_channel_magnitude(channel_matrix):
     """Plot channel magnitude response"""
     plt.figure(figsize=(10,6))
-    magnitude_db = 20 * np.log10(np.abs(channel_matrix.numpy()))
+    
+    # Reshape the channel matrix to 2D for visualization
+    # Taking the first batch, first receiver, first transmitter
+    h_2d = channel_matrix[0, 0, 0, 0]  # Shape should now be (128, 1024)
+    
+    # Calculate magnitude in dB
+    magnitude_db = 20 * np.log10(np.abs(h_2d.numpy()))
+    
     plt.imshow(magnitude_db, aspect='auto', cmap='viridis')
     plt.colorbar(label='Magnitude (dB)')
     plt.xlabel('Subcarrier Index')
@@ -29,22 +37,29 @@ def plot_channel_magnitude(channel_matrix):
 def plot_path_delays(path_delays):
     """Plot histogram of path delays"""
     plt.figure(figsize=(10,6))
-    plt.hist(path_delays.numpy().flatten(), bins=50)
+    delays = path_delays.numpy().flatten()
+    # Remove any zero or invalid delays
+    delays = delays[delays > 0]
+    
+    plt.hist(delays, bins=50)
     plt.xlabel('Delay (s)')
     plt.ylabel('Count')
     plt.title('Path Delay Distribution')
     plt.grid(True)
     plt.show()
 
-# Use these functions to visualize your channel data
-if 'channel_matrices' in channel_data:
-    plot_channel_magnitude(channel_data['channel_matrices'])
+# Main visualization code
+if 'h' in channel_data:
+    print(f"Channel matrix shape: {channel_data['h'].shape}")
+    plot_channel_magnitude(channel_data['h'])
 
-if 'path_delays' in channel_data:
-    plot_path_delays(channel_data['path_delays'])
+if 'tau' in channel_data:
+    print(f"Path delays shape: {channel_data['tau'].shape}")
+    plot_path_delays(channel_data['tau'])
 
 # Print channel statistics
 print("\nChannel Statistics:")
-print(f"Channel matrix shape: {channel_data['channel_matrices'].shape}")
-print(f"Maximum magnitude: {np.max(np.abs(channel_data['channel_matrices'].numpy())):.2f}")
-print(f"Minimum magnitude: {np.min(np.abs(channel_data['channel_matrices'].numpy())):.2f}")
+h = channel_data['h']
+print(f"Channel matrix shape: {h.shape}")
+print(f"Maximum magnitude: {np.max(np.abs(h.numpy())):.2f}")
+print(f"Minimum magnitude: {np.min(np.abs(h.numpy())):.2f}")
