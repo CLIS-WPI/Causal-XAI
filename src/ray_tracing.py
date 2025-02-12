@@ -1,12 +1,12 @@
 # src/ray_tracing.py
-
 import os
 import tensorflow as tf
 import numpy as np
-from sionna.rt import Scene, load_scene, Camera
-import matplotlib.pyplot as plt
+from sionna.rt import Scene, load_scene, Camera, PlanarArray  # Add PlanarArray here
 from sionna.rt import Transmitter, Receiver
+import matplotlib.pyplot as plt
 import mitsuba as mi
+from config import SmartFactoryConfig  # Import SmartFactoryConfig from your local config.py
 
 class RayTracingSimulator:
     def __init__(self):
@@ -39,38 +39,63 @@ class RayTracingSimulator:
 
     def setup_scene_components(self):
         """Setup transmitters, receivers and cameras"""
-        # Create config instance
-        config = SmartFactoryConfig()
-        
+        # Initialize scene directly without config
         # Add transmitter (BS)
-        tx = Transmitter(name="tx",
-                        position=config.bs_position,  # [10.0, 10.0, 4.5]
-                        orientation=config.bs_orientation)  # [0.0, 0.0, -90.0]
+        tx = Transmitter(
+            name="tx",
+            position=[10.0, 10.0, 4.5],  # BS position
+            orientation=[0.0, 0.0, -90.0]  # Facing down
+        )
         self.scene.add(tx)
 
-        # Add receivers (AGVs)
-        for i in range(config.num_agvs):
+        # Add two receivers (AGVs)
+        rx_positions = [
+            [15.0, 15.0, 0.5],  # AGV 1 position
+            [10.0, 15.0, 0.5]   # AGV 2 position
+        ]
+        
+        rx_orientations = [
+            [0.0, 0.0, 0.0],    # AGV 1 orientation
+            [0.0, 0.0, 0.0]     # AGV 2 orientation
+        ]
+
+        for i in range(2):  # For 2 AGVs
             rx_name = f"rx_{i}"
-            # For this example, we'll need to add AGV positions to config
-            # You might want to calculate positions based on your requirements
-            rx = Receiver(name=rx_name,
-                        position=[15.0, 15.0, config.agv_height],  # Use AGV height from config
-                        orientation=[0.0, 0.0, 0.0])
+            rx = Receiver(
+                name=rx_name,
+                position=rx_positions[i],
+                orientation=rx_orientations[i]
+            )
             self.scene.add(rx)
 
-        # Set frequency from config
-        self.scene.frequency = config.carrier_frequency
+        # Set carrier frequency
+        self.scene.frequency = 28e9  # 28 GHz
 
         # Setup cameras
-        self.cameras = {
-            "top": Camera("top_view", position=[10.0, 10.0, 20.0]),
-            "side": Camera("side_view", position=[30.0, 10.0, 5.0]),
-            "corner": Camera("corner_view", position=[20.0, 20.0, 10.0])
+        camera_configs = {
+            "top": {
+                "position": [10.0, 10.0, 20.0],
+                "look_at": [10.0, 10.0, 0.0]
+            },
+            "side": {
+                "position": [30.0, 10.0, 5.0],
+                "look_at": [10.0, 10.0, 0.0]
+            },
+            "corner": {
+                "position": [20.0, 20.0, 10.0],
+                "look_at": [10.0, 10.0, 0.0]
+            }
         }
 
-        for cam in self.cameras.values():
-            self.scene.add(cam)
-            cam.look_at([10.0, 10.0, 0.0])
+        self.cameras = {}
+        for name, config in camera_configs.items():
+            camera = Camera(
+                f"{name}_view",
+                position=config["position"]
+            )
+            self.cameras[name] = camera
+            self.scene.add(camera)
+            camera.look_at(config["look_at"])
 
     def compute_ray_paths(self):
         """Compute ray paths using ray tracing"""
