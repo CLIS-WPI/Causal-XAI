@@ -7,6 +7,7 @@ from sionna.channel.utils import cir_to_ofdm_channel
 from sionna.rt import Scene, Transmitter, Receiver, RIS, PlanarArray, RadioMaterial, Paths
 from sionna.rt import DiscretePhaseProfile, CellGrid
 import logger
+from sionna.channel.utils import subcarrier_frequencies
 
 class SmartFactoryChannel:
     """Smart Factory Channel Generator using Sionna"""
@@ -106,77 +107,59 @@ class SmartFactoryChannel:
         
         return h
 
-    def generate_channel(self):
-        """Generate channel matrices with RIS modeling"""
+    def generate_channel_data(scene, config):
+        """Generate channel data using ray tracing"""
         try:
-            # Update and verify positions
-            current_positions = self._update_agv_positions(self.config.simulation['time_step'])
-            current_positions = tf.expand_dims(current_positions, axis=0)
-
-            for i in range(self.config.num_agvs):
-                agv = self.scene.get(f"agv_{i}")
-                if agv is not None:
-                    agv.position = current_positions[0, i].numpy()
-
-            # Generate paths with improved stability
-            paths = self.scene.compute_paths(
-                max_depth=2,  # Fixed depth for stability
-                method="image",  # Fixed method for stability
-                num_samples=self.config.ray_tracing['num_samples'],
-                los=True,
-                reflection=True,
-                diffraction=True,
-                scattering=False  # Disabled for stability
+            print("Generating channel data...")
+            
+            # Compute paths using ray tracing with correct method
+            paths = scene.compute_paths(
+                max_depth=config.ray_tracing['max_depth'],
+                method="fibonacci",  # Changed from "image" to "fibonacci"
+                num_samples=config.ray_tracing['num_samples'],
+                los=config.ray_tracing['los'],
+                reflection=config.ray_tracing['reflection'],
+                diffraction=config.ray_tracing['diffraction'],
+                scattering=config.ray_tracing['scattering'],
+                ris=config.ray_tracing['ris'],
+                scat_keep_prob=config.ray_tracing['scat_keep_prob'],
+                edge_diffraction=config.ray_tracing['edge_diffraction']
             )
-
+            
             if paths is None:
                 raise RuntimeError("Path computation failed")
 
-            # Get CIR with explicit normalization
+            # Get channel impulse responses with explicit normalization
             a, tau = paths.cir(normalize=True)
             
-            # Handle numerical stability
-            epsilon = 1e-10
-            a = tf.cast(a, tf.complex64)
-            tau = tf.cast(tau, tf.float32) + epsilon
-            
-            a = tf.where(tf.math.is_nan(a), tf.zeros_like(a, dtype=tf.complex64), a)
-            tau = tf.where(tf.math.is_nan(tau), tf.zeros_like(tau), tau)
-
-            # Calculate frequencies
-            frequencies = tf.cast(
-                tf.range(self.config.num_subcarriers, dtype=tf.float32) * 
-                self.config.subcarrier_spacing,
-                tf.float32
+            # Calculate frequencies for the subcarriers
+            frequencies = sionna.channel.utils.subcarrier_frequencies(
+                num_subcarriers=config.num_subcarriers,
+                subcarrier_spacing=config.subcarrier_spacing
             )
-
-            # Generate OFDM channel
-            h = cir_to_ofdm_channel(
+            
+            # Convert to OFDM channel with improved stability
+            h_freq = cir_to_ofdm_channel(
                 frequencies=frequencies,
-                a=a,
-                tau=tau,
+                a=tf.cast(a, tf.complex64),
+                tau=tf.cast(tau, tf.float32),
                 normalize=True
             )
-
-            # Post-process channel matrix
-            h = tf.where(tf.math.is_nan(h), tf.zeros_like(h, dtype=tf.complex64), h)
-            h = tf.where(tf.math.is_inf(h), tf.zeros_like(h, dtype=tf.complex64), h)
-            h = h + tf.cast(epsilon, tf.complex64)
-
-            # Monitor channel quality
-            h = self.monitor_channel_quality(h)
-
-            return {
-                'h': h,
-                'tau': tau,
-                'paths': paths,
-                'los_condition': paths.LOS,
-                'agv_positions': current_positions
+            
+            # Create channel data dictionary
+            channel_data = {
+                'channel_matrices': h_freq,
+                'path_delays': tau,
+                'los_conditions': paths.LOS,
+                'agv_positions': tf.stack([rx.position for rx in scene.receivers.values()])
             }
-
+            
+            print("Channel data generation completed")
+            return channel_data
+            
         except Exception as e:
-            logger.error(f"Error in generate_channel: {str(e)}")
-            raise RuntimeError(f"Error generating channel response: {str(e)}")
+            logger.error(f"Error generating channel data: {str(e)}")
+            raise
 
     def save_csi_dataset(self, filepath, num_samples=None):
         """Save CSI dataset with quality monitoring"""
