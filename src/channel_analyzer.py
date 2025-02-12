@@ -1,5 +1,5 @@
 # First, import necessary libraries
-%matplotlib inline
+#%matplotlib inline
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
@@ -21,8 +21,9 @@ def plot_channel_magnitude(channel_matrix):
     plt.figure(figsize=(10,6))
     
     # Reshape the channel matrix to 2D for visualization
-    # Taking the first batch, first receiver, first transmitter
-    h_2d = channel_matrix[0, 0, 0, 0]  # Shape should now be (128, 1024)
+    # Taking the first batch, first receiver, first transmitter antenna
+    # Shape: (1, 2, 1, 7, 128, 1, 1024) -> (128, 1024)
+    h_2d = channel_matrix[0, 0, 0, 0, :, 0, :]  
     
     # Calculate magnitude in dB
     magnitude_db = 20 * np.log10(np.abs(h_2d.numpy()))
@@ -48,7 +49,7 @@ def plot_path_delays(path_delays):
     plt.grid(True)
     plt.show()
 
-# Main visualization code
+# Visualization code
 if 'h' in channel_data:
     print(f"Channel matrix shape: {channel_data['h'].shape}")
     plot_channel_magnitude(channel_data['h'])
