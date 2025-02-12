@@ -71,7 +71,7 @@ def generate_channel_data(scene, config):
         )
         
         # Get channel impulse responses
-        a, tau = paths.cir()  # Unpack the tuple returned by cir()
+        a, tau = paths.cir()
         
         # Calculate frequencies for the subcarriers
         frequencies = subcarrier_frequencies(
@@ -82,16 +82,16 @@ def generate_channel_data(scene, config):
         # Convert to OFDM channel
         h_freq = cir_to_ofdm_channel(
             frequencies=frequencies,
-            a=tf.convert_to_tensor(a),  # Convert to tensor
-            tau=tf.convert_to_tensor(tau),  # Convert to tensor
+            a=tf.convert_to_tensor(a),
+            tau=tf.convert_to_tensor(tau),
             normalize=False
         )
         
-        # Create channel data dictionary
+        # Create channel data dictionary with corrected LOS attribute name
         channel_data = {
             'channel_matrices': h_freq,
             'path_delays': tau,
-            'los_conditions': paths.los,
+            'los_conditions': paths.LOS,  # Changed from los to LOS
             'agv_positions': tf.stack([rx.position for rx in scene.receivers.values()])
         }
         
