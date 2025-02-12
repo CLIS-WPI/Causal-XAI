@@ -19,14 +19,15 @@ def plot_channel_magnitude(channel_matrix):
     """Plot channel magnitude response"""
     plt.figure(figsize=(10,6))
     
-    # First extract a 2D slice from the 7D tensor
-    # Shape: (1, 2, 1, 7, 128, 1, 1024) -> (128, 1024)
+    # Extract 2D slice from 7D tensor (1, 2, 1, 7, 128, 1, 1024)
+    # Taking first batch [0], first receiver [0], first receiver antenna [0], 
+    # first transmitter [0], all transmit antennas [:], first stream [0], all subcarriers [:]
     h_2d = channel_matrix[0, 0, 0, 0, :, 0, :].numpy()
     
-    # Calculate magnitude in dB after reshaping
+    # Calculate magnitude in dB
     magnitude_db = 20 * np.log10(np.abs(h_2d))
     
-    # Plot the 2D magnitude response
+    # Plot
     plt.imshow(magnitude_db, aspect='auto', cmap='viridis')
     plt.colorbar(label='Magnitude (dB)')
     plt.xlabel('Subcarrier Index')
