@@ -67,6 +67,33 @@ class SmartFactoryConfig:
             }
         }
 
+                # Add camera configurations
+        self.cameras = {
+            'top': {
+                'position': [10.0, 10.0, 20.0],
+                'look_at': [10.0, 10.0, 0.0]
+            },
+            'side': {
+                'position': [30.0, 10.0, 5.0],
+                'look_at': [10.0, 10.0, 0.0]
+            },
+            'corner': {
+                'position': [20.0, 20.0, 10.0],
+                'look_at': [10.0, 10.0, 0.0]
+            }
+        }
+        
+        # Add AGV positions (could be initial positions)
+        self.agv_positions = [
+            [15.0, 15.0, self.agv_height],
+            [10.0, 15.0, self.agv_height]
+        ]
+        
+        self.agv_orientations = [
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0]
+        ]
+
         # Enhanced Ray tracing parameters
         self.ray_tracing = {
             'max_depth': 2,         
@@ -77,7 +104,7 @@ class SmartFactoryConfig:
             'los': True,
             'reflection': True,
             'ris': True,
-            'scene_type': "indoor",
+            'scene_type': self.scene_type,
             'scat_keep_prob': 0.001,
             'edge_diffraction': False
 
@@ -100,10 +127,10 @@ class SmartFactoryConfig:
         # Scene objects with enhanced configuration
         self.scene_objects = {
             'num_shelves': 5,
-            'shelf_dimensions': [2.0, 1.0, 4.0],  # This is correct
+            'shelf_dimensions': [2.0, 1.0, 4.0],  
             'shelf_material': 'metal',
             'shelf_positions': [
-                [5.0, 5.0, 0.0],    # Changed z from 1.5 to 0.0 (on floor)
+                [5.0, 5.0, 0.0],    
                 [15.0, 5.0, 0.0],
                 [10.0, 10.0, 0.0],
                 [5.0, 15.0, 0.0],
@@ -118,7 +145,7 @@ class SmartFactoryConfig:
             'ceiling': True,
             'wall_thickness': 0.2,
             'material': 'concrete',
-            'scene_type': 'indoor'
+            'scene_type': self.scene_type
         }
 
         # Keep existing configurations
@@ -160,9 +187,7 @@ class SmartFactoryConfig:
             'snr_range': [-10, 30],
             'channel_estimation_error': 0.1
             }
-        self.num_time_steps = 100
-        self.sampling_frequency = tf.cast(1000, tf.float32)
-        
+
                 
         self.shap = {
             'analysis': {
