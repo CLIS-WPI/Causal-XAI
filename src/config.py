@@ -120,22 +120,23 @@ class SmartFactoryConfig:
             'metal': {
                 'name': 'metal',
                 'relative_permittivity': 1.0,
-                'conductivity': 1e7
+                'conductivity': 1.0e7
             }
         }
 
         # Scene objects with enhanced configuration
         self.scene_objects = {
             'num_shelves': 5,
-            'shelf_dimensions': [2.0, 1.0, 4.0],  
+            'shelf_dimensions': [2.0, 1.0, 4.0],  # [width, depth, height] in meters
             'shelf_material': 'metal',
             'shelf_positions': [
-                [5.0, 5.0, 0.0],    
-                [15.0, 5.0, 0.0],
-                [10.0, 10.0, 0.0],
-                [5.0, 15.0, 0.0],
-                [15.0, 15.0, 0.0]
-            ]
+                [5.0, 5.0, 0.0],   # Shelf 1 position 
+                [15.0, 5.0, 0.0],  # Shelf 2 position
+                [10.0, 10.0, 0.0], # Shelf 3 position
+                [5.0, 15.0, 0.0],  # Shelf 4 position
+                [15.0, 15.0, 0.0]  # Shelf 5 position
+            ],
+            'shelf_orientation': [0.0, 0.0, 0.0]  # Default orientation [roll, pitch, yaw]
         }
 
         # Static scene configuration

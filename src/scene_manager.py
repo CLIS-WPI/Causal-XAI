@@ -16,7 +16,8 @@ class SceneManager:
         # Add room boundaries and materials
         self._add_materials()
         self._add_room_boundaries()
-        
+        self._add_metal_shelves()
+
     def _add_materials(self):
         """Add materials to the scene"""
         # Add concrete material if it doesn't exist
@@ -60,6 +61,38 @@ class SceneManager:
                 boundary.scene = self._scene
                 boundary.radio_material = self._scene.radio_materials["concrete"]
                 self._scene.add(boundary)
+
+    def _add_metal_shelves(self):
+        """Add metal shelves to the scene using configuration"""
+        shelf_positions = self.config.scene_objects['shelf_positions']
+        dimensions = self.config.scene_objects['shelf_dimensions']
+        orientation = self.config.scene_objects['shelf_orientation']
+        num_shelves = self.config.scene_objects['num_shelves']
+
+        for i in range(num_shelves):
+            shelf = Transmitter(
+                name=f"shelf_{i}",
+                position=tf.constant(shelf_positions[i], dtype=tf.float32),
+                orientation=tf.constant(orientation, dtype=tf.float32)
+            )
+            
+            # Use metal material
+            shelf.radio_material = self._scene.radio_materials["metal"]
+            
+            # Add planar array for the shelf surface
+            shelf_array = PlanarArray(
+                num_rows=1,
+                num_cols=1,
+                vertical_spacing=dimensions[2],  # height
+                horizontal_spacing=dimensions[0], # width
+                pattern="iso",
+                polarization="V"
+            )
+            shelf.array = shelf_array
+            
+            # Add to scene and log
+            self._scene.add(shelf)
+            logger.debug(f"Added shelf_{i} at position {shelf_positions[i]} with dimensions: {dimensions}")
 
     def add_transmitter(self, name: str, position: tf.Tensor, orientation: tf.Tensor) -> Transmitter:
         """Add base station"""
