@@ -229,12 +229,26 @@ def generate_channel_data(scene, config):
         # Log statistics for debugging
         logger.debug(f"LOS Statistics: {los_statistics}")
         
-        # Calculate beam performance metrics with safe operations
+        # After calculating signal power (around line 250-260 in your code)
         signal_power = tf.reduce_mean(tf.abs(h_freq)**2, axis=-1)
+        # Add debug messages here
+        logger.debug(f"Signal power statistics:")
+        logger.debug(f"- Mean: {tf.reduce_mean(signal_power)}")
+        logger.debug(f"- Max: {tf.reduce_max(signal_power)}")
+        logger.debug(f"- Min: {tf.reduce_min(signal_power)}")
+        logger.debug(f"- Contains inf: {tf.reduce_any(tf.math.is_inf(signal_power))}")
+        logger.debug(f"- Contains nan: {tf.reduce_any(tf.math.is_nan(signal_power))}")
+
         noise_power = tf.constant(1e-13, dtype=tf.float32)
         snr_db = 10.0 * tf.math.log(signal_power / noise_power) / tf.math.log(10.0)
-        
-        # Safe computation of path loss with proper type handling
+
+        # Add SNR debug messages right after SNR calculation
+        logger.debug(f"SNR statistics:")
+        logger.debug(f"- Raw SNR values: {snr_db}")
+        logger.debug(f"- Contains inf: {tf.reduce_any(tf.math.is_inf(snr_db))}")
+        logger.debug(f"- Contains nan: {tf.reduce_any(tf.math.is_nan(snr_db))}")
+
+        # After calculating path loss (around line 270-280)
         a_abs = tf.abs(a)  # Get magnitude of complex values
         a_abs = tf.cast(a_abs, tf.float32)  # Ensure float32 type
         path_loss = tf.where(
@@ -242,6 +256,12 @@ def generate_channel_data(scene, config):
             20.0 * tf.math.log(a_abs) / tf.math.log(10.0),
             tf.zeros_like(a_abs)
         )
+
+        # Add path loss debug messages here
+        logger.debug(f"Path loss statistics:")
+        logger.debug(f"- Mean path loss: {tf.reduce_mean(path_loss)}")
+        logger.debug(f"- Max path loss: {tf.reduce_max(path_loss)}")
+        logger.debug(f"- Min path loss: {tf.reduce_min(path_loss)}")
         
         beam_metrics = {
             'snr_db': snr_db.numpy(),
