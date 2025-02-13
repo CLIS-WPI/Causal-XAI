@@ -1,4 +1,69 @@
 <?xml version="1.0" encoding="UTF-8"?>
-        <scene version="2.1.0">
-            <!-- Your existing XML content -->
-        </scene>
+<scene version="2.1.0">
+    <integrator type="path">
+        <integer name="max_depth" value="12"/>
+    </integrator>
+
+    <emitter type="constant" id="World">
+        <rgb value="1.0 1.0 1.0" name="radiance"/>
+    </emitter>
+
+    <bsdf type="twosided" id="mat-itu_concrete">
+        <bsdf type="diffuse">
+            <rgb value="0.6 0.6 0.6" name="reflectance"/>
+        </bsdf>
+    </bsdf>
+
+    <shape type="rectangle" id="floor">
+        <transform name="to_world">
+            <scale value="20 20 1"/>
+            <translate value="10 10 0"/>
+        </transform>
+        <ref id="mat-itu_concrete" name="bsdf"/>
+    </shape>
+
+    <shape type="rectangle" id="ceiling">
+        <transform name="to_world">
+            <scale value="20 20 1"/>
+            <translate value="10 10 5"/>
+            <rotate x="1" angle="180"/>
+        </transform>
+        <ref id="mat-itu_concrete" name="bsdf"/>
+    </shape>
+
+    <shape type="rectangle" id="wall_north">
+        <transform name="to_world">
+            <scale value="20 5 1"/>
+            <translate value="10 20 2.5"/>
+            <rotate x="1" angle="-90"/>
+        </transform>
+        <ref id="mat-itu_concrete" name="bsdf"/>
+    </shape>
+
+    <shape type="rectangle" id="wall_south">
+        <transform name="to_world">
+            <scale value="20 5 1"/>
+            <translate value="10 0 2.5"/>
+            <rotate x="1" angle="90"/>
+        </transform>
+        <ref id="mat-itu_concrete" name="bsdf"/>
+    </shape>
+
+    <shape type="rectangle" id="wall_east">
+        <transform name="to_world">
+            <scale value="20 5 1"/>
+            <translate value="20 10 2.5"/>
+            <rotate y="1" angle="-90"/>
+        </transform>
+        <ref id="mat-itu_concrete" name="bsdf"/>
+    </shape>
+
+    <shape type="rectangle" id="wall_west">
+        <transform name="to_world">
+            <scale value="20 5 1"/>
+            <translate value="0 10 2.5"/>
+            <rotate y="1" angle="90"/>
+        </transform>
+        <ref id="mat-itu_concrete" name="bsdf"/>
+    </shape>
+</scene>

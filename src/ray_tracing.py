@@ -1,34 +1,97 @@
-# src/ray_tracing.py
 import os
 import tensorflow as tf
 import numpy as np
-from sionna.rt import Scene, load_scene, Camera, PlanarArray  # Add PlanarArray here
+from sionna.rt import Scene, load_scene, Camera, PlanarArray
 from sionna.rt import Transmitter, Receiver
 import matplotlib.pyplot as plt
 import mitsuba as mi
-from config import SmartFactoryConfig  # Import SmartFactoryConfig from your local config.py
 
 class RayTracingSimulator:
     def __init__(self):
+        """Initialize the ray tracing simulator"""
         # Set the Mitsuba variant
         mi.set_variant('scalar_rgb')
         
-        # Initialize scene
-        self.scene = Scene()
-        
-        # Generate and load the scene configuration
+        # Generate the scene XML first
         self.generate_scene_xml()
-        self.scene = Scene("src/factory_scene.xml")
         
-        # Setup transmitters, receivers and cameras
+        # Initialize scene with empty scene first
+        self.scene = Scene("__empty__")
+        
+        # Setup scene components
         self.setup_scene_components()
 
     def generate_scene_xml(self):
         """Generate the factory scene XML configuration"""
         scene_xml = """<?xml version="1.0" encoding="UTF-8"?>
-        <scene version="2.1.0">
-            <!-- Your existing XML content -->
-        </scene>"""
+<scene version="2.1.0">
+    <integrator type="path">
+        <integer name="max_depth" value="12"/>
+    </integrator>
+
+    <emitter type="constant" id="World">
+        <rgb value="1.0 1.0 1.0" name="radiance"/>
+    </emitter>
+
+    <bsdf type="twosided" id="mat-itu_concrete">
+        <bsdf type="diffuse">
+            <rgb value="0.6 0.6 0.6" name="reflectance"/>
+        </bsdf>
+    </bsdf>
+
+    <shape type="rectangle" id="floor">
+        <transform name="to_world">
+            <scale value="20 20 1"/>
+            <translate value="10 10 0"/>
+        </transform>
+        <ref id="mat-itu_concrete" name="bsdf"/>
+    </shape>
+
+    <shape type="rectangle" id="ceiling">
+        <transform name="to_world">
+            <scale value="20 20 1"/>
+            <translate value="10 10 5"/>
+            <rotate x="1" angle="180"/>
+        </transform>
+        <ref id="mat-itu_concrete" name="bsdf"/>
+    </shape>
+
+    <shape type="rectangle" id="wall_north">
+        <transform name="to_world">
+            <scale value="20 5 1"/>
+            <translate value="10 20 2.5"/>
+            <rotate x="1" angle="-90"/>
+        </transform>
+        <ref id="mat-itu_concrete" name="bsdf"/>
+    </shape>
+
+    <shape type="rectangle" id="wall_south">
+        <transform name="to_world">
+            <scale value="20 5 1"/>
+            <translate value="10 0 2.5"/>
+            <rotate x="1" angle="90"/>
+        </transform>
+        <ref id="mat-itu_concrete" name="bsdf"/>
+    </shape>
+
+    <shape type="rectangle" id="wall_east">
+        <transform name="to_world">
+            <scale value="20 5 1"/>
+            <translate value="20 10 2.5"/>
+            <rotate y="1" angle="-90"/>
+        </transform>
+        <ref id="mat-itu_concrete" name="bsdf"/>
+    </shape>
+
+    <shape type="rectangle" id="wall_west">
+        <transform name="to_world">
+            <scale value="20 5 1"/>
+            <translate value="0 10 2.5"/>
+            <rotate y="1" angle="90"/>
+        </transform>
+        <ref id="mat-itu_concrete" name="bsdf"/>
+    </shape>
+</scene>"""
         
         # Create src directory if it doesn't exist
         os.makedirs('src', exist_ok=True)
@@ -39,7 +102,6 @@ class RayTracingSimulator:
 
     def setup_scene_components(self):
         """Setup transmitters, receivers and cameras"""
-        # Initialize scene directly without config
         # Add transmitter (BS)
         tx = Transmitter(
             name="tx",
@@ -47,6 +109,17 @@ class RayTracingSimulator:
             orientation=[0.0, 0.0, -90.0]  # Facing down
         )
         self.scene.add(tx)
+
+        # Add antenna array to transmitter
+        tx_array = PlanarArray(
+            num_rows=8,
+            num_cols=8,
+            vertical_spacing=0.5,
+            horizontal_spacing=0.5,
+            pattern="iso",
+            polarization="V"
+        )
+        tx.add_array(tx_array)
 
         # Add two receivers (AGVs)
         rx_positions = [
@@ -60,12 +133,21 @@ class RayTracingSimulator:
         ]
 
         for i in range(2):  # For 2 AGVs
-            rx_name = f"rx_{i}"
             rx = Receiver(
-                name=rx_name,
+                name=f"rx_{i}",
                 position=rx_positions[i],
                 orientation=rx_orientations[i]
             )
+            # Add antenna array to receiver
+            rx_array = PlanarArray(
+                num_rows=2,
+                num_cols=2,
+                vertical_spacing=0.5,
+                horizontal_spacing=0.5,
+                pattern="iso",
+                polarization="V"
+            )
+            rx.add_array(rx_array)
             self.scene.add(rx)
 
         # Set carrier frequency
@@ -102,6 +184,7 @@ class RayTracingSimulator:
         return self.scene.compute_paths(
             max_depth=3,
             method="fibonacci",
+            num_samples=1000,
             los=True,
             reflection=True,
             diffraction=True,
