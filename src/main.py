@@ -75,8 +75,8 @@ def generate_channel_data(scene, config):
         if paths is None:
             raise ValueError("Path computation failed")
 
-        # Get channel impulse responses with explicit normalization
-        a, tau = paths.cir(normalize=True)
+        # Get channel impulse responses 
+        a, tau = paths.cir()
         
         # Calculate frequencies for the subcarriers
         frequencies = subcarrier_frequencies(
