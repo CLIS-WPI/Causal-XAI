@@ -161,11 +161,14 @@ def generate_channel_data(scene, config):
         print(f"Debug - los_paths type: {los_paths.dtype}")
         print(f"Debug - los_paths shape: {los_paths.shape}")
         print(f"Debug - los_paths value: {los_paths}")
-
+    
         # Fix the type mismatch by casting los_paths to float32
         los_paths = tf.cast(los_paths, tf.float32)
 
         nlos_paths = total_paths - los_paths  # Now this line should work
+
+        print("=== Path Calculation Results ===")
+        print(f"Debug - nlos_paths: {nlos_paths}")
 
         # Handle case where no paths are found or NaN values exist
         if total_paths == 0 or tf.math.is_nan(total_paths) or tf.math.is_nan(los_paths):

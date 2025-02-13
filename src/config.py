@@ -96,9 +96,9 @@ class SmartFactoryConfig:
 
         # Enhanced Ray tracing parameters
         self.ray_tracing = {
-            'max_depth': 2,         
+            'max_depth': 4,         
             'method': "fibonacci",
-            'num_samples': 1000, 
+            'num_samples': 1024, 
             'diffraction': True,
             'scattering': False ,
             'los': True,

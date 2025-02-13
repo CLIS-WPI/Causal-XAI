@@ -18,26 +18,41 @@ class SmartFactoryChannel:
     def __init__(self, config, scene=None):
         """Initialize the environment with configuration and scene setup."""
         try:
+            logger.debug("=== Initializing SmartFactoryChannel ===")
+            logger.debug(f"Config parameters:")
+            logger.debug(f"- Number of AGVs: {config.num_agvs}")
+            logger.debug(f"- Room dimensions: {config.room_dim}")
+            logger.debug(f"- Carrier frequency: {config.carrier_frequency} Hz")
+            logger.debug(f"- Ray tracing config: {config.ray_tracing}")
+            
             self.config = config
             sionna.config.xla_compat = True
             tf.random.set_seed(config.seed if hasattr(config, 'seed') else 42)
+            logger.debug(f"Random seed set to: {config.seed if hasattr(config, 'seed') else 42}")
 
             # Initialize position tracking
             self.positions_history = [[] for _ in range(config.num_agvs)]
             self.agv_positions = self._generate_initial_agv_positions()
+            logger.debug(f"Initial AGV positions:\n{self.agv_positions.numpy()}")
 
             # Initialize scene
+            logger.debug("Setting up scene...")
             self.scene = scene if scene is not None else setup_scene(config)
+            logger.debug("Scene setup completed")
             
             # Configure antenna arrays
+            logger.debug("Configuring antenna arrays...")
             self._setup_antenna_arrays()
+            logger.debug("Antenna arrays configured successfully")
             
             # Verify scene configuration
             self.verify_scene_configuration()
+            logger.debug("Scene configuration verified successfully")
 
         except Exception as e:
+            logger.error(f"Channel initialization failed: {str(e)}")
             raise RuntimeError(f"Channel initialization failed: {str(e)}") from e
-
+    
     def verify_scene_configuration(self):
         """Verify scene configuration before channel generation"""
         if self.scene is None:
@@ -49,6 +64,12 @@ class SmartFactoryChannel:
     def _setup_antenna_arrays(self):
         """Configure antenna arrays for BS and AGVs"""
         try:
+            logger.debug("=== Setting up antenna arrays ===")
+            logger.debug("Configuring BS array:")
+            logger.debug(f"- Array dimensions: {self.config.bs_array}")
+            logger.debug(f"- Spacing: {self.config.bs_array_spacing}")
+            logger.debug(f"- Pattern: {self.config.bs_array_pattern}")
+            
             self.bs_array = PlanarArray(
                 num_rows=self.config.bs_array[0],
                 num_cols=self.config.bs_array[1],
@@ -58,6 +79,12 @@ class SmartFactoryChannel:
                 polarization=self.config.bs_polarization,
                 dtype=tf.complex64
             )
+            logger.debug("BS array configured successfully")
+            
+            logger.debug("Configuring AGV array:")
+            logger.debug(f"- Array dimensions: {self.config.agv_array}")
+            logger.debug(f"- Spacing: {self.config.agv_array_spacing}")
+            logger.debug(f"- Pattern: {self.config.agv_array_pattern}")
             
             self.agv_array = PlanarArray(
                 num_rows=self.config.agv_array[0],
@@ -68,8 +95,10 @@ class SmartFactoryChannel:
                 polarization=self.config.agv_polarization,
                 dtype=tf.complex64
             )
+            logger.debug("AGV array configured successfully")
             
         except Exception as e:
+            logger.error(f"Failed to setup antenna arrays: {str(e)}")
             raise RuntimeError(f"Failed to setup antenna arrays: {str(e)}")
 
     def _generate_initial_agv_positions(self):
@@ -117,12 +146,18 @@ class SmartFactoryChannel:
     def generate_channel_data(scene, config):
         """Generate channel data using ray tracing"""
         try:
-            print("Generating channel data...")
+            logger.debug("=== Generating channel data ===")
+            logger.debug("Ray tracing configuration:")
+            logger.debug(f"- Method: fibonacci")
+            logger.debug(f"- Max depth: {config.ray_tracing['max_depth']}")
+            logger.debug(f"- Num samples: {config.ray_tracing['num_samples']}")
+            logger.debug(f"- LOS enabled: {config.ray_tracing['los']}")
             
-            # Compute paths using ray tracing with correct method
+            # Compute paths using ray tracing
+            logger.debug("Computing paths...")
             paths = scene.compute_paths(
                 max_depth=config.ray_tracing['max_depth'],
-                method="fibonacci",  # Changed from "image" to "fibonacci"
+                method="fibonacci",
                 num_samples=config.ray_tracing['num_samples'],
                 los=config.ray_tracing['los'],
                 reflection=config.ray_tracing['reflection'],
@@ -134,24 +169,33 @@ class SmartFactoryChannel:
             )
             
             if paths is None:
+                logger.error("Path computation failed - no paths found")
                 raise RuntimeError("Path computation failed")
-
-            # Get channel impulse responses with explicit normalization
-            a, tau = paths.cir(normalize=True)
             
-            # Calculate frequencies for the subcarriers
-            frequencies = sionna.channel.utils.subcarrier_frequencies(
+            logger.debug(f"Number of paths found: {len(paths)}")
+            logger.debug(f"LOS paths: {tf.reduce_sum(tf.cast(paths.LOS, tf.int32))}")
+
+            # Get channel impulse responses
+            logger.debug("Computing channel impulse responses...")
+            a, tau = paths.cir(normalize=True)
+            logger.debug(f"CIR shape - a: {a.shape}, tau: {tau.shape}")
+            
+            # Calculate frequencies
+            logger.debug("Calculating subcarrier frequencies...")
+            frequencies = subcarrier_frequencies(
                 num_subcarriers=config.num_subcarriers,
                 subcarrier_spacing=config.subcarrier_spacing
             )
             
-            # Convert to OFDM channel with improved stability
+            # Convert to OFDM channel
+            logger.debug("Converting to OFDM channel...")
             h_freq = cir_to_ofdm_channel(
                 frequencies=frequencies,
                 a=tf.cast(a, tf.complex64),
                 tau=tf.cast(tau, tf.float32),
                 normalize=True
             )
+            logger.debug(f"OFDM channel shape: {h_freq.shape}")
             
             # Create channel data dictionary
             channel_data = {
@@ -161,13 +205,12 @@ class SmartFactoryChannel:
                 'agv_positions': tf.stack([rx.position for rx in scene.receivers.values()])
             }
             
-            print("Channel data generation completed")
+            logger.debug("Channel data generation completed successfully")
             return channel_data
             
         except Exception as e:
             logger.error(f"Error generating channel data: {str(e)}")
             raise
-    # In channel_generator.py, add these new methods:
 
     def calculate_doppler_shift(self):
         """Calculate Doppler shift based on AGV velocity and carrier frequency"""
