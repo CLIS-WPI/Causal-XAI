@@ -58,17 +58,18 @@ def calculate_snr(h_freq, noise_power=1.0):
     # Calculate power across all dimensions
     channel_power = tf.reduce_mean(tf.abs(h_freq)**2)
     
-    # Ensure we don't divide by zero
+    # Ensure we don't divide by zero and handle very small values
     noise_power = tf.maximum(noise_power, 1e-10)
+    channel_power = tf.maximum(channel_power, 1e-10)
     
     # Calculate SNR in dB with safety checks
     snr = tf.where(
         channel_power > 0,
         10.0 * tf.math.log(channel_power / noise_power) / tf.math.log(10.0),
-        tf.float32.min
+        -100.0  # Return a very low but finite value instead of -inf
     )
     
-    return tf.where(tf.math.is_finite(snr), snr, tf.float32.min)
+    return tf.where(tf.math.is_finite(snr), snr, -100.0)
 
 
 def generate_channel_data(scene, config):
@@ -151,7 +152,20 @@ def generate_channel_data(scene, config):
 
         total_paths = tf.cast(tf.size(los_conditions), tf.float32)
         los_paths = tf.reduce_sum(tf.cast(los_conditions, tf.int32))
-        nlos_paths = total_paths - los_paths
+
+        # Add debug prints HERE, right before the subtraction
+        print(f"Debug - total_paths type: {total_paths.dtype}")
+        print(f"Debug - total_paths shape: {total_paths.shape}")
+        print(f"Debug - total_paths value: {total_paths}")
+
+        print(f"Debug - los_paths type: {los_paths.dtype}")
+        print(f"Debug - los_paths shape: {los_paths.shape}")
+        print(f"Debug - los_paths value: {los_paths}")
+
+        # Fix the type mismatch by casting los_paths to float32
+        los_paths = tf.cast(los_paths, tf.float32)
+
+        nlos_paths = total_paths - los_paths  # Now this line should work
 
         # Handle case where no paths are found or NaN values exist
         if total_paths == 0 or tf.math.is_nan(total_paths) or tf.math.is_nan(los_paths):
