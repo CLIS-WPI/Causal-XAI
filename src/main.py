@@ -192,10 +192,6 @@ def generate_channel_data(scene, config):
         logger.debug(f"- Max magnitude: {tf.reduce_max(tf.abs(h_freq))}")
         logger.debug(f"- Min magnitude: {tf.reduce_min(tf.abs(h_freq))}")
 
-        # Add clipping to prevent -inf SNR values
-        min_snr_db = -50.0  # Adjust this value based on your requirements
-        snr_db = tf.maximum(snr_db, min_snr_db)
-        
         # Calculate Doppler shifts
         agv_positions = tf.stack([rx.position for rx in scene.receivers.values()])
         bs_position = tf.constant(config.bs_position, dtype=tf.float32)
@@ -298,6 +294,9 @@ def generate_channel_data(scene, config):
         # Add clipping to prevent -inf SNR values
         min_snr_db = -50.0  # Adjust this value based on your requirements
         snr_db = tf.maximum(snr_db, min_snr_db)
+
+        # Calculate average SNR for the channel_data dictionary
+        average_snr = tf.reduce_mean(snr_db)
 
         # Add SNR debug messages right after SNR calculation
         logger.debug(f"SNR statistics:")
