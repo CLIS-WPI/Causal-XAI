@@ -75,8 +75,8 @@ def calculate_snr(h_freq, noise_power=1.0):
 def generate_channel_data(scene, config):
     """Generate enhanced channel data using ray tracing"""
     try:
-        print("Generating channel data...")
-        
+        logger.info("Starting channel data generation...")
+        epsilon = tf.constant(1e-10, dtype=tf.float32)
         # Compute paths using ray tracing with correct parameters
         paths = scene.compute_paths(
             max_depth=config.ray_tracing['max_depth'],
@@ -92,37 +92,38 @@ def generate_channel_data(scene, config):
         )
         
         if paths is None:
-            logger.error("Path computation failed - no paths found")
-            raise ValueError("Path computation failed")
-        
+            raise ValueError("Path computation failed - no paths found")
+            
+        # Path analysis
+        num_paths = tf.size(paths.LOS)
+        los_count = tf.reduce_sum(tf.cast(paths.LOS, tf.int32))
         logger.debug("=== Path Computation Results ===")
         logger.debug(f"- Paths object type: {type(paths)}")
-        # Get number of paths from paths.LOS tensor size
-        num_paths = tf.size(paths.LOS)
         logger.debug(f"- Number of paths: {num_paths}")
-        logger.debug(f"- LOS paths: {tf.reduce_sum(tf.cast(paths.LOS, tf.int32))}")
-        logger.debug(f"- NLOS paths: {num_paths - tf.reduce_sum(tf.cast(paths.LOS, tf.int32))}")
-                
-        # Get channel impulse responses 
+        logger.debug(f"- LOS paths: {los_count}")
+        logger.debug(f"- NLOS paths: {num_paths - los_count}")
+        
+        # Get channel impulse responses
         logger.debug("Computing channel impulse responses...")
         a, tau = paths.cir()
         logger.debug(f"CIR shapes - a: {a.shape}, tau: {tau.shape}")
-
-        # Add these checks right here
+        
+        # Check CIR values - handle complex numbers correctly
+        a_abs = tf.abs(a)
         logger.debug("Checking CIR values...")
-        if tf.reduce_any(tf.math.is_nan(tf.abs(a))):
+        if tf.reduce_any(tf.math.is_nan(tf.math.real(a))) or tf.reduce_any(tf.math.is_nan(tf.math.imag(a))):
             logger.warning("NaN values detected in CIR coefficients")
-        if tf.reduce_any(tf.abs(a) < 1e-10):
-            logger.warning("Very small values detected in CIR coefficients")
-        logger.debug(f"CIR coefficient range: min={tf.reduce_min(tf.abs(a))}, max={tf.reduce_max(tf.abs(a))}")
-                
-        # Calculate frequencies for the subcarriers
+        if tf.reduce_any(a_abs < epsilon):
+            logger.warning(f"Values below epsilon ({epsilon}) detected in CIR coefficients")
+        logger.debug(f"CIR coefficient range: min={tf.reduce_min(a_abs)}, max={tf.reduce_max(a_abs)}")
+        
+        # Calculate frequencies for subcarriers
         frequencies = subcarrier_frequencies(
             num_subcarriers=config.num_subcarriers,
             subcarrier_spacing=config.subcarrier_spacing
         )
         
-        # Convert to OFDM channel with proper type casting
+        # Convert to OFDM channel
         logger.debug("Converting to OFDM channel...")
         h_freq = cir_to_ofdm_channel(
             frequencies=frequencies,
@@ -130,59 +131,44 @@ def generate_channel_data(scene, config):
             tau=tf.cast(tau, tf.float32),
             normalize=True
         )
+        
+        # Check OFDM channel values - handle complex numbers correctly
+        h_abs = tf.abs(h_freq)
+        h_real = tf.math.real(h_freq)
+        h_imag = tf.math.imag(h_freq)
+        
         logger.debug(f"OFDM channel shape: {h_freq.shape}")
         logger.debug("Checking OFDM channel values...")
-        zero_values = tf.reduce_sum(tf.cast(tf.abs(h_freq) < 1e-10, tf.int32))
-        if zero_values > 0:
-            logger.warning(f"Found {zero_values} near-zero values in OFDM channel")
-        logger.debug(f"OFDM channel range: min={tf.reduce_min(tf.abs(h_freq))}, max={tf.reduce_max(tf.abs(h_freq))}")
-
-
-        # Add normalization and SNR calculation here
-        # Check real and imaginary parts separately since is_finite doesn't support complex
+        
+        # Check for invalid values in real and imaginary parts separately
+        invalid_real = tf.reduce_any(tf.logical_or(
+            tf.math.is_nan(h_real),
+            tf.math.is_inf(h_real)
+        ))
+        invalid_imag = tf.reduce_any(tf.logical_or(
+            tf.math.is_nan(h_imag),
+            tf.math.is_inf(h_imag)
+        ))
+        
+        if invalid_real or invalid_imag:
+            logger.warning("Invalid values detected in OFDM channel")
+            
+        # Replace invalid values with zeros
         h_freq = tf.where(
-            tf.logical_and(
-                tf.math.is_finite(tf.math.real(h_freq)),
-                tf.math.is_finite(tf.math.imag(h_freq))
+            tf.logical_or(
+                tf.logical_or(tf.math.is_nan(h_real), tf.math.is_inf(h_real)),
+                tf.logical_or(tf.math.is_nan(h_imag), tf.math.is_inf(h_imag))
             ),
-            h_freq,
-            tf.zeros_like(h_freq)
+            tf.zeros_like(h_freq),
+            h_freq
         )
         
-        # Right before normalization
-        logger.debug("Channel statistics before normalization:")
-        logger.debug(f"- Mean magnitude: {tf.reduce_mean(tf.abs(h_freq))}")
-        logger.debug(f"- Max magnitude: {tf.reduce_max(tf.abs(h_freq))}")
-        logger.debug(f"- Min magnitude: {tf.reduce_min(tf.abs(h_freq))}")
-
-        logger.debug("Checking channel matrix before power calculation...")
-        if tf.reduce_any(tf.math.is_nan(tf.math.real(h_freq))) or tf.reduce_any(tf.math.is_nan(tf.math.imag(h_freq))):
-            logger.warning("NaN values detected in channel matrix")
-        if tf.reduce_any(tf.math.is_inf(h_freq)):
-            logger.warning("Inf values detected in channel matrix")
-
-        # Calculate power (this will be real-valued)
+        # Calculate power
         power = tf.reduce_mean(tf.abs(h_freq)**2, axis=-1, keepdims=True)
-        power = tf.cast(power, tf.float32)
-
-        # Add these checks right here
-        logger.debug("Checking power values...")
-        if tf.reduce_any(power < epsilon):
-            logger.warning(f"Power values below epsilon ({epsilon}) detected")
-        logger.debug(f"Power statistics: min={tf.reduce_min(power)}, max={tf.reduce_max(power)}")
-
-
-        # Add epsilon to power (both are now float)
-        epsilon = 1e-10
-        power = power + epsilon
-
-        # Take square root (still float)
-        h_freq_norm = tf.sqrt(power)
-
-        # Cast to complex for division
-        h_freq_norm = tf.cast(h_freq_norm, tf.complex64)
-
-        # Normalize
+        power = tf.maximum(power + epsilon, epsilon)
+        
+        # Normalize channel
+        h_freq_norm = tf.cast(tf.sqrt(power), tf.complex64)
         h_freq = h_freq / h_freq_norm
 
         # After normalization
