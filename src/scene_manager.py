@@ -79,10 +79,10 @@ class SceneManager:
             self._scene.add(metal)
 
         for i in range(num_shelves):
-            # Create shelf vertices (8 corners of a box)
             width, depth, height = dimensions
             x, y, z = shelf_positions[i]
             
+            # Create vertices for the shelf (8 corners of a box)
             vertices = [
                 [x, y, z],               # bottom front left
                 [x + width, y, z],       # bottom front right 
@@ -94,7 +94,7 @@ class SceneManager:
                 [x, y + depth, z + height]  # top back left
             ]
 
-            # Define faces using vertex indices
+            # Define faces using vertex indices (6 faces of the box)
             faces = [
                 [0, 1, 2, 3],  # bottom
                 [4, 5, 6, 7],  # top
@@ -104,21 +104,22 @@ class SceneManager:
                 [1, 2, 6, 5]   # right
             ]
 
-            # Create shelf mesh
+            # Create a mesh dictionary
             shelf_mesh = {
+                'name': f"shelf_{i}",
                 'vertices': vertices,
                 'faces': faces
             }
 
-            # Add shelf to scene using scene.add() method
-            self._scene.add(
-                shelf_mesh,
-                radio_material=self._scene.radio_materials["metal"],
-                name=f"shelf_{i}"
-            )
+            # Add the shelf mesh to the scene
+            self._scene.add(shelf_mesh)
             
-            logger.debug(f"Added shelf_{i} at position {shelf_positions[i]} with dimensions: {dimensions}")
+            # Set the material after adding the mesh
+            shelf_obj = self._scene.objects[f"shelf_{i}"]
+            shelf_obj.radio_material = self._scene.radio_materials["metal"]
         
+        logger.debug(f"Added shelf_{i} at position {shelf_positions[i]} with dimensions: {dimensions}")   
+    
     def add_transmitter(self, name: str, position: tf.Tensor, orientation: tf.Tensor) -> Transmitter:
         """Add base station"""
         tx = Transmitter(name=name, position=position, orientation=orientation)
