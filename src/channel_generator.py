@@ -196,7 +196,6 @@ class SmartFactoryChannel:
             raise
 
     def track_los_nlos_paths(self):
-        """Enhanced tracking of LOS/NLOS conditions"""
         try:
             # Get paths from ray tracing
             paths = self.scene.compute_paths(
@@ -206,21 +205,35 @@ class SmartFactoryChannel:
             
             if paths is None:
                 raise ValueError("No paths computed")
-                
+                    
             # Extract LOS conditions
             los_conditions = paths.LOS
             
             # Calculate statistics
             total_paths = tf.size(los_conditions)
+            
+            # Add the warning log here
+            if total_paths == 0:
+                logger.warning("No paths found in channel computation")
+                
             los_paths = tf.reduce_sum(tf.cast(los_conditions, tf.int32))
             nlos_paths = total_paths - los_paths
             
-            nlos_stats = {
-                'los_ratio': float(los_paths) / total_paths,
-                'nlos_ratio': float(nlos_paths) / total_paths,
-                'total_paths': total_paths,
-                'blocked_paths': nlos_paths
-            }
+            # Handle case where total_paths is zero
+            if total_paths > 0:
+                nlos_stats = {
+                    'los_ratio': float(los_paths.numpy()) / float(total_paths.numpy()),
+                    'nlos_ratio': float(nlos_paths.numpy()) / float(total_paths.numpy()),
+                    'total_paths': int(total_paths.numpy()),
+                    'blocked_paths': int(nlos_paths.numpy())
+                }
+            else:
+                nlos_stats = {
+                    'los_ratio': 0.0,
+                    'nlos_ratio': 0.0,
+                    'total_paths': 0,
+                    'blocked_paths': 0
+                }
             
             return nlos_stats, los_conditions
             
