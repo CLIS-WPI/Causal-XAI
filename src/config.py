@@ -98,7 +98,7 @@ class SmartFactoryConfig:
         self.ray_tracing = {
             'max_depth': 6,         
             'method': "fibonacci",
-            'num_samples': 2048, 
+            'num_samples': 4096, 
             'diffraction': True,
             'scattering': True ,
             'los': True,

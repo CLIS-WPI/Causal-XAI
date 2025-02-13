@@ -135,11 +135,35 @@ def generate_channel_data(scene, config):
             tf.zeros_like(h_freq)
         )
         
-        # Normalize the channel matrices
-        h_freq_norm = tf.sqrt(tf.reduce_mean(tf.abs(h_freq)**2, axis=-1, keepdims=True) + 1e-10)
-        h_freq_norm = tf.cast(h_freq_norm, tf.complex64)  # Cast to complex64
+        # Replace the existing normalization code with this:
+        # Right before normalization
+        logger.debug("Channel statistics before normalization:")
+        logger.debug(f"- Mean magnitude: {tf.reduce_mean(tf.abs(h_freq))}")
+        logger.debug(f"- Max magnitude: {tf.reduce_max(tf.abs(h_freq))}")
+        logger.debug(f"- Min magnitude: {tf.reduce_min(tf.abs(h_freq))}")
+
+        # Add a small epsilon to prevent division by zero
+        epsilon = 1e-10
+        h_freq_norm = tf.sqrt(tf.reduce_mean(tf.abs(h_freq)**2, axis=-1, keepdims=True) + epsilon)
+        h_freq_norm = tf.maximum(h_freq_norm, epsilon)  # Ensure denominator is never zero
         h_freq = h_freq / h_freq_norm
+
+        # After normalization
+        logger.debug("Channel statistics after normalization:")
+        logger.debug(f"- Mean magnitude: {tf.reduce_mean(tf.abs(h_freq))}")
+        logger.debug(f"- Max magnitude: {tf.reduce_max(tf.abs(h_freq))}")
+        logger.debug(f"- Min magnitude: {tf.reduce_min(tf.abs(h_freq))}")
+
+        # When calculating SNR, use a minimum signal power threshold
+        signal_power = tf.maximum(tf.reduce_mean(tf.abs(h_freq)**2, axis=-1), epsilon)
+        noise_power = tf.constant(1e-13, dtype=tf.float32)  # Adjust this value based on your system
+        snr_db = 10.0 * tf.math.log(signal_power / noise_power) / tf.math.log(10.0)
+
+        # Add clipping to prevent -inf SNR values
+        min_snr_db = -50.0  # Adjust this value based on your requirements
+        snr_db = tf.maximum(snr_db, min_snr_db)
         
+
         # Calculate SNR
         average_snr = calculate_snr(h_freq)
 
