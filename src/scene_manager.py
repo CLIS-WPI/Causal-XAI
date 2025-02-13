@@ -3,6 +3,7 @@ from sionna.rt import Scene, Transmitter, Receiver, RIS, RadioMaterial, PlanarAr
 import logging
 from config import SmartFactoryConfig
 from sionna.rt import CellGrid, DiscretePhaseProfile 
+from sionna.rt import Shape
 logger = logging.getLogger(__name__)
 
 class SceneManager:
@@ -63,37 +64,48 @@ class SceneManager:
                 self._scene.add(boundary)
 
     def _add_metal_shelves(self):
-        """Add metal shelves to the scene using configuration"""
-        shelf_positions = self.config.scene_objects['shelf_positions']
-        dimensions = self.config.scene_objects['shelf_dimensions']
-        orientation = self.config.scene_objects['shelf_orientation']
-        num_shelves = self.config.scene_objects['num_shelves']
-
-        for i in range(num_shelves):
-            shelf = Transmitter(
+        """Add metal shelves to the scene as physical objects with metal material"""
+        for i in range(self.config.scene_objects['num_shelves']):
+            # Get dimensions and position
+            width, depth, height = self.config.scene_objects['shelf_dimensions']
+            pos = self.config.scene_objects['shelf_positions'][i]
+            
+            # Define vertices for the box shape (8 corners)
+            vertices = tf.constant([
+                [pos[0], pos[1], pos[2]],                    # 0: front bottom left
+                [pos[0] + width, pos[1], pos[2]],            # 1: front bottom right
+                [pos[0] + width, pos[1] + depth, pos[2]],    # 2: back bottom right
+                [pos[0], pos[1] + depth, pos[2]],            # 3: back bottom left
+                [pos[0], pos[1], pos[2] + height],           # 4: front top left
+                [pos[0] + width, pos[1], pos[2] + height],   # 5: front top right
+                [pos[0] + width, pos[1] + depth, pos[2] + height], # 6: back top right
+                [pos[0], pos[1] + depth, pos[2] + height]    # 7: back top left
+            ], dtype=tf.float32)
+            
+            # Define faces using vertex indices (6 faces of the box)
+            faces = tf.constant([
+                [0, 1, 2, 3],  # bottom face
+                [4, 5, 6, 7],  # top face
+                [0, 1, 5, 4],  # front face
+                [2, 3, 7, 6],  # back face
+                [0, 3, 7, 4],  # left face
+                [1, 2, 6, 5]   # right face
+            ], dtype=tf.int32)
+            
+            # Create the shelf shape
+            shelf = Shape(
                 name=f"shelf_{i}",
-                position=tf.constant(shelf_positions[i], dtype=tf.float32),
-                orientation=tf.constant(orientation, dtype=tf.float32)
+                vertices=vertices,
+                faces=faces
             )
             
-            # Use metal material
+            # Assign metal material
             shelf.radio_material = self._scene.radio_materials["metal"]
             
-            # Add planar array for the shelf surface
-            shelf_array = PlanarArray(
-                num_rows=1,
-                num_cols=1,
-                vertical_spacing=dimensions[2],  # height
-                horizontal_spacing=dimensions[0], # width
-                pattern="iso",
-                polarization="V"
-            )
-            shelf.array = shelf_array
-            
-            # Add to scene and log
+            # Add to scene
             self._scene.add(shelf)
-            logger.debug(f"Added shelf_{i} at position {shelf_positions[i]} with dimensions: {dimensions}")
-
+            logger.debug(f"Added shelf_{i} as Shape object at position {pos} with dimensions: {[width, depth, height]}") 
+    
     def add_transmitter(self, name: str, position: tf.Tensor, orientation: tf.Tensor) -> Transmitter:
         """Add base station"""
         tx = Transmitter(name=name, position=position, orientation=orientation)
