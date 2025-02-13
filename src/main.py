@@ -70,15 +70,6 @@ def calculate_snr(h_freq, noise_power=1.0):
     
     return tf.where(tf.math.is_finite(snr), snr, tf.float32.min)
 
-def subcarrier_frequencies(num_subcarriers, subcarrier_spacing):
-    """Calculate frequencies for OFDM subcarriers"""
-    return tf.range(num_subcarriers, dtype=tf.float32) * subcarrier_spacing
-
-def cir_to_ofdm_channel(frequencies, a, tau, normalize=True):
-    """Convert channel impulse response to OFDM channel"""
-    # Implementation depends on your specific needs
-    # This should be imported from your channel processing module
-    pass
 
 def generate_channel_data(scene, config):
     """Generate enhanced channel data using ray tracing"""
