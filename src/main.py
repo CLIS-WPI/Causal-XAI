@@ -12,6 +12,7 @@ import h5py
 from sionna.channel.utils import cir_to_ofdm_channel
 from sionna.channel.utils import subcarrier_frequencies
 from sionna_ply_generator import SionnaPLYGenerator
+from sionna.constants import SPEED_OF_LIGHT
 # Environment setup
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
