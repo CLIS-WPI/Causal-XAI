@@ -111,14 +111,19 @@ def generate_channel_data(scene, config):
         )
         
         # Add normalization and SNR calculation here
+        # Check real and imaginary parts separately since is_finite doesn't support complex
         h_freq = tf.where(
-            tf.math.is_finite(h_freq),
+            tf.logical_and(
+                tf.math.is_finite(tf.math.real(h_freq)),
+                tf.math.is_finite(tf.math.imag(h_freq))
+            ),
             h_freq,
             tf.zeros_like(h_freq)
         )
         
         # Normalize the channel matrices
         h_freq_norm = tf.sqrt(tf.reduce_mean(tf.abs(h_freq)**2, axis=-1, keepdims=True) + 1e-10)
+        h_freq_norm = tf.cast(h_freq_norm, tf.complex64)  # Cast to complex64
         h_freq = h_freq / h_freq_norm
         
         # Calculate SNR
