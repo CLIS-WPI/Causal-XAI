@@ -135,7 +135,6 @@ def generate_channel_data(scene, config):
             tf.zeros_like(h_freq)
         )
         
-        # Replace the existing normalization code with this:
         # Right before normalization
         logger.debug("Channel statistics before normalization:")
         logger.debug(f"- Mean magnitude: {tf.reduce_mean(tf.abs(h_freq))}")
@@ -143,10 +142,11 @@ def generate_channel_data(scene, config):
         logger.debug(f"- Min magnitude: {tf.reduce_min(tf.abs(h_freq))}")
 
         # Add a small epsilon to prevent division by zero
-        epsilon = 1e-10
+        epsilon = tf.complex(1e-10, 0.0)  # Make epsilon complex
         h_freq_norm = tf.sqrt(tf.reduce_mean(tf.abs(h_freq)**2, axis=-1, keepdims=True) + epsilon)
-        h_freq_norm = tf.maximum(h_freq_norm, epsilon)  # Ensure denominator is never zero
-        h_freq = h_freq / h_freq_norm
+        h_freq_norm = tf.cast(h_freq_norm, tf.complex64)  # Cast to complex64
+        h_freq_norm = tf.maximum(tf.abs(h_freq_norm), epsilon)  # Ensure denominator is never zero
+        h_freq = h_freq / h_freq_norm  # Now both tensors are complex64
 
         # After normalization
         logger.debug("Channel statistics after normalization:")
