@@ -92,6 +92,20 @@ def generate_channel_data(scene, config):
             normalize=True
         )
         
+        # Add normalization and SNR calculation here
+        h_freq = tf.where(
+            tf.math.is_finite(h_freq),
+            h_freq,
+            tf.zeros_like(h_freq)
+        )
+        
+        # Normalize the channel matrices
+        h_freq_norm = tf.sqrt(tf.reduce_mean(tf.abs(h_freq)**2, axis=-1, keepdims=True) + 1e-10)
+        h_freq = h_freq / h_freq_norm
+        
+        # Calculate SNR
+        average_snr = calculate_snr(h_freq)
+
         # Calculate Doppler shifts
         agv_positions = tf.stack([rx.position for rx in scene.receivers.values()])
         bs_position = tf.constant(config.bs_position, dtype=tf.float32)
@@ -107,15 +121,22 @@ def generate_channel_data(scene, config):
         # Calculate Doppler shifts: f_d = (v/c) * f_c
         doppler_shifts = (relative_velocities / SPEED_OF_LIGHT) * config.carrier_frequency
         
-        # Calculate LOS/NLOS statistics with safe division
+        # Calculate LOS/NLOS statistics with safe division and type conversion
         los_conditions = paths.LOS
-        total_paths = tf.size(los_conditions)
+        if not isinstance(los_conditions, tf.Tensor):
+            los_conditions = tf.cast(los_conditions, tf.float32)  # Ensure float type
+
+        total_paths = tf.cast(tf.size(los_conditions), tf.float32)
         los_paths = tf.reduce_sum(tf.cast(los_conditions, tf.int32))
         nlos_paths = total_paths - los_paths
-        
-        # Handle case where no paths are found
-        if total_paths == 0:
-            logger.warning("No paths found in channel computation")
+
+        # Handle case where no paths are found or NaN values exist
+        if total_paths == 0 or tf.math.is_nan(total_paths) or tf.math.is_nan(los_paths):
+            if tf.math.is_nan(total_paths) or tf.math.is_nan(los_paths):
+                logger.warning("NaN values detected in path calculations")
+            else:
+                logger.warning("No paths found in channel computation")
+            
             los_statistics = {
                 'los_ratio': 0.0,
                 'nlos_ratio': 0.0,
@@ -124,24 +145,49 @@ def generate_channel_data(scene, config):
                 'nlos_paths': 0
             }
         else:
-            los_statistics = {
-                'los_ratio': float(los_paths.numpy()) / float(total_paths.numpy()),
-                'nlos_ratio': float(nlos_paths.numpy()) / float(total_paths.numpy()),
-                'total_paths': int(total_paths.numpy()),
-                'los_paths': int(los_paths.numpy()),
-                'nlos_paths': int(nlos_paths.numpy())
-            }
+            # Safe division with NaN checking
+            try:
+                los_ratio = float(los_paths.numpy()) / float(total_paths.numpy())
+                nlos_ratio = float(nlos_paths.numpy()) / float(total_paths.numpy())
+                
+                # Check for NaN in computed ratios
+                if tf.math.is_nan(los_ratio) or tf.math.is_nan(nlos_ratio):
+                    logger.warning("NaN values detected in LOS/NLOS ratio calculations")
+                    los_ratio = 0.0
+                    nlos_ratio = 0.0
+                    
+                los_statistics = {
+                    'los_ratio': los_ratio,
+                    'nlos_ratio': nlos_ratio,
+                    'total_paths': int(total_paths.numpy()),
+                    'los_paths': int(los_paths.numpy()),
+                    'nlos_paths': int(nlos_paths.numpy())
+                }
+            except Exception as e:
+                logger.error(f"Error in LOS/NLOS statistics calculation: {str(e)}")
+                los_statistics = {
+                    'los_ratio': 0.0,
+                    'nlos_ratio': 0.0,
+                    'total_paths': 0,
+                    'los_paths': 0,
+                    'nlos_paths': 0
+                }
+
+        # Log statistics for debugging
+        logger.debug(f"LOS Statistics: {los_statistics}")
         
         # Calculate beam performance metrics with safe operations
         signal_power = tf.reduce_mean(tf.abs(h_freq)**2, axis=-1)
         noise_power = tf.constant(1e-13, dtype=tf.float32)
         snr_db = 10.0 * tf.math.log(signal_power / noise_power) / tf.math.log(10.0)
         
-        # Safe computation of path loss
+        # Safe computation of path loss with proper type handling
+        a_abs = tf.abs(a)  # Get magnitude of complex values
+        a_abs = tf.cast(a_abs, tf.float32)  # Ensure float32 type
         path_loss = tf.where(
-            tf.abs(a) > 0,
-            20.0 * tf.math.log(tf.abs(a)) / tf.math.log(10.0),
-            tf.zeros_like(a)
+            a_abs > 0,
+            20.0 * tf.math.log(a_abs) / tf.math.log(10.0),
+            tf.zeros_like(a_abs)
         )
         
         beam_metrics = {
@@ -151,7 +197,10 @@ def generate_channel_data(scene, config):
             'min_power': float(tf.reduce_min(signal_power)),
             'path_loss': path_loss
         }
-        
+
+        # Before creating the channel_data dictionary, convert los_conditions to a tensor if it isn't already
+        los_conditions = tf.convert_to_tensor(los_conditions)
+
         # Create enhanced channel data dictionary
         channel_data = {
             'channel_matrices': h_freq,
@@ -161,10 +210,12 @@ def generate_channel_data(scene, config):
             'doppler_shifts': doppler_shifts,
             'los_statistics': los_statistics,
             'beam_metrics': beam_metrics,
+            'average_snr': average_snr,
             'temporal_data': {
                 'timestamp': tf.timestamp(),
                 'agv_velocities': velocities.numpy(),
                 'path_conditions': los_conditions.numpy()
+                
             }
         }
         
@@ -181,6 +232,23 @@ def generate_channel_data(scene, config):
     except Exception as e:
         logger.error(f"Error generating channel data: {str(e)}")
         raise
+
+def calculate_snr(h_freq, noise_power=1.0):
+    # Calculate power across all dimensions
+    channel_power = tf.reduce_mean(tf.abs(h_freq)**2)
+    
+    # Ensure we don't divide by zero
+    noise_power = tf.maximum(noise_power, 1e-10)
+    
+    # Calculate SNR in dB with safety checks
+    snr = tf.where(
+        channel_power > 0,
+        10.0 * tf.math.log(channel_power / noise_power) / tf.math.log(10.0),
+        tf.float32.min
+    )
+    
+    return tf.where(tf.math.is_finite(snr), snr, tf.float32.min)
+
 
 def save_channel_data(channel_data, filepath):
     """Save channel data to H5 file with enhanced organization and error handling"""
