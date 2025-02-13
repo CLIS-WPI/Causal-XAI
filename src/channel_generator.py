@@ -73,11 +73,15 @@ class SmartFactoryChannel:
             raise RuntimeError(f"Failed to setup antenna arrays: {str(e)}")
 
     def _generate_initial_agv_positions(self):
-        """Generate initial AGV positions"""
-        return tf.constant([
-            [12.0, 5.0, self.config.agv_height],
-            [8.0, 15.0, self.config.agv_height]
-        ], dtype=tf.float32)
+        """Generate initial AGV positions from configuration
+        
+        Returns:
+            tf.Tensor: Initial positions for all AGVs with shape [num_agvs, 3]
+        """
+        if not hasattr(self.config, 'agv_positions'):
+            raise AttributeError("AGV positions not defined in config")
+            
+        return tf.constant(self.config.agv_positions, dtype=tf.float32)
 
     def _update_agv_positions(self, time_step):
         """Update AGV positions"""
@@ -163,7 +167,92 @@ class SmartFactoryChannel:
         except Exception as e:
             logger.error(f"Error generating channel data: {str(e)}")
             raise
+    # In channel_generator.py, add these new methods:
 
+    def calculate_doppler_shift(self):
+        """Calculate Doppler shift based on AGV velocity and carrier frequency"""
+        try:
+            # Get current and previous positions
+            current_positions = self.agv_positions
+            previous_positions = tf.stack([self.positions_history[i][-2] if len(self.positions_history[i]) > 1 
+                                        else current_positions[i] for i in range(self.config.num_agvs)])
+            
+            # Calculate velocity vectors (m/s)
+            time_step = 1.0 / self.config.sampling_frequency
+            velocities = (current_positions - previous_positions) / time_step
+            
+            # Calculate relative velocities along BS-AGV paths
+            bs_position = tf.constant(self.config.bs_position, dtype=tf.float32)
+            bs_to_agv = tf.nn.l2_normalize(current_positions - bs_position, axis=1)
+            relative_velocities = tf.reduce_sum(velocities * bs_to_agv, axis=1)
+            
+            # Calculate Doppler shift: f_d = (v/c) * f_c
+            doppler_shifts = (relative_velocities / SPEED_OF_LIGHT) * self.config.carrier_frequency
+            
+            return doppler_shifts, velocities
+            
+        except Exception as e:
+            logger.error(f"Error calculating Doppler shift: {str(e)}")
+            raise
+
+    def track_los_nlos_paths(self):
+        """Enhanced tracking of LOS/NLOS conditions"""
+        try:
+            # Get paths from ray tracing
+            paths = self.scene.compute_paths(
+                max_depth=self.config.ray_tracing['max_depth'],
+                method=self.config.ray_tracing['method']
+            )
+            
+            if paths is None:
+                raise ValueError("No paths computed")
+                
+            # Extract LOS conditions
+            los_conditions = paths.LOS
+            
+            # Calculate statistics
+            total_paths = tf.size(los_conditions)
+            los_paths = tf.reduce_sum(tf.cast(los_conditions, tf.int32))
+            nlos_paths = total_paths - los_paths
+            
+            nlos_stats = {
+                'los_ratio': float(los_paths) / total_paths,
+                'nlos_ratio': float(nlos_paths) / total_paths,
+                'total_paths': total_paths,
+                'blocked_paths': nlos_paths
+            }
+            
+            return nlos_stats, los_conditions
+            
+        except Exception as e:
+            logger.error(f"Error tracking LOS/NLOS paths: {str(e)}")
+            raise
+
+    def calculate_beam_performance(self):
+        """Track beam performance metrics"""
+        try:
+            # Get channel matrix
+            h = self.monitor_channel_quality(self.generate_channel()['h'])
+            
+            # Calculate SNR for each beam
+            noise_power = 1e-13  # Typical thermal noise power
+            signal_power = tf.reduce_mean(tf.abs(h)**2, axis=-1)
+            snr_db = 10 * tf.math.log(signal_power / noise_power) / tf.math.log(10.0)
+            
+            # Calculate beam metrics
+            beam_metrics = {
+                'snr_db': snr_db.numpy(),
+                'avg_power': float(tf.reduce_mean(signal_power)),
+                'max_power': float(tf.reduce_max(signal_power)),
+                'min_power': float(tf.reduce_min(signal_power))
+            }
+            
+            return beam_metrics
+            
+        except Exception as e:
+            logger.error(f"Error calculating beam performance: {str(e)}")
+            raise
+        
     def save_csi_dataset(self, filepath, num_samples=None):
         """Save CSI dataset with quality monitoring"""
         import h5py

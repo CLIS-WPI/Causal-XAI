@@ -53,7 +53,7 @@ def validate_config(config):
         raise ValueError("carrier_frequency must be positive")
 
 def generate_channel_data(scene, config):
-    """Generate channel data using ray tracing"""
+    """Generate enhanced channel data using ray tracing"""
     try:
         print("Generating channel data...")
         
@@ -71,6 +71,9 @@ def generate_channel_data(scene, config):
             edge_diffraction=config.ray_tracing['edge_diffraction']
         )
         
+        if paths is None:
+            raise ValueError("Path computation failed")
+
         # Get channel impulse responses
         a, tau = paths.cir()
         
@@ -85,18 +88,74 @@ def generate_channel_data(scene, config):
             frequencies=frequencies,
             a=tf.convert_to_tensor(a),
             tau=tf.convert_to_tensor(tau),
-            normalize=False
+            normalize=True  # Enable normalization for better stability
         )
         
-        # Create channel data dictionary with corrected LOS attribute name
+        # Calculate Doppler shifts
+        agv_positions = tf.stack([rx.position for rx in scene.receivers.values()])
+        bs_position = tf.constant(config.bs_position, dtype=tf.float32)
+        
+        # Calculate relative velocities and directions
+        relative_positions = agv_positions - bs_position
+        directions = tf.nn.l2_normalize(relative_positions, axis=-1)
+        
+        # Assuming constant AGV speed from config
+        velocities = tf.ones_like(agv_positions) * config.agv_speed
+        relative_velocities = tf.reduce_sum(velocities * directions, axis=-1)
+        
+        # Calculate Doppler shifts: f_d = (v/c) * f_c
+        doppler_shifts = (relative_velocities / SPEED_OF_LIGHT) * config.carrier_frequency
+        
+        # Calculate LOS/NLOS statistics
+        los_conditions = paths.LOS
+        total_paths = tf.size(los_conditions)
+        los_paths = tf.reduce_sum(tf.cast(los_conditions, tf.int32))
+        nlos_paths = total_paths - los_paths
+        
+        los_statistics = {
+            'los_ratio': float(los_paths) / total_paths,
+            'nlos_ratio': float(nlos_paths) / total_paths,
+            'total_paths': total_paths.numpy(),
+            'los_paths': los_paths.numpy(),
+            'nlos_paths': nlos_paths.numpy()
+        }
+        
+        # Calculate beam performance metrics
+        signal_power = tf.reduce_mean(tf.abs(h_freq)**2, axis=-1)
+        noise_power = tf.constant(1e-13, dtype=tf.float32)  # Typical thermal noise power
+        snr_db = 10 * tf.math.log(signal_power / noise_power) / tf.math.log(10.0)
+        
+        beam_metrics = {
+            'snr_db': snr_db.numpy(),
+            'avg_power': float(tf.reduce_mean(signal_power)),
+            'max_power': float(tf.reduce_max(signal_power)),
+            'min_power': float(tf.reduce_min(signal_power)),
+            'path_loss': 20 * tf.math.log(tf.abs(a)) / tf.math.log(10.0)
+        }
+        
+        # Create enhanced channel data dictionary
         channel_data = {
             'channel_matrices': h_freq,
             'path_delays': tau,
-            'los_conditions': paths.LOS,  # Changed from los to LOS
-            'agv_positions': tf.stack([rx.position for rx in scene.receivers.values()])
+            'los_conditions': los_conditions,
+            'agv_positions': agv_positions,
+            'doppler_shifts': doppler_shifts,
+            'los_statistics': los_statistics,
+            'beam_metrics': beam_metrics,
+            'temporal_data': {
+                'timestamp': tf.timestamp(),
+                'agv_velocities': velocities.numpy(),
+                'path_conditions': los_conditions.numpy()
+            }
         }
         
-        print("Channel data generation completed")
+        # Log key metrics
+        logger.info(f"Channel Generation Metrics:")
+        logger.info(f"LOS Ratio: {los_statistics['los_ratio']:.2f}")
+        logger.info(f"Average SNR: {tf.reduce_mean(snr_db):.2f} dB")
+        logger.info(f"Maximum Doppler Shift: {tf.reduce_max(tf.abs(doppler_shifts)):.2f} Hz")
+        
+        print("Enhanced channel data generation completed")
         return channel_data
         
     except Exception as e:
@@ -104,12 +163,59 @@ def generate_channel_data(scene, config):
         raise
 
 def save_channel_data(channel_data, filepath):
-    """Save channel data to H5 file"""
-    with h5py.File(filepath, 'w') as f:
-        for key, value in channel_data.items():
-            if isinstance(value, tf.Tensor):
-                value = value.numpy()
-            f.create_dataset(key, data=value)
+    """Save channel data to H5 file with enhanced organization and error handling"""
+    try:
+        with h5py.File(filepath, 'w') as f:
+            # Create main groups for better organization
+            csi_group = f.create_group('csi_data')
+            mobility_group = f.create_group('mobility_data')
+            beam_group = f.create_group('beam_data')
+            temporal_group = f.create_group('temporal_data')
+            
+            # Save CSI data
+            if 'channel_matrices' in channel_data:
+                csi_group.create_dataset('channel_matrices', 
+                    data=tf.cast(channel_data['channel_matrices'], tf.complex64).numpy())
+            if 'path_delays' in channel_data:
+                csi_group.create_dataset('path_delays', 
+                    data=tf.cast(channel_data['path_delays'], tf.float32).numpy())
+                
+            # Save mobility data
+            if 'agv_positions' in channel_data:
+                mobility_group.create_dataset('agv_positions', 
+                    data=tf.cast(channel_data['agv_positions'], tf.float32).numpy())
+            if 'doppler_shifts' in channel_data:
+                mobility_group.create_dataset('doppler_shifts', 
+                    data=tf.cast(channel_data['doppler_shifts'], tf.float32).numpy())
+                
+            # Save beam data
+            if 'los_conditions' in channel_data:
+                beam_group.create_dataset('los_conditions', 
+                    data=tf.cast(channel_data['los_conditions'], tf.int32).numpy())
+            if 'beam_metrics' in channel_data:
+                for metric_name, metric_value in channel_data['beam_metrics'].items():
+                    beam_group.create_dataset(f'beam_metrics/{metric_name}', 
+                        data=np.array(metric_value))
+                        
+            # Save temporal data if available
+            if 'temporal_data' in channel_data:
+                for key, value in channel_data['temporal_data'].items():
+                    if isinstance(value, (np.ndarray, tf.Tensor)):
+                        temporal_group.create_dataset(key, data=np.array(value))
+                    else:
+                        temporal_group.attrs[key] = value
+                        
+            # Add metadata
+            f.attrs['creation_time'] = str(datetime.now())
+            f.attrs['num_receivers'] = len(channel_data.get('agv_positions', []))
+            if 'channel_matrices' in channel_data:
+                f.attrs['matrix_shape'] = str(channel_data['channel_matrices'].shape)
+                
+            print(f"Channel data successfully saved to: {filepath}")
+            
+    except Exception as e:
+        logger.error(f"Error saving channel data to {filepath}: {str(e)}")
+        raise
 
 def main():
     """Main execution function"""

@@ -85,8 +85,8 @@ class SmartFactoryConfig:
         
         # Add AGV positions (could be initial positions)
         self.agv_positions = [
-            [12.0, 15.0, self.agv_height],
-            [8.0, 15.0, self.agv_height]
+            [15.0, 15.0, self.agv_height],
+            [10.0, 15.0, self.agv_height]
         ]
         
         self.agv_orientations = [

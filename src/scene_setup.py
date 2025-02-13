@@ -55,19 +55,18 @@ def setup_scene(config: SmartFactoryConfig):
         # Add AGVs and set receiver array
         agv_array = None
         for i in range(config.num_agvs):
-            agv_pos = tf.constant([12.0 - i*4.0, 5.0 + i*10.0, config.agv_height], 
-                                dtype=tf.float32)
+            agv_pos = tf.constant(config.agv_positions[i], dtype=tf.float32)
             rx = manager.add_receiver(
                 name=f"agv_{i}",
                 position=agv_pos,
-                orientation=tf.constant([0.0, 0.0, 0.0], dtype=tf.float32)
+                orientation=tf.constant(config.agv_orientations[i], dtype=tf.float32)  # Also using orientations from config
             )
             _debug_object_state(rx, f"AGV_{i}")
             
             # Store array configuration from first AGV
             if i == 0:
                 agv_array = rx.array
-        
+
         # Set receiver array for the scene
         scene.rx_array = agv_array
 
