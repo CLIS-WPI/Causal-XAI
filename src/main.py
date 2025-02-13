@@ -94,11 +94,15 @@ def generate_channel_data(scene, config):
         if paths is None:
             logger.error("Path computation failed - no paths found")
             raise ValueError("Path computation failed")
-
-        logger.debug(f"Paths computed successfully:")
-        logger.debug(f"- Number of paths: {len(paths)}")
+        
+        logger.debug("=== Path Computation Results ===")
+        logger.debug(f"- Paths object type: {type(paths)}")
+        # Get number of paths from paths.LOS tensor size
+        num_paths = tf.size(paths.LOS)
+        logger.debug(f"- Number of paths: {num_paths}")
         logger.debug(f"- LOS paths: {tf.reduce_sum(tf.cast(paths.LOS, tf.int32))}")
-
+        logger.debug(f"- NLOS paths: {num_paths - tf.reduce_sum(tf.cast(paths.LOS, tf.int32))}")
+                
         # Get channel impulse responses 
         logger.debug("Computing channel impulse responses...")
         a, tau = paths.cir()
