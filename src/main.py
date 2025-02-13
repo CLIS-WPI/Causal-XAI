@@ -8,6 +8,7 @@ from datetime import datetime
 import sionna
 from sionna.rt import Scene
 import logging
+logger = logging.getLogger(__name__)
 import h5py
 from sionna.channel.utils import cir_to_ofdm_channel
 from sionna.channel.utils import subcarrier_frequencies
@@ -52,6 +53,32 @@ def validate_config(config):
     
     if config.carrier_frequency <= 0:
         raise ValueError("carrier_frequency must be positive")
+
+def calculate_snr(h_freq, noise_power=1.0):
+    # Calculate power across all dimensions
+    channel_power = tf.reduce_mean(tf.abs(h_freq)**2)
+    
+    # Ensure we don't divide by zero
+    noise_power = tf.maximum(noise_power, 1e-10)
+    
+    # Calculate SNR in dB with safety checks
+    snr = tf.where(
+        channel_power > 0,
+        10.0 * tf.math.log(channel_power / noise_power) / tf.math.log(10.0),
+        tf.float32.min
+    )
+    
+    return tf.where(tf.math.is_finite(snr), snr, tf.float32.min)
+
+def subcarrier_frequencies(num_subcarriers, subcarrier_spacing):
+    """Calculate frequencies for OFDM subcarriers"""
+    return tf.range(num_subcarriers, dtype=tf.float32) * subcarrier_spacing
+
+def cir_to_ofdm_channel(frequencies, a, tau, normalize=True):
+    """Convert channel impulse response to OFDM channel"""
+    # Implementation depends on your specific needs
+    # This should be imported from your channel processing module
+    pass
 
 def generate_channel_data(scene, config):
     """Generate enhanced channel data using ray tracing"""
@@ -232,23 +259,6 @@ def generate_channel_data(scene, config):
     except Exception as e:
         logger.error(f"Error generating channel data: {str(e)}")
         raise
-
-def calculate_snr(h_freq, noise_power=1.0):
-    # Calculate power across all dimensions
-    channel_power = tf.reduce_mean(tf.abs(h_freq)**2)
-    
-    # Ensure we don't divide by zero
-    noise_power = tf.maximum(noise_power, 1e-10)
-    
-    # Calculate SNR in dB with safety checks
-    snr = tf.where(
-        channel_power > 0,
-        10.0 * tf.math.log(channel_power / noise_power) / tf.math.log(10.0),
-        tf.float32.min
-    )
-    
-    return tf.where(tf.math.is_finite(snr), snr, tf.float32.min)
-
 
 def save_channel_data(channel_data, filepath):
     """Save channel data to H5 file with enhanced organization and error handling"""
