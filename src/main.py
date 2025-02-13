@@ -75,8 +75,8 @@ def generate_channel_data(scene, config):
         if paths is None:
             raise ValueError("Path computation failed")
 
-        # Get channel impulse responses
-        a, tau = paths.cir()
+        # Get channel impulse responses with explicit normalization
+        a, tau = paths.cir(normalize=True)
         
         # Calculate frequencies for the subcarriers
         frequencies = subcarrier_frequencies(
@@ -84,12 +84,12 @@ def generate_channel_data(scene, config):
             subcarrier_spacing=config.subcarrier_spacing
         )
         
-        # Convert to OFDM channel
+        # Convert to OFDM channel with proper type casting
         h_freq = cir_to_ofdm_channel(
             frequencies=frequencies,
-            a=tf.convert_to_tensor(a),
-            tau=tf.convert_to_tensor(tau),
-            normalize=True  # Enable normalization for better stability
+            a=tf.cast(a, tf.complex64),
+            tau=tf.cast(tau, tf.float32),
+            normalize=True
         )
         
         # Calculate Doppler shifts
@@ -107,31 +107,49 @@ def generate_channel_data(scene, config):
         # Calculate Doppler shifts: f_d = (v/c) * f_c
         doppler_shifts = (relative_velocities / SPEED_OF_LIGHT) * config.carrier_frequency
         
-        # Calculate LOS/NLOS statistics
+        # Calculate LOS/NLOS statistics with safe division
         los_conditions = paths.LOS
         total_paths = tf.size(los_conditions)
         los_paths = tf.reduce_sum(tf.cast(los_conditions, tf.int32))
         nlos_paths = total_paths - los_paths
         
-        los_statistics = {
-            'los_ratio': float(los_paths) / total_paths,
-            'nlos_ratio': float(nlos_paths) / total_paths,
-            'total_paths': total_paths.numpy(),
-            'los_paths': los_paths.numpy(),
-            'nlos_paths': nlos_paths.numpy()
-        }
+        # Handle case where no paths are found
+        if total_paths == 0:
+            logger.warning("No paths found in channel computation")
+            los_statistics = {
+                'los_ratio': 0.0,
+                'nlos_ratio': 0.0,
+                'total_paths': 0,
+                'los_paths': 0,
+                'nlos_paths': 0
+            }
+        else:
+            los_statistics = {
+                'los_ratio': float(los_paths.numpy()) / float(total_paths.numpy()),
+                'nlos_ratio': float(nlos_paths.numpy()) / float(total_paths.numpy()),
+                'total_paths': int(total_paths.numpy()),
+                'los_paths': int(los_paths.numpy()),
+                'nlos_paths': int(nlos_paths.numpy())
+            }
         
-        # Calculate beam performance metrics
+        # Calculate beam performance metrics with safe operations
         signal_power = tf.reduce_mean(tf.abs(h_freq)**2, axis=-1)
-        noise_power = tf.constant(1e-13, dtype=tf.float32)  # Typical thermal noise power
-        snr_db = 10 * tf.math.log(signal_power / noise_power) / tf.math.log(10.0)
+        noise_power = tf.constant(1e-13, dtype=tf.float32)
+        snr_db = 10.0 * tf.math.log(signal_power / noise_power) / tf.math.log(10.0)
+        
+        # Safe computation of path loss
+        path_loss = tf.where(
+            tf.abs(a) > 0,
+            20.0 * tf.math.log(tf.abs(a)) / tf.math.log(10.0),
+            tf.zeros_like(a)
+        )
         
         beam_metrics = {
             'snr_db': snr_db.numpy(),
             'avg_power': float(tf.reduce_mean(signal_power)),
             'max_power': float(tf.reduce_max(signal_power)),
             'min_power': float(tf.reduce_min(signal_power)),
-            'path_loss': 20 * tf.math.log(tf.abs(a)) / tf.math.log(10.0)
+            'path_loss': path_loss
         }
         
         # Create enhanced channel data dictionary
@@ -150,11 +168,12 @@ def generate_channel_data(scene, config):
             }
         }
         
-        # Log key metrics
-        logger.info(f"Channel Generation Metrics:")
-        logger.info(f"LOS Ratio: {los_statistics['los_ratio']:.2f}")
-        logger.info(f"Average SNR: {tf.reduce_mean(snr_db):.2f} dB")
-        logger.info(f"Maximum Doppler Shift: {tf.reduce_max(tf.abs(doppler_shifts)):.2f} Hz")
+        # Log key metrics only if paths exist
+        if total_paths > 0:
+            logger.info(f"Channel Generation Metrics:")
+            logger.info(f"LOS Ratio: {los_statistics['los_ratio']:.2f}")
+            logger.info(f"Average SNR: {tf.reduce_mean(snr_db):.2f} dB")
+            logger.info(f"Maximum Doppler Shift: {tf.reduce_max(tf.abs(doppler_shifts)):.2f} Hz")
         
         print("Enhanced channel data generation completed")
         return channel_data
