@@ -9,6 +9,9 @@ from sionna.rt import DiscretePhaseProfile, CellGrid
 import logging
 from sionna.channel.utils import subcarrier_frequencies
 
+# Initialize logger
+logger = logging.getLogger(__name__)
+
 class SmartFactoryChannel:
     """Smart Factory Channel Generator using Sionna"""
     
