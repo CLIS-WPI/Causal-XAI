@@ -6,7 +6,7 @@ from sionna.constants import SPEED_OF_LIGHT
 from sionna.channel.utils import cir_to_ofdm_channel
 from sionna.rt import Scene, Transmitter, Receiver, RIS, PlanarArray, RadioMaterial, Paths
 from sionna.rt import DiscretePhaseProfile, CellGrid
-import logger
+import logging
 from sionna.channel.utils import subcarrier_frequencies
 
 class SmartFactoryChannel:
