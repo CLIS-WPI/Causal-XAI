@@ -107,6 +107,21 @@ def generate_channel_data(scene, config):
         logger.debug("Computing channel impulse responses...")
         a, tau = paths.cir()
         logger.debug(f"CIR shapes - a: {a.shape}, tau: {tau.shape}")
+
+        # Add this section here to replace NaN values with zeros in CIR coefficients
+        a = tf.where(
+            tf.logical_or(
+                tf.math.is_nan(tf.math.real(a)),
+                tf.math.is_nan(tf.math.imag(a))
+            ),
+            tf.zeros_like(a),
+            a
+        )
+
+        # Then continue with the existing code
+        # Check CIR values - handle complex numbers correctly
+        a_abs = tf.abs(a)
+        logger.debug("Checking CIR values...")
         
         # Check CIR values - handle complex numbers correctly
         a_abs = tf.abs(a)
@@ -290,14 +305,18 @@ def generate_channel_data(scene, config):
         logger.debug(f"- Contains nan: {tf.reduce_any(tf.math.is_nan(signal_power))}")
 
         noise_power = tf.constant(1e-13, dtype=tf.float32)
-        snr_db = 10.0 * tf.math.log(signal_power / noise_power) / tf.math.log(10.0)
+        snr_db = 10.0 * tf.math.log(tf.maximum(signal_power, epsilon) / noise_power) / tf.math.log(10.0)
+        
+        # Add clipping to prevent -inf SNR values
+        min_snr_db = -50.0  # Adjust this value based on your requirements
+        snr_db = tf.maximum(snr_db, min_snr_db)
 
         # Add SNR debug messages right after SNR calculation
         logger.debug(f"SNR statistics:")
-        logger.debug(f"- Raw SNR values: {snr_db}")
-        logger.debug(f"- Contains inf: {tf.reduce_any(tf.math.is_inf(snr_db))}")
-        logger.debug(f"- Contains nan: {tf.reduce_any(tf.math.is_nan(snr_db))}")
-
+        logger.debug(f"- Mean SNR: {tf.reduce_mean(snr_db):.2f} dB")
+        logger.debug(f"- Max SNR: {tf.reduce_max(snr_db):.2f} dB")
+        logger.debug(f"- Min SNR: {tf.reduce_min(snr_db):.2f} dB")
+        
         # After calculating path loss (around line 270-280)
         a_abs = tf.abs(a)  # Get magnitude of complex values
         a_abs = tf.cast(a_abs, tf.float32)  # Ensure float32 type
