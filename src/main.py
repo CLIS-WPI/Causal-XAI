@@ -156,7 +156,7 @@ def generate_channel_data(scene, config):
         logger.debug(f"- Min magnitude: {tf.reduce_min(tf.abs(h_freq))}")
 
         logger.debug("Checking channel matrix before power calculation...")
-        if tf.reduce_any(tf.math.is_nan(h_freq)):
+        if tf.reduce_any(tf.math.is_nan(tf.math.real(h_freq))) or tf.reduce_any(tf.math.is_nan(tf.math.imag(h_freq))):
             logger.warning("NaN values detected in channel matrix")
         if tf.reduce_any(tf.math.is_inf(h_freq)):
             logger.warning("Inf values detected in channel matrix")
