@@ -192,22 +192,10 @@ def generate_channel_data(scene, config):
         logger.debug(f"- Max magnitude: {tf.reduce_max(tf.abs(h_freq))}")
         logger.debug(f"- Min magnitude: {tf.reduce_min(tf.abs(h_freq))}")
 
-        # When calculating SNR, use a minimum signal power threshold
-        signal_power = tf.maximum(tf.reduce_mean(tf.abs(h_freq)**2, axis=-1), epsilon)
-        noise_power = tf.constant(1e-13, dtype=tf.float32)  # Adjust this value based on your system
-
         # Add clipping to prevent -inf SNR values
         min_snr_db = -50.0  # Adjust this value based on your requirements
         snr_db = tf.maximum(snr_db, min_snr_db)
         
-        logger.debug(f"SNR statistics:")
-        logger.debug(f"- Raw SNR values: {snr_db}")
-        logger.debug(f"- Contains inf: {tf.reduce_any(tf.math.is_inf(snr_db))}")
-        logger.debug(f"- Contains nan: {tf.reduce_any(tf.math.is_nan(snr_db))}")
-
-        # Calculate SNR
-        average_snr = calculate_snr(h_freq)
-
         # Calculate Doppler shifts
         agv_positions = tf.stack([rx.position for rx in scene.receivers.values()])
         bs_position = tf.constant(config.bs_position, dtype=tf.float32)
@@ -316,7 +304,7 @@ def generate_channel_data(scene, config):
         logger.debug(f"- Mean SNR: {tf.reduce_mean(snr_db):.2f} dB")
         logger.debug(f"- Max SNR: {tf.reduce_max(snr_db):.2f} dB")
         logger.debug(f"- Min SNR: {tf.reduce_min(snr_db):.2f} dB")
-        
+
         # After calculating path loss (around line 270-280)
         a_abs = tf.abs(a)  # Get magnitude of complex values
         a_abs = tf.cast(a_abs, tf.float32)  # Ensure float32 type
