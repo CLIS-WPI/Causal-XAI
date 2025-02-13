@@ -92,10 +92,17 @@ def generate_channel_data(scene, config):
         )
         
         if paths is None:
+            logger.error("Path computation failed - no paths found")
             raise ValueError("Path computation failed")
 
+        logger.debug(f"Paths computed successfully:")
+        logger.debug(f"- Number of paths: {len(paths)}")
+        logger.debug(f"- LOS paths: {tf.reduce_sum(tf.cast(paths.LOS, tf.int32))}")
+
         # Get channel impulse responses 
+        logger.debug("Computing channel impulse responses...")
         a, tau = paths.cir()
+        logger.debug(f"CIR shapes - a: {a.shape}, tau: {tau.shape}")
         
         # Calculate frequencies for the subcarriers
         frequencies = subcarrier_frequencies(
@@ -104,12 +111,14 @@ def generate_channel_data(scene, config):
         )
         
         # Convert to OFDM channel with proper type casting
+        logger.debug("Converting to OFDM channel...")
         h_freq = cir_to_ofdm_channel(
             frequencies=frequencies,
             a=tf.cast(a, tf.complex64),
             tau=tf.cast(tau, tf.float32),
             normalize=True
         )
+        logger.debug(f"OFDM channel shape: {h_freq.shape}")
         
         # Add normalization and SNR calculation here
         # Check real and imaginary parts separately since is_finite doesn't support complex
@@ -161,7 +170,7 @@ def generate_channel_data(scene, config):
         print(f"Debug - los_paths type: {los_paths.dtype}")
         print(f"Debug - los_paths shape: {los_paths.shape}")
         print(f"Debug - los_paths value: {los_paths}")
-    
+
         # Fix the type mismatch by casting los_paths to float32
         los_paths = tf.cast(los_paths, tf.float32)
 

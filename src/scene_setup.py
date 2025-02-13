@@ -92,6 +92,15 @@ def setup_scene(config: SmartFactoryConfig):
             )
             _debug_object_state(rx, f"AGV_{i}")
             
+            # visibility checking 
+            start = tf.constant(config.bs_position, dtype=tf.float32)
+            end = rx.position
+            direction = tf.nn.l2_normalize(end - start, axis=-1)
+            logger.debug(f"\nChecking visibility for AGV_{i}:")
+            logger.debug(f"Start point: {start}")
+            logger.debug(f"End point: {end}")
+            logger.debug(f"Direction vector: {direction}")
+
             # Check for potential LOS blockage
             logger.debug(f"Height difference with BS: {abs(config.agv_positions[i][2] - config.bs_position[2]):.2f} meters")
             
