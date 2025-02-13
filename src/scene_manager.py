@@ -82,43 +82,50 @@ class SceneManager:
             width, depth, height = dimensions
             x, y, z = shelf_positions[i]
             
-            # Create vertices for the shelf (8 corners of a box)
-            vertices = [
-                [x, y, z],               # bottom front left
-                [x + width, y, z],       # bottom front right 
-                [x + width, y + depth, z], # bottom back right
-                [x, y + depth, z],       # bottom back left
-                [x, y, z + height],      # top front left
-                [x + width, y, z + height], # top front right
-                [x + width, y + depth, z + height], # top back right
-                [x, y + depth, z + height]  # top back left
-            ]
-
-            # Define faces using vertex indices (6 faces of the box)
-            faces = [
-                [0, 1, 2, 3],  # bottom
-                [4, 5, 6, 7],  # top
-                [0, 1, 5, 4],  # front
-                [2, 3, 7, 6],  # back
-                [0, 3, 7, 4],  # left
-                [1, 2, 6, 5]   # right
-            ]
-
-            # Create a mesh dictionary
-            shelf_mesh = {
-                'name': f"shelf_{i}",
-                'vertices': vertices,
-                'faces': faces
-            }
-
-            # Add the shelf mesh to the scene
-            self._scene.add(shelf_mesh)
+            # Create six transmitters for each face of the shelf
+            # Bottom face
+            bottom = Transmitter(name=f"shelf_{i}_bottom",
+                            position=tf.constant([x + width/2, y + depth/2, z]),
+                            orientation=tf.constant([0., 0., -1.]))
+            bottom.size = [width, depth]
             
-            # Set the material after adding the mesh
-            shelf_obj = self._scene.objects[f"shelf_{i}"]
-            shelf_obj.radio_material = self._scene.radio_materials["metal"]
-        
-        logger.debug(f"Added shelf_{i} at position {shelf_positions[i]} with dimensions: {dimensions}")   
+            # Top face
+            top = Transmitter(name=f"shelf_{i}_top",
+                            position=tf.constant([x + width/2, y + depth/2, z + height]),
+                            orientation=tf.constant([0., 0., 1.]))
+            top.size = [width, depth]
+            
+            # Front face
+            front = Transmitter(name=f"shelf_{i}_front",
+                            position=tf.constant([x + width/2, y, z + height/2]),
+                            orientation=tf.constant([0., -1., 0.]))
+            front.size = [width, height]
+            
+            # Back face
+            back = Transmitter(name=f"shelf_{i}_back",
+                            position=tf.constant([x + width/2, y + depth, z + height/2]),
+                            orientation=tf.constant([0., 1., 0.]))
+            back.size = [width, height]
+            
+            # Left face
+            left = Transmitter(name=f"shelf_{i}_left",
+                            position=tf.constant([x, y + depth/2, z + height/2]),
+                            orientation=tf.constant([-1., 0., 0.]))
+            left.size = [depth, height]
+            
+            # Right face
+            right = Transmitter(name=f"shelf_{i}_right",
+                            position=tf.constant([x + width, y + depth/2, z + height/2]),
+                            orientation=tf.constant([1., 0., 0.]))
+            right.size = [depth, height]
+            
+            # Add all faces to the scene
+            faces = [bottom, top, front, back, left, right]
+            for face in faces:
+                face.radio_material = self._scene.radio_materials["metal"]
+                self._scene.add(face)
+            
+            logger.debug(f"Added shelf_{i} at position {shelf_positions[i]} with dimensions: {dimensions}")
     
     def add_transmitter(self, name: str, position: tf.Tensor, orientation: tf.Tensor) -> Transmitter:
         """Add base station"""

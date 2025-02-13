@@ -107,7 +107,15 @@ def generate_channel_data(scene, config):
         logger.debug("Computing channel impulse responses...")
         a, tau = paths.cir()
         logger.debug(f"CIR shapes - a: {a.shape}, tau: {tau.shape}")
-        
+
+        # Add these checks right here
+        logger.debug("Checking CIR values...")
+        if tf.reduce_any(tf.math.is_nan(tf.abs(a))):
+            logger.warning("NaN values detected in CIR coefficients")
+        if tf.reduce_any(tf.abs(a) < 1e-10):
+            logger.warning("Very small values detected in CIR coefficients")
+        logger.debug(f"CIR coefficient range: min={tf.reduce_min(tf.abs(a))}, max={tf.reduce_max(tf.abs(a))}")
+                
         # Calculate frequencies for the subcarriers
         frequencies = subcarrier_frequencies(
             num_subcarriers=config.num_subcarriers,
@@ -123,7 +131,13 @@ def generate_channel_data(scene, config):
             normalize=True
         )
         logger.debug(f"OFDM channel shape: {h_freq.shape}")
-        
+        logger.debug("Checking OFDM channel values...")
+        zero_values = tf.reduce_sum(tf.cast(tf.abs(h_freq) < 1e-10, tf.int32))
+        if zero_values > 0:
+            logger.warning(f"Found {zero_values} near-zero values in OFDM channel")
+        logger.debug(f"OFDM channel range: min={tf.reduce_min(tf.abs(h_freq))}, max={tf.reduce_max(tf.abs(h_freq))}")
+
+
         # Add normalization and SNR calculation here
         # Check real and imaginary parts separately since is_finite doesn't support complex
         h_freq = tf.where(
@@ -141,9 +155,22 @@ def generate_channel_data(scene, config):
         logger.debug(f"- Max magnitude: {tf.reduce_max(tf.abs(h_freq))}")
         logger.debug(f"- Min magnitude: {tf.reduce_min(tf.abs(h_freq))}")
 
+        logger.debug("Checking channel matrix before power calculation...")
+        if tf.reduce_any(tf.math.is_nan(h_freq)):
+            logger.warning("NaN values detected in channel matrix")
+        if tf.reduce_any(tf.math.is_inf(h_freq)):
+            logger.warning("Inf values detected in channel matrix")
+
         # Calculate power (this will be real-valued)
         power = tf.reduce_mean(tf.abs(h_freq)**2, axis=-1, keepdims=True)
-        power = tf.cast(power, tf.float32)  # Ensure float type
+        power = tf.cast(power, tf.float32)
+
+        # Add these checks right here
+        logger.debug("Checking power values...")
+        if tf.reduce_any(power < epsilon):
+            logger.warning(f"Power values below epsilon ({epsilon}) detected")
+        logger.debug(f"Power statistics: min={tf.reduce_min(power)}, max={tf.reduce_max(power)}")
+
 
         # Add epsilon to power (both are now float)
         epsilon = 1e-10
@@ -167,12 +194,15 @@ def generate_channel_data(scene, config):
         # When calculating SNR, use a minimum signal power threshold
         signal_power = tf.maximum(tf.reduce_mean(tf.abs(h_freq)**2, axis=-1), epsilon)
         noise_power = tf.constant(1e-13, dtype=tf.float32)  # Adjust this value based on your system
-        snr_db = 10.0 * tf.math.log(signal_power / noise_power) / tf.math.log(10.0)
 
         # Add clipping to prevent -inf SNR values
         min_snr_db = -50.0  # Adjust this value based on your requirements
         snr_db = tf.maximum(snr_db, min_snr_db)
         
+        logger.debug(f"SNR statistics:")
+        logger.debug(f"- Raw SNR values: {snr_db}")
+        logger.debug(f"- Contains inf: {tf.reduce_any(tf.math.is_inf(snr_db))}")
+        logger.debug(f"- Contains nan: {tf.reduce_any(tf.math.is_nan(snr_db))}")
 
         # Calculate SNR
         average_snr = calculate_snr(h_freq)
