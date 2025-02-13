@@ -141,12 +141,22 @@ def generate_channel_data(scene, config):
         logger.debug(f"- Max magnitude: {tf.reduce_max(tf.abs(h_freq))}")
         logger.debug(f"- Min magnitude: {tf.reduce_min(tf.abs(h_freq))}")
 
-        # Add a small epsilon to prevent division by zero
-        epsilon = tf.complex(1e-10, 0.0)  # Make epsilon complex
-        h_freq_norm = tf.sqrt(tf.reduce_mean(tf.abs(h_freq)**2, axis=-1, keepdims=True) + epsilon)
-        h_freq_norm = tf.cast(h_freq_norm, tf.complex64)  # Cast to complex64
-        h_freq_norm = tf.maximum(tf.abs(h_freq_norm), epsilon)  # Ensure denominator is never zero
-        h_freq = h_freq / h_freq_norm  # Now both tensors are complex64
+        # Calculate power (this will be real-valued)
+        power = tf.reduce_mean(tf.abs(h_freq)**2, axis=-1, keepdims=True)
+        power = tf.cast(power, tf.float32)  # Ensure float type
+
+        # Add epsilon to power (both are now float)
+        epsilon = 1e-10
+        power = power + epsilon
+
+        # Take square root (still float)
+        h_freq_norm = tf.sqrt(power)
+
+        # Cast to complex for division
+        h_freq_norm = tf.cast(h_freq_norm, tf.complex64)
+
+        # Normalize
+        h_freq = h_freq / h_freq_norm
 
         # After normalization
         logger.debug("Channel statistics after normalization:")
