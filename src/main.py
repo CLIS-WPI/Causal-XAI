@@ -6,7 +6,7 @@ import os
 import numpy as np
 from datetime import datetime
 import sionna
-from sionna.rt import Scene
+from sionna.rt import Scene, Camera
 import logging
 logger = logging.getLogger(__name__)
 import h5py
@@ -14,6 +14,7 @@ from sionna.channel.utils import cir_to_ofdm_channel
 from sionna.channel.utils import subcarrier_frequencies
 from sionna_ply_generator import SionnaPLYGenerator
 from sionna.constants import SPEED_OF_LIGHT
+from scene_setup import verify_geometry
 # Environment setup
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
@@ -512,17 +513,15 @@ def save_channel_data(channel_data, filepath):
         logger.error(f"Error saving channel data to {filepath}: {str(e)}")
         raise
 
-def verify_camera_renders(scene, config):
+def verify_camera_renders(scene, config, result_dir):
     """Verify that all camera renders were successful"""
     for cam_name, cam_params in config.cameras.items():
-        if not os.path.exists(cam_params['filename']):
-            logger.warning(f"Failed to generate render for {cam_name} camera")
-        else:
-            file_size = os.path.getsize(cam_params['filename'])
+        render_path = os.path.join(result_dir, cam_params['filename'])
+        if os.path.exists(render_path):
+            file_size = os.path.getsize(render_path)
             logger.info(f"Camera {cam_name} render saved: {file_size} bytes")
-            if file_size < 1000:
-                logger.warning(f"Warning: {cam_name} render file is suspiciously small")
-
+        else:
+            logger.warning(f"Failed to generate render for {cam_name} camera")
 def main():
     """Main execution function"""
     try:
@@ -557,38 +556,51 @@ def main():
             raise ValueError("Scene setup failed")
         logger.debug("Scene setup completed")
 
+        # Add verification
+        verify_geometry(scene)
+
         # Configure cameras and render settings
         logger.info("Configuring scene cameras and render settings...")
 
-        # Set render configuration from config
+        # Set render configuration
         scene.render_config = config.render_config
 
-        # Add cameras to scene and render from each
+        # Register and render from each camera
         for cam_name, cam_params in config.cameras.items():
             try:
-                # Add camera to scene
-                scene.cameras[f"scene-cam-{cam_name}"] = {
-                    'position': cam_params['position'],
-                    'look_at': cam_params['look_at'],
-                    'up': cam_params['up'],
-                    'fov': cam_params['fov']
-                }
+                logger.info(f"Setting up {cam_name} camera...")
                 
-                # Render from this camera
+                # Create a Camera instance
+                camera = Camera(
+                    name=cam_name,
+                    position=cam_params['position']
+                )
+                
+                # Set camera properties
+                camera.look_at(cam_params['look_at'])
+                camera.up = cam_params['up']
+                
+                # Add camera to scene
+                scene.add(camera)
+                
                 logger.info(f"Rendering from {cam_name} camera...")
                 render_filename = os.path.join(result_dir, cam_params['filename'])
+                
                 scene.render_to_file(
-                    camera=f"scene-cam-{cam_name}",
+                    camera=cam_name,
                     filename=render_filename
                 )
                 logger.info(f"Successfully rendered {render_filename}")
                 
             except Exception as e:
-                logger.error(f"Error rendering from {cam_name} camera: {str(e)}")
+                logger.error(f"Error with {cam_name} camera: {str(e)}")
                 continue
 
+        # Log registered cameras
+        logger.info(f"Registered cameras: {list(scene.cameras.keys())}")
+
         # Verify all renders were successful
-        verify_camera_renders(scene, config)
+        verify_camera_renders(scene, config, result_dir)
 
         # Verify LOS paths
         verify_los_paths(scene)

@@ -162,7 +162,21 @@ def setup_scene(config: SmartFactoryConfig):
         logger.error(f"Scene setup failed: {str(e)}", exc_info=True)
         raise RuntimeError(f"Scene setup failed: {str(e)}") from e
 
-
+def verify_geometry(scene):
+    """Verify that scene contains expected geometry"""
+    logger.info("Verifying scene geometry...")
+    
+    # Check number of objects
+    logger.info(f"Number of objects in scene: {len(scene.objects)}")
+    
+    # List all objects
+    for obj in scene.objects:
+        logger.info(f"Object: {obj.name}")
+        if hasattr(obj, 'vertices'):
+            logger.info(f"  - Vertices: {len(obj.vertices)}")
+        if hasattr(obj, 'faces'):
+            logger.info(f"  - Faces: {len(obj.faces)}")
+            
 def verify_los_paths(scene):
     """
     Check and log basic LOS path info from the base station to each receiver.

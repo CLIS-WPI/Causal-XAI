@@ -199,35 +199,57 @@ class SmartFactoryConfig:
             }
         }
 
-        # In config.py, update the cameras configuration:
+        # Update camera configurations
         self.cameras = {
             'top': {
-                'position': [10.0, 10.0, 20.0],
+                'position': [10.0, 10.0, 30.0],     # Higher up for better top view
                 'look_at': [10.0, 10.0, 0.0],
                 'up': [0.0, 1.0, 0.0],
-                'fov': 60.0,
+                'fov': 70.0,                        # Wider field of view
                 'filename': 'top_view.png'
             },
             'side': {
-                'position': [35.0, 10.0, 5.0],
+                'position': [40.0, 10.0, 8.0],      # Further back and higher
                 'look_at': [10.0, 10.0, 2.5],
                 'up': [0.0, 0.0, 1.0],
-                'fov': 45.0,
+                'fov': 60.0,
                 'filename': 'side_view.png'
             },
             'corner': {
-                'position': [30.0, 30.0, 15.0],
+                'position': [35.0, 35.0, 15.0],     # Higher and further for corner view
                 'look_at': [10.0, 10.0, 2.5],
                 'up': [0.0, 0.0, 1.0],
-                'fov': 50.0,
+                'fov': 70.0,
                 'filename': 'corner_view.png'
             }
         }
 
-        # Add render configuration
         self.render_config = {
-            'width': 1920,
-            'height': 1080,
-            'background_color': [0.8, 0.8, 0.8],
-            'ambient_light': [0.3, 0.3, 0.3]
+            # Basic display settings
+            'width': 1920,                    # Render width in pixels
+            'height': 1080,                   # Render height in pixels
+            'background_color': [0.8, 0.8, 0.8],  # RGB background color
+            
+            # Camera settings
+            'fov': 45.0,                      # Field of view in degrees
+            'near': 0.1,                      # Near clipping plane
+            'far': 1000.0,                    # Far clipping plane
+            
+            # Rendering quality settings
+            'samples': 64,                    # Number of samples per pixel
+            'max_bounces': 4,                 # Maximum number of light bounces
+            'quality': 'high',                # Rendering quality preset
+            
+            # Lighting settings
+            'ambient_light': [0.1, 0.1, 0.1], # Ambient light color
+            'exposure': 1.0,                  # Exposure value
+            
+            # Post-processing
+            'gamma': 2.2,                     # Gamma correction
+            'tone_mapping': True,             # Enable/disable tone mapping
+            
+            # Output settings
+            'file_format': 'png',             # Output file format
+            'transparent': False,             # Transparent background
+            'dpi': 300                        # Dots per inch for output
         }
