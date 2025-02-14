@@ -47,9 +47,9 @@ class SmartFactoryConfig:
             'concrete': {
                 'name': "concrete",
                 'relative_permittivity': 5.31,
-                'conductivity': 0.0462,
-                'roughness': 1e-3,
-                'scattering_coefficient': 0.4,
+                'conductivity': 1.0e7,
+                'roughness': 0.1e-3,
+                'scattering_coefficient': 0.5,
                 'xpd_coefficient': 8.0
             },
             'metal': {
@@ -90,16 +90,16 @@ class SmartFactoryConfig:
 
         # Update ray tracing parameters for better path detection
         self.ray_tracing = {
-            'max_depth': 4,              # Reduced for more focused paths
+            'max_depth': 6,              # Reduced for more focused paths
             'method': "fibonacci",
-            'num_samples': 131072,       # Doubled for better coverage
+            'num_samples': 301072,       # Doubled for better coverage
             'diffraction': True,
             'scattering': True,
             'los': True,
             'reflection': True,
             'ris': False,
             'scene_type': self.scene_type,
-            'scat_keep_prob': 0.9,      # Increased probability
+            'scat_keep_prob': 1.0,      # Increased probability
             'edge_diffraction': True
         }
 

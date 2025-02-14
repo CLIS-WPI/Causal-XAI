@@ -136,6 +136,36 @@ def generate_channel_data(scene, config):
     """Generate enhanced channel data using ray tracing"""
     try:
         logger.info("Starting channel data generation...")
+        # Initialize expected_los with a default value
+        expected_los = False
+        
+        # Get visibility results
+        if hasattr(scene, 'visibility_results'):
+            logger.info("Using pre-computed visibility results")
+            expected_los = any(result['los_available'] for result in scene.visibility_results.values())
+            if not expected_los:
+                logger.warning("No LOS paths expected based on geometry!")
+                
+        # Compute paths with visibility awareness
+        paths = scene.compute_paths(
+            max_depth=config.ray_tracing['max_depth'],
+            method=config.ray_tracing['method'],
+            num_samples=config.ray_tracing['num_samples'],
+            los=True,  # Always try for LOS
+            reflection=True,
+            diffraction=True,
+            scattering=True,
+            scat_keep_prob=config.ray_tracing['scat_keep_prob'],
+            edge_diffraction=True
+        )
+        
+        # Validate paths against visibility expectations
+        if paths is not None:
+            los_paths = tf.reduce_sum(tf.cast(paths.LOS, tf.int32))
+            if los_paths == 0 and expected_los:
+                logger.warning("No LOS paths found despite geometric visibility!")
+                logger.warning("Increasing number of samples might help detect paths")
+
         epsilon = tf.constant(1e-8, dtype=tf.float32)
         logger.debug("=== Generating channel data ===")
         logger.debug("Ray tracing configuration:")

@@ -19,6 +19,13 @@ class SceneManager:
         self._add_room_boundaries()
         self._add_metal_shelves()
 
+        # Check visibility after setup
+        self.visibility_results = self._check_visibility()
+
+        # Log overall visibility status
+        num_visible = sum(1 for result in self.visibility_results.values() if result['los_available'])
+        logger.info(f"LOS paths available to {num_visible}/{len(self.visibility_results)} receivers")
+        
     def _add_materials(self):
         """Add materials to the scene with complete properties"""
         # Add concrete material
@@ -212,3 +219,92 @@ class SceneManager:
         
         self._scene.add(rx)
         return rx
+    
+    def _check_visibility(self):
+        """Check line-of-sight visibility between BS and AGVs"""
+        logger = logging.getLogger(__name__)
+        
+        # Get BS position as reference
+        bs_pos = tf.constant(self.config.bs_position, dtype=tf.float32)
+        
+        visibility_results = {}
+        for rx_name, rx in self._scene.receivers.values():
+            # Calculate direct path vector and distance
+            rx_pos = rx.position
+            direct_path_vector = rx_pos - bs_pos
+            direct_path_distance = tf.norm(direct_path_vector)
+            direction = direct_path_vector / direct_path_distance
+            
+            # Initialize visibility check
+            los_blocked = False
+            blocking_objects = []
+            
+            # Check each shelf for intersection
+            for obj in self._scene.transmitters.values():
+                if 'shelf' in obj.name:
+                    # Get shelf dimensions and position
+                    shelf_pos = obj.position
+                    shelf_dims = tf.constant([
+                        obj.size[0],  # width
+                        obj.size[1],  # depth
+                        self.config.scene_objects['shelf_dimensions'][2]  # height
+                    ], dtype=tf.float32)
+                    
+                    # Calculate intersection with shelf
+                    intersects = self._check_ray_box_intersection(
+                        bs_pos, direction, direct_path_distance,
+                        shelf_pos, shelf_dims
+                    )
+                    
+                    if intersects:
+                        los_blocked = True
+                        blocking_objects.append(obj.name)
+            
+            # Store results
+            visibility_results[rx_name] = {
+                'distance': direct_path_distance.numpy(),
+                'los_available': not los_blocked,
+                'blocking_objects': blocking_objects,
+                'elevation_angle': tf.math.asin(-direction[2]).numpy() * 180/np.pi
+            }
+            
+            # Log visibility status
+            status = "BLOCKED" if los_blocked else "CLEAR"
+            logger.info(f"LOS path to {rx_name} is {status} at distance {direct_path_distance:.2f}m")
+            if blocking_objects:
+                logger.info(f"Blocking objects for {rx_name}: {', '.join(blocking_objects)}")
+                
+            # Calculate expected path loss
+            free_space_pl = 20 * tf.math.log(direct_path_distance * self.config.carrier_frequency / SPEED_OF_LIGHT) / tf.math.log(10.0)
+            logger.debug(f"Expected free space path loss to {rx_name}: {free_space_pl:.1f} dB")
+        
+        return visibility_results
+
+    def _check_ray_box_intersection(self, origin, direction, max_distance, box_pos, box_dims):
+        """
+        Check if a ray intersects with a box
+        
+        Args:
+            origin: Ray origin point [x, y, z]
+            direction: Normalized ray direction vector
+            max_distance: Maximum distance to check
+            box_pos: Box center position [x, y, z]
+            box_dims: Box dimensions [width, depth, height]
+        
+        Returns:
+            bool: True if ray intersects box before max_distance
+        """
+        # Calculate box bounds
+        box_min = box_pos - box_dims/2
+        box_max = box_pos + box_dims/2
+        
+        # Calculate intersection with each axis
+        t1 = (box_min - origin) / (direction + 1e-10)  # Add small epsilon to avoid division by zero
+        t2 = (box_max - origin) / (direction + 1e-10)
+        
+        # Find entrance and exit points
+        t_min = tf.reduce_max(tf.minimum(t1, t2))
+        t_max = tf.reduce_min(tf.maximum(t1, t2))
+        
+        # Check if intersection occurs within ray length
+        return tf.logical_and(t_max > 0, t_min < max_distance)
