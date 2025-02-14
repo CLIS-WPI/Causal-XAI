@@ -135,3 +135,32 @@ def setup_scene(config: SmartFactoryConfig):
     except Exception as e:
         logger.error(f"Scene setup failed: {str(e)}", exc_info=True)
         raise RuntimeError(f"Scene setup failed: {str(e)}") from e
+    
+def verify_los_paths(scene):
+        """Verify line-of-sight paths between BS and AGVs"""
+        logger = logging.getLogger(__name__)
+        
+        # Get BS position
+        bs_pos = scene.transmitters['bs'].position
+        logger.debug(f"\n=== LOS Path Verification ===")
+        logger.debug(f"BS Position: {bs_pos.numpy()}")
+        
+        # Check each AGV
+        for name, rx in scene.receivers.items():
+            rx_pos = rx.position
+            distance = tf.norm(rx_pos - bs_pos)
+            
+            logger.debug(f"\nChecking {name}:")
+            logger.debug(f"- Position: {rx_pos.numpy()}")
+            logger.debug(f"- Distance to BS: {distance.numpy():.2f}m")
+            
+            # Calculate vertical angle
+            height_diff = bs_pos[2] - rx_pos[2]
+            vertical_angle = tf.math.atan2(height_diff, tf.norm(rx_pos[:2] - bs_pos[:2]))
+            logger.debug(f"- Vertical angle: {tf.math.degrees(vertical_angle).numpy():.1f}°")
+            
+            # Check if path should be clear
+            if height_diff > 0:  # BS is higher than AGV
+                logger.debug("✓ Vertical path should be clear")
+            else:
+                logger.warning("✗ Vertical path may be blocked")

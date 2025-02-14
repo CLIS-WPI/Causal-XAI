@@ -1,6 +1,6 @@
 #
 from config import SmartFactoryConfig
-from scene_setup import setup_scene
+from scene_setup import setup_scene, verify_los_paths
 import tensorflow as tf
 import os
 import numpy as np
@@ -546,7 +546,10 @@ def main():
             raise ValueError("Scene setup failed")
         logger.debug("Scene setup completed")
         
-        # Set scene frequency from config
+        #verification call
+        verify_los_paths(scene)
+
+            # Set scene frequency from config
         scene.frequency = tf.cast(config.carrier_frequency, tf.float32)
         logger.debug(f"Scene frequency set to {config.carrier_frequency/1e9:.2f} GHz")
         
