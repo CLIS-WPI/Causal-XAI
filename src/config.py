@@ -39,8 +39,8 @@ class SmartFactoryConfig:
         self.agv_array = [2, 2]          # Increased to 2x2 array for better reception
         self.agv_array_spacing = 0.5 * self.wavelength
         self.rx_array_spacing = 0.5 * self.wavelength
-        self.agv_array_pattern = "iso"     # Added antenna pattern type
-        self.agv_polarization = "V"        # Added polarization config
+        self.agv_array_pattern = "tr38901"     # iso bud##Added antenna pattern type
+        self.agv_polarization = "VH"        # Added polarization config
         
         # Enhanced Material properties
         self.materials = {
@@ -92,35 +92,35 @@ class SmartFactoryConfig:
             [0.0, 0.0, -45.0]    # Rotated -45° for better reception
         ]
 
-        # Enhanced Ray tracing parameters
+        # Update ray tracing parameters for better path detection
         self.ray_tracing = {
-            'max_depth': 5,              # Increased for better path detection
+            'max_depth': 6,              # Increased for better multipath
             'method': "fibonacci",
-            'num_samples': 32768,        # Increased for better coverage
+            'num_samples': 65536,        # Doubled for better coverage
             'diffraction': True,
             'scattering': True,
             'los': True,
             'reflection': True,
-            'ris': False,               # Disabled since not using RIS
+            'ris': False,
             'scene_type': self.scene_type,
-            'scat_keep_prob': 0.6,      # Increased for better scattering
-            'diffraction_coefficient': 0.4,
+            'scat_keep_prob': 0.8,      # Increased probability
+            'diffraction_coefficient': 0.5,
             'min_arrival_angle': -180.0,
             'max_arrival_angle': 180.0,
             'edge_diffraction': True
         }
 
-        # Scene objects with enhanced configuration
+        # Adjust shelf positions further to improve path detection
         self.scene_objects = {
             'num_shelves': 5,
-            'shelf_dimensions': [2.0, 1.0, 4.0],  # [width, depth, height] in meters
+            'shelf_dimensions': [2.0, 1.0, 3.5],  # Reduced height slightly
             'shelf_material': 'metal',
             'shelf_positions': [
-                [5.0, 5.0, 0.0],    # Corner shelf
-                [15.0, 5.0, 0.0],   # Corner shelf
-                [7.0, 10.0, 0.0],   # Moved from center to avoid direct blockage
-                [5.0, 15.0, 0.0],   # Corner shelf
-                [13.0, 15.0, 0.0]   # Moved to reduce AGV blockage
+                [4.0, 4.0, 0.0],     # Moved further from center
+                [16.0, 4.0, 0.0],    # Moved further from center
+                [6.0, 10.0, 0.0],    # Adjusted position
+                [4.0, 16.0, 0.0],    # Moved further from center
+                [14.0, 14.0, 0.0]    # Better position for paths
             ],
             'shelf_orientation': [0.0, 0.0, 0.0]
         }

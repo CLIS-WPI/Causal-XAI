@@ -20,23 +20,29 @@ class SceneManager:
         self._add_metal_shelves()
 
     def _add_materials(self):
-        """Add materials to the scene"""
-        # Add concrete material if it doesn't exist
+        """Add materials to the scene with complete properties"""
+        # Add concrete material
         if 'concrete' not in self._scene.radio_materials:
             concrete = RadioMaterial(
                 name="concrete",
                 relative_permittivity=self.config.materials['concrete']['relative_permittivity'],
-                conductivity=self.config.materials['concrete']['conductivity']
+                conductivity=self.config.materials['concrete']['conductivity'],
+                scattering_coefficient=self.config.materials['concrete']['scattering_coefficient'],
+                xpd_coefficient=self.config.materials['concrete']['xpd_coefficient']
             )
+            concrete.roughness = self.config.materials['concrete']['roughness']
             self._scene.add(concrete)
         
-        # Add metal material if it doesn't exist
+        # Add metal material
         if 'metal' not in self._scene.radio_materials:
             metal = RadioMaterial(
                 name="metal",
                 relative_permittivity=self.config.materials['metal']['relative_permittivity'],
-                conductivity=self.config.materials['metal']['conductivity']
+                conductivity=self.config.materials['metal']['conductivity'],
+                scattering_coefficient=self.config.materials['metal']['scattering_coefficient'],
+                xpd_coefficient=self.config.materials['metal']['xpd_coefficient']
             )
+            metal.roughness = self.config.materials['metal']['roughness']
             self._scene.add(metal)
     
     def _add_room_boundaries(self):

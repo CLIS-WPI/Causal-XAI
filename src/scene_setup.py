@@ -126,6 +126,30 @@ def setup_scene(config: SmartFactoryConfig):
         logger.info(f"  - Diffraction: {config.ray_tracing['diffraction']}")
         logger.info(f"  - Scattering: {config.ray_tracing['scattering']}")
 
+        # Set additional scene parameters
+        scene.synthetic_array = True
+        scene.dtype = config.dtype
+        scene.check_scene = True  # Enable scene checking
+
+        # Enable all propagation mechanisms
+        scene.los = True
+        scene.reflection = True
+        scene.diffraction = True
+        scene.scattering = True
+
+        # Set frequency-dependent parameters
+        scene.frequencies = tf.cast([config.carrier_frequency], dtype=tf.float32)
+
+        # Set coverage parameters
+        scene.coverage_threshold = 0.9  # 90% coverage requirement
+        scene.min_paths = 1  # Minimum paths per Rx
+
+        # Set computational parameters
+        scene.num_samples = config.ray_tracing['num_samples']
+        scene.max_depth = config.ray_tracing['max_depth']
+
+        logger.debug("Scene parameters configured for enhanced path detection")
+
         return scene
 
     except Exception as e:
