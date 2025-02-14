@@ -157,8 +157,8 @@ def verify_los_paths(scene):
             # Calculate vertical angle
             height_diff = bs_pos[2] - rx_pos[2]
             vertical_angle = tf.math.atan2(height_diff, tf.norm(rx_pos[:2] - bs_pos[:2]))
-            logger.debug(f"- Vertical angle: {tf.math.degrees(vertical_angle).numpy():.1f}°")
-            
+            logger.debug(f"- Vertical angle: {(vertical_angle.numpy() * 180/np.pi):.1f}°")
+
             # Check if path should be clear
             if height_diff > 0:  # BS is higher than AGV
                 logger.debug("✓ Vertical path should be clear")
