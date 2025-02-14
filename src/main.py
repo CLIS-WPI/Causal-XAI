@@ -353,21 +353,14 @@ def generate_channel_data(scene, config):
         logger.debug(f"- Contains inf: {tf.reduce_any(tf.math.is_inf(signal_power))}")
         logger.debug(f"- Contains nan: {tf.reduce_any(tf.math.is_nan(signal_power))}")
 
-        noise_power = tf.constant(1e-13, dtype=tf.float32)
-        snr_db = 10.0 * tf.math.log(tf.maximum(signal_power, epsilon) / noise_power) / tf.math.log(10.0)
-        
-        # Add clipping to prevent -inf SNR values
-        min_snr_db = -50.0  # Adjust this value based on your requirements
-        snr_db = tf.maximum(snr_db, min_snr_db)
+        # Calculate average SNR from the previously computed snr value
+        average_snr = tf.reduce_mean(snr)
 
-        # Calculate average SNR for the channel_data dictionary
-        average_snr = tf.reduce_mean(snr_db)
-
-        # Add SNR debug messages right after SNR calculation
-        logger.debug(f"SNR statistics:")
-        logger.debug(f"- Mean SNR: {tf.reduce_mean(snr_db):.2f} dB")
-        logger.debug(f"- Max SNR: {tf.reduce_max(snr_db):.2f} dB")
-        logger.debug(f"- Min SNR: {tf.reduce_min(snr_db):.2f} dB")
+        # Use the 'snr' value that was already calculated
+        logger.debug(f"SNR statistics (from calculated values):")
+        logger.debug(f"- Mean SNR: {tf.reduce_mean(snr):.2f} dB")
+        logger.debug(f"- Max SNR: {tf.reduce_max(snr):.2f} dB")
+        logger.debug(f"- Min SNR: {tf.reduce_min(snr):.2f} dB")
 
         # After calculating path loss (around line 270-280)
         a_abs = tf.abs(a)  # Get magnitude of complex values
@@ -385,7 +378,7 @@ def generate_channel_data(scene, config):
         logger.debug(f"- Min path loss: {tf.reduce_min(path_loss)}")
         
         beam_metrics = {
-            'snr_db': snr_db.numpy(),
+            'snr_db': snr.numpy(),  # Use snr instead of snr_db
             'avg_power': float(tf.reduce_mean(signal_power)),
             'max_power': float(tf.reduce_max(signal_power)),
             'min_power': float(tf.reduce_min(signal_power)),
@@ -417,9 +410,9 @@ def generate_channel_data(scene, config):
         if total_paths > 0:
             logger.info(f"Channel Generation Metrics:")
             logger.info(f"LOS Ratio: {los_statistics['los_ratio']:.2f}")
-            logger.info(f"Average SNR: {tf.reduce_mean(snr_db):.2f} dB")
+            logger.info(f"Average SNR: {tf.reduce_mean(snr):.2f} dB")  # Changed from snr_db to snr
             logger.info(f"Maximum Doppler Shift: {tf.reduce_max(tf.abs(doppler_shifts)):.2f} Hz")
-        
+    
         print("Enhanced channel data generation completed")
         return channel_data
         

@@ -36,7 +36,7 @@ class SmartFactoryConfig:
         self.num_agvs = 2
         self.agv_height = 0.5
         self.agv_speed = 0.83
-        self.agv_array = [1, 1]
+        self.agv_array = [2, 2]          # Increased to 2x2 array for better reception
         self.agv_array_spacing = 0.5 * self.wavelength
         self.rx_array_spacing = 0.5 * self.wavelength
         self.agv_array_pattern = "iso"     # Added antenna pattern type
@@ -49,19 +49,22 @@ class SmartFactoryConfig:
                 'relative_permittivity': 5.31,  
                 'conductivity': 0.0462,
                 'roughness': 1e-3, 
-                'scattering_coefficient': 0.2,
-                'xpd_coefficient': 8.0
+                'scattering_coefficient': 0.4,    # Increased for better scattering
+                'xpd_coefficient': 8.0,           # Cross-polarization discrimination
+                'penetration_loss': 20.0,         # dB/m at 28GHz
+                'penetration_coefficient': 0.3     # Added penetration properties
             },
             'metal': {
                 'name': "metal",
-                'relative_permittivity': 1.0,  # Changed from complex(1.0, -1e7)
+                'relative_permittivity': 1.0,
                 'conductivity': 1.0e7,
                 'roughness': 0.5e-3,
-                'scattering_coefficient': 0.1,
-                'xpd_coefficient': 15.0
+                'scattering_coefficient': 0.2,     # Increased for realistic reflection
+                'xpd_coefficient': 15.0,
+                'penetration_loss': 1000.0,       # High loss for metal
+                'penetration_coefficient': 0.01    # Very low penetration
             }
         }
-
                 # Add camera configurations
         self.cameras = {
             'top': {
@@ -80,46 +83,31 @@ class SmartFactoryConfig:
         
         # Add AGV positions (could be initial positions)
         self.agv_positions = [
-            [15.0, 15.0, self.agv_height],
-            [10.0, 15.0, self.agv_height]
+            [15.0, 15.0, self.agv_height],  # AGV 1 position unchanged
+            [10.0, 13.0, self.agv_height]   # AGV 2 slightly back from wall
         ]
-        
+
         self.agv_orientations = [
-            [0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0]
+            [0.0, 0.0, 45.0],    # Rotated 45° for better reception
+            [0.0, 0.0, -45.0]    # Rotated -45° for better reception
         ]
 
         # Enhanced Ray tracing parameters
         self.ray_tracing = {
-            'max_depth': 3,         
+            'max_depth': 5,              # Increased for better path detection
             'method': "fibonacci",
-            'num_samples': 16384, 
+            'num_samples': 32768,        # Increased for better coverage
             'diffraction': True,
-            'scattering': True ,
+            'scattering': True,
             'los': True,
             'reflection': True,
-            'ris': True,
+            'ris': False,               # Disabled since not using RIS
             'scene_type': self.scene_type,
-            'scat_keep_prob': 0.3,
-            'diffraction_coefficient': 0.3,
+            'scat_keep_prob': 0.6,      # Increased for better scattering
+            'diffraction_coefficient': 0.4,
             'min_arrival_angle': -180.0,
             'max_arrival_angle': 180.0,
             'edge_diffraction': True
-
-        }
-
-        # Material properties for ray tracing
-        self.materials = {
-            'concrete': {
-                'name': 'concrete',
-                'relative_permittivity': 5.31,
-                'conductivity': 0.0462
-            },
-            'metal': {
-                'name': 'metal',
-                'relative_permittivity': 1.0,
-                'conductivity': 1.0e7
-            }
         }
 
         # Scene objects with enhanced configuration
@@ -128,13 +116,13 @@ class SmartFactoryConfig:
             'shelf_dimensions': [2.0, 1.0, 4.0],  # [width, depth, height] in meters
             'shelf_material': 'metal',
             'shelf_positions': [
-                [5.0, 5.0, 0.0],   # Shelf 1 position 
-                [15.0, 5.0, 0.0],  # Shelf 2 position
-                [10.0, 10.0, 0.0], # Shelf 3 position
-                [5.0, 15.0, 0.0],  # Shelf 4 position
-                [15.0, 15.0, 0.0]  # Shelf 5 position
+                [5.0, 5.0, 0.0],    # Corner shelf
+                [15.0, 5.0, 0.0],   # Corner shelf
+                [7.0, 10.0, 0.0],   # Moved from center to avoid direct blockage
+                [5.0, 15.0, 0.0],   # Corner shelf
+                [13.0, 15.0, 0.0]   # Moved to reduce AGV blockage
             ],
-            'shelf_orientation': [0.0, 0.0, 0.0]  # Default orientation [roll, pitch, yaw]
+            'shelf_orientation': [0.0, 0.0, 0.0]
         }
 
         # Static scene configuration
