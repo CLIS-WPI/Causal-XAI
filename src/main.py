@@ -138,16 +138,17 @@ def generate_channel_data(scene, config):
         logger.info("Starting channel data generation...")
         epsilon = tf.constant(1e-8, dtype=tf.float32)
         # Compute paths using ray tracing with correct parameters
+        # In generate_channel_data function, update the compute_paths call:
         paths = scene.compute_paths(
             max_depth=config.ray_tracing['max_depth'],
-            method=config.ray_tracing['method'],
+            method="fibonacci",
             num_samples=config.ray_tracing['num_samples'],
-            los=config.ray_tracing['los'],
-            reflection=config.ray_tracing['reflection'],
-            diffraction=config.ray_tracing['diffraction'],
-            scattering=config.ray_tracing['scattering'],
-            scat_keep_prob=config.ray_tracing['scat_keep_prob'],
-            edge_diffraction=config.ray_tracing['edge_diffraction']
+            los=True,
+            reflection=True,
+            diffraction=True,
+            scattering=True,
+            scat_keep_prob=0.8,
+            edge_diffraction=True,
         )
         
         if paths is None:

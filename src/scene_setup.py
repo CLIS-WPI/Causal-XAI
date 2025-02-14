@@ -33,8 +33,14 @@ def setup_scene(config: SmartFactoryConfig):
         logger.debug(f"Number of AGVs: {config.num_agvs}")
         logger.debug(f"Carrier frequency: {config.carrier_frequency} Hz")
         
-        # Create scene - remove max_depth parameter
-        scene = Scene(env_filename="__empty__", dtype=config.dtype)
+        # Create scene with only supported initialization parameters
+        scene = Scene(
+            env_filename="__empty__", 
+            dtype=config.dtype
+        )
+        
+        # Set synthetic array property
+        scene.synthetic_array = True
         
         # Initialize scene manager
         manager = SceneManager(scene, config)
@@ -55,7 +61,6 @@ def setup_scene(config: SmartFactoryConfig):
         # Set transmitter array for the scene
         scene.tx_array = bs.array
         logger.debug(f"BS array configuration: {bs.array}")
-
 
         # Debug print AGV configurations
         logger.debug("\n=== AGV Configurations ===")
@@ -79,19 +84,6 @@ def setup_scene(config: SmartFactoryConfig):
             )
             _debug_object_state(rx, f"AGV_{i}")
             
-            # visibility checking 
-            start = tf.constant(config.bs_position, dtype=tf.float32)
-            end = rx.position
-            direction = tf.nn.l2_normalize(end - start, axis=-1)
-            logger.debug(f"\nChecking visibility for AGV_{i}:")
-            logger.debug(f"Start point: {start}")
-            logger.debug(f"End point: {end}")
-            logger.debug(f"Direction vector: {direction}")
-
-            # Check for potential LOS blockage
-            logger.debug(f"Height difference with BS: {abs(config.agv_positions[i][2] - config.bs_position[2]):.2f} meters")
-            
-            # Store array configuration from first AGV
             if i == 0:
                 agv_array = rx.array
                 logger.debug(f"AGV array configuration: {rx.array}")
@@ -105,15 +97,23 @@ def setup_scene(config: SmartFactoryConfig):
         logger.debug(f"Method: {config.ray_tracing.get('method', 'Not set')}")
         logger.debug(f"Number of samples: {config.ray_tracing.get('num_samples', 'Not set')}")
         
-        # Configure ray-tracing parameters
-        scene.synthetic_array = True
-        logger.debug(f"Synthetic array enabled: {scene.synthetic_array}")
+        # Set propagation mechanisms
+        scene.los = True
+        scene.reflection = True
+        scene.diffraction = True
+        scene.scattering = True
         
-        # Set ray tracing specific parameters
-        scene.los = config.ray_tracing['los']
-        scene.reflection = config.ray_tracing['reflection']
-        scene.diffraction = config.ray_tracing['diffraction']
-        scene.scattering = config.ray_tracing['scattering']
+        # Set ray tracing parameters with additional path detection settings
+        scene.max_depth = config.ray_tracing['max_depth']
+        scene.num_samples = config.ray_tracing['num_samples']
+        scene.method = config.ray_tracing['method']
+        
+        # Set visibility parameters
+        scene.test_medium = True  # Enable visibility testing through materials
+        scene.delete_duplicates = True  # Remove duplicate paths
+        
+        # Set frequency
+        scene.frequency = config.carrier_frequency
         
         # Log final scene state
         logger.info("\n=== Final Scene State ===")
@@ -121,34 +121,14 @@ def setup_scene(config: SmartFactoryConfig):
         logger.info(f"- Receivers: {len(scene.receivers)}")
         logger.info(f"- Objects: {len(scene.objects)}")
         logger.info(f"- Ray tracing enabled with:")
-        logger.info(f"  - LOS: {config.ray_tracing['los']}")
-        logger.info(f"  - Reflection: {config.ray_tracing['reflection']}")
-        logger.info(f"  - Diffraction: {config.ray_tracing['diffraction']}")
-        logger.info(f"  - Scattering: {config.ray_tracing['scattering']}")
-
-        # Set additional scene parameters
-        scene.synthetic_array = True
-        scene.dtype = config.dtype
-        scene.check_scene = True  # Enable scene checking
-
-        # Enable all propagation mechanisms
-        scene.los = True
-        scene.reflection = True
-        scene.diffraction = True
-        scene.scattering = True
-
-        # Set frequency-dependent parameters
-        scene.frequencies = tf.cast([config.carrier_frequency], dtype=tf.float32)
-
-        # Set coverage parameters
-        scene.coverage_threshold = 0.9  # 90% coverage requirement
-        scene.min_paths = 1  # Minimum paths per Rx
-
-        # Set computational parameters
-        scene.num_samples = config.ray_tracing['num_samples']
-        scene.max_depth = config.ray_tracing['max_depth']
-
-        logger.debug("Scene parameters configured for enhanced path detection")
+        logger.info(f"  - LOS: {scene.los}")
+        logger.info(f"  - Reflection: {scene.reflection}")
+        logger.info(f"  - Diffraction: {scene.diffraction}")
+        logger.info(f"  - Scattering: {scene.scattering}")
+        logger.info(f"  - Method: {scene.method}")
+        logger.info(f"  - Max depth: {scene.max_depth}")
+        logger.info(f"  - Num samples: {scene.num_samples}")
+        logger.info(f"  - Test medium: {scene.test_medium}")
 
         return scene
 

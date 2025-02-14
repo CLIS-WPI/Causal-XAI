@@ -45,22 +45,23 @@ class SceneManager:
             metal.roughness = self.config.materials['metal']['roughness']
             self._scene.add(metal)
     
+    # In SceneManager._add_room_boundaries:
     def _add_room_boundaries(self):
-        """Add walls, floor and ceiling with proper orientations"""
+        """Add walls, floor and ceiling"""
         length, width, height = self.config.room_dim
         
-        # Define boundaries with correct orientations
+        # Define boundaries with explicit sizes and orientations
         boundaries = [
-            # name, position, orientation, size
-            ("floor", [length/2, width/2, 0], [0, 0, 0], [length, width]),
-            ("ceiling", [length/2, width/2, height], [180, 0, 0], [length, width]),
-            ("wall_front", [length/2, 0, height/2], [0, -90, 0], [length, height]),
-            ("wall_back", [length/2, width, height/2], [0, 90, 0], [length, height]),
-            ("wall_left", [0, width/2, height/2], [-90, 0, 0], [width, height]),
-            ("wall_right", [length, width/2, height/2], [90, 0, 0], [width, height])
+            # name, position, orientation, size, normal
+            ("floor", [length/2, width/2, 0], [0, 0, 0], [length, width], [0, 0, 1]),
+            ("ceiling", [length/2, width/2, height], [180, 0, 0], [length, width], [0, 0, -1]),
+            ("wall_front", [length/2, 0, height/2], [90, 0, 0], [length, height], [0, 1, 0]),
+            ("wall_back", [length/2, width, height/2], [-90, 0, 0], [length, height], [0, -1, 0]),
+            ("wall_left", [0, width/2, height/2], [0, 90, 0], [width, height], [1, 0, 0]),
+            ("wall_right", [length, width/2, height/2], [0, -90, 0], [width, height], [-1, 0, 0])
         ]
 
-        for name, position, orientation, size in boundaries:
+        for name, position, orientation, size, normal in boundaries:
             if name not in self._scene.transmitters:
                 boundary = Transmitter(
                     name=name,
@@ -68,14 +69,10 @@ class SceneManager:
                     orientation=tf.constant(orientation, dtype=tf.float32)
                 )
                 boundary.scene = self._scene
-                boundary.size = size  # Set the size of the boundary
+                boundary.size = size
+                boundary.normal = tf.constant(normal, dtype=tf.float32)
                 boundary.radio_material = self._scene.radio_materials["concrete"]
-                
-                # Add scattering properties
                 boundary.scattering_coefficient = self.config.materials['concrete']['scattering_coefficient']
-                if hasattr(self.config.materials['concrete'], 'roughness'):
-                    boundary.roughness = self.config.materials['concrete']['roughness']
-                
                 self._scene.add(boundary)
 
     def _add_metal_shelves(self):
