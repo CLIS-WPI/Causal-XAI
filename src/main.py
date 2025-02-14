@@ -545,12 +545,18 @@ def main():
         if not scene:
             raise ValueError("Scene setup failed")
         logger.debug("Scene setup completed")
-        
-        #verification call
+
+        # Add the camera configuration here:
+        logger.info("Configuring scene camera...")
+        scene.camera = {
+            'position': [30.0, 10.0, 2.5],  # Side view
+            'look_at': [10.0, 10.0, 2.5],   # Look at center
+            'up': [0, 0, 1]
+        }
+
+        # Then continue with the existing code:
         verify_los_paths(scene)
-
         scene.preview()
-
         scene.render_to_file(
             camera="preview",
             filename="my_scene_preview.png"

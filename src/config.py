@@ -90,9 +90,9 @@ class SmartFactoryConfig:
 
         # Update ray tracing parameters for better path detection
         self.ray_tracing = {
-            'max_depth': 12,              # Reduced for more focused paths
+            'max_depth': 6,              # Reduced for more focused paths
             'method': "fibonacci",
-            'num_samples': 30072,       # Doubled for better coverage
+            'num_samples': 1000,       # Doubled for better coverage
             'diffraction': True,
             'scattering': True,
             'los': True,
