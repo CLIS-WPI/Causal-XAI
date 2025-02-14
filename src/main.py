@@ -137,18 +137,24 @@ def generate_channel_data(scene, config):
     try:
         logger.info("Starting channel data generation...")
         epsilon = tf.constant(1e-8, dtype=tf.float32)
+        logger.debug("=== Generating channel data ===")
+        logger.debug("Ray tracing configuration:")
+        logger.debug(f"- Method: {config.ray_tracing['method']}")
+        logger.debug(f"- Max depth: {config.ray_tracing['max_depth']}")
+        logger.debug(f"- Num samples: {config.ray_tracing['num_samples']}")
+        logger.debug(f"- LOS enabled: {config.ray_tracing['los']}")
+
         # Compute paths using ray tracing with correct parameters
-        # In generate_channel_data function, update the compute_paths call:
         paths = scene.compute_paths(
             max_depth=config.ray_tracing['max_depth'],
-            method="fibonacci",
+            method=config.ray_tracing['method'],
             num_samples=config.ray_tracing['num_samples'],
-            los=True,
-            reflection=True,
-            diffraction=True,
-            scattering=True,
-            scat_keep_prob=0.8,
-            edge_diffraction=True,
+            los=config.ray_tracing['los'],
+            reflection=config.ray_tracing['reflection'],
+            diffraction=config.ray_tracing['diffraction'],
+            scattering=config.ray_tracing['scattering'],
+            scat_keep_prob=config.ray_tracing['scat_keep_prob'],
+            edge_diffraction=config.ray_tracing['edge_diffraction']
         )
         
         if paths is None:
@@ -478,57 +484,85 @@ def save_channel_data(channel_data, filepath):
 
 def main():
     """Main execution function"""
-    result_dir = ensure_result_dir()
-    scene = None
-    
     try:
-        # Set random seed
+        # Set up logging
+        logger.info("Starting smart factory channel simulation...")
+        
+        # Create results directory
+        result_dir = ensure_result_dir()
+        logger.debug(f"Results directory: {result_dir}")
+        
+        # Set random seeds for reproducibility
         tf.random.set_seed(42)
         np.random.seed(42)
-        
-        # First generate PLY files in src/meshes
-        print("Generating PLY files...")
-        SionnaPLYGenerator.generate_factory_geometries(
-            room_dims=[20, 20, 5],
-            shelf_dims=[2, 1, 4],
-            output_dir=os.path.join(os.path.dirname(__file__), 'meshes')  # This ensures meshes is created in src
-        )
-        print("PLY files generated successfully")
         
         # Initialize configuration
         config = SmartFactoryConfig()
         validate_config(config)
+        logger.debug("Configuration initialized and validated")
+        
+        # Update PLY output directory in config
+        config.ply_config['output_dir'] = os.path.join(os.path.dirname(__file__), 'meshes')
+        
+        # Generate PLY files using config
+        logger.info("Generating PLY files...")
+        SionnaPLYGenerator.generate_factory_geometries(config)
+        logger.info("PLY files generated successfully")
         
         # Setup scene
+        logger.info("Setting up scene...")
         scene = setup_scene(config)
         if not scene:
             raise ValueError("Scene setup failed")
+        logger.debug("Scene setup completed")
         
-        # Set scene frequency
+        # Set scene frequency from config
         scene.frequency = tf.cast(config.carrier_frequency, tf.float32)
+        logger.debug(f"Scene frequency set to {config.carrier_frequency/1e9:.2f} GHz")
         
         # Generate channel data
-        print("Generating channel data...")
+        logger.info("Generating channel data...")
         channel_data = generate_channel_data(scene, config)
+        logger.info("Channel data generation completed")
         
         # Save channel data
         h5_filepath = os.path.join(result_dir, 'channel_data.h5')
+        logger.info(f"Saving channel data to: {h5_filepath}")
         save_channel_data(channel_data, h5_filepath)
-        print(f"Channel data saved to: {h5_filepath}")
+        logger.info("Channel data saved successfully")
         
-        # Print basic statistics
-        print("\nChannel Data Statistics:")
-        print(f"Channel matrices shape: {channel_data['channel_matrices'].shape}")
-        print(f"Path delays shape: {channel_data['path_delays'].shape}")
-        print(f"Number of receivers: {len(channel_data['agv_positions'])}")
+        # Print statistics
+        logger.info("\nChannel Data Statistics:")
+        stats = {
+            'Channel matrices shape': channel_data['channel_matrices'].shape,
+            'Path delays shape': channel_data['path_delays'].shape,
+            'Number of receivers': len(channel_data['agv_positions']),
+            'LOS ratio': channel_data['los_statistics']['los_ratio'],
+            'Average SNR (dB)': channel_data['average_snr'],
+            'Max Doppler shift (Hz)': tf.reduce_max(tf.abs(channel_data['doppler_shifts']))
+        }
+        
+        for key, value in stats.items():
+            logger.info(f"{key}: {value}")
+            print(f"{key}: {value}")
         
     except Exception as e:
-        print(f"Error in execution: {str(e)}")
-        logger.error(f"Error in execution: {str(e)}")
+        logger.error(f"Error in execution: {str(e)}", exc_info=True)
         raise
         
     finally:
-        print("Execution completed")
+        logger.info("Execution completed")
 
 if __name__ == "__main__":
+    # Set up logging format
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler('smart_factory.log'),
+            logging.StreamHandler()
+        ]
+    )
+    
+    # Run main function
     main()

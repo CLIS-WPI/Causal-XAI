@@ -46,23 +46,19 @@ class SmartFactoryConfig:
         self.materials = {
             'concrete': {
                 'name': "concrete",
-                'relative_permittivity': 5.31,  
+                'relative_permittivity': 5.31,
                 'conductivity': 0.0462,
-                'roughness': 1e-3, 
-                'scattering_coefficient': 0.4,    # Increased for better scattering
-                'xpd_coefficient': 8.0,           # Cross-polarization discrimination
-                'penetration_loss': 20.0,         # dB/m at 28GHz
-                'penetration_coefficient': 0.3     # Added penetration properties
+                'roughness': 1e-3,
+                'scattering_coefficient': 0.4,
+                'xpd_coefficient': 8.0
             },
             'metal': {
                 'name': "metal",
                 'relative_permittivity': 1.0,
                 'conductivity': 1.0e7,
-                'roughness': 0.5e-3,
-                'scattering_coefficient': 0.2,     # Increased for realistic reflection
-                'xpd_coefficient': 15.0,
-                'penetration_loss': 1000.0,       # High loss for metal
-                'penetration_coefficient': 0.01    # Very low penetration
+                'roughness': 0.2e-3,  # Smoother surface
+                'scattering_coefficient': 0.3,
+                'xpd_coefficient': 15.0
             }
         }
                 # Add camera configurations
@@ -84,47 +80,43 @@ class SmartFactoryConfig:
         # Add AGV positions (could be initial positions)
         self.agv_positions = [
             [15.0, 15.0, self.agv_height],  # AGV 1 position unchanged
-            [10.0, 13.0, self.agv_height]   # AGV 2 slightly back from wall
+            [10.0, 12.0, self.agv_height]   # AGV 2 slightly back from wall
         ]
 
         self.agv_orientations = [
-            [0.0, 0.0, 45.0],    # Rotated 45° for better reception
-            [0.0, 0.0, -45.0]    # Rotated -45° for better reception
+            [0.0, 0.0, 30.0],    # Rotated 45° for better reception
+            [0.0, 0.0, -30.0]    # Rotated -45° for better reception
         ]
 
         # Update ray tracing parameters for better path detection
         self.ray_tracing = {
-            'max_depth': 6,              # Increased for better multipath
+            'max_depth': 4,              # Reduced for more focused paths
             'method': "fibonacci",
-            'num_samples': 65536,        # Doubled for better coverage
+            'num_samples': 131072,       # Doubled for better coverage
             'diffraction': True,
             'scattering': True,
             'los': True,
             'reflection': True,
             'ris': False,
             'scene_type': self.scene_type,
-            'scat_keep_prob': 0.8,      # Increased probability
-            'diffraction_coefficient': 0.5,
-            'min_arrival_angle': -180.0,
-            'max_arrival_angle': 180.0,
+            'scat_keep_prob': 0.9,      # Increased probability
             'edge_diffraction': True
         }
 
         # Adjust shelf positions further to improve path detection
         self.scene_objects = {
             'num_shelves': 5,
-            'shelf_dimensions': [2.0, 1.0, 3.5],  # Reduced height slightly
+            'shelf_dimensions': [2.0, 1.0, 3.0],  # Reduced height further
             'shelf_material': 'metal',
             'shelf_positions': [
-                [4.0, 4.0, 0.0],     # Moved further from center
-                [16.0, 4.0, 0.0],    # Moved further from center
-                [6.0, 10.0, 0.0],    # Adjusted position
-                [4.0, 16.0, 0.0],    # Moved further from center
-                [14.0, 14.0, 0.0]    # Better position for paths
+                [3.0, 3.0, 0.0],     # Moved to corners more
+                [17.0, 3.0, 0.0],    # Moved to corners more
+                [5.0, 10.0, 0.0],    # Further from center
+                [3.0, 17.0, 0.0],    # Moved to corners more
+                [17.0, 17.0, 0.0]    # Moved to corners more
             ],
             'shelf_orientation': [0.0, 0.0, 0.0]
         }
-
         # Static scene configuration
         self.static_scene = {
             'walls': True,
@@ -171,7 +163,22 @@ class SmartFactoryConfig:
             'channel_estimation_error': 0.1
             }
 
-                
+        # PLY generator configuration
+        self.ply_config = {
+            'room_dims': self.room_dim,  # Use existing room dimensions
+            'shelf_dims': self.scene_objects['shelf_dimensions'],  # Use existing shelf dimensions
+            'shelf_positions': self.scene_objects['shelf_positions'],  # Use existing shelf positions
+            'output_dir': 'meshes',  # Default output directory
+            'geometry_mapping': {
+                'floor': {'z': 0},
+                'ceiling': {'z': self.room_dim[2]},
+                'wall_xp': {'x': self.room_dim[0]},
+                'wall_xm': {'x': 0},
+                'wall_yp': {'y': self.room_dim[1]},
+                'wall_ym': {'y': 0}
+            }
+        }
+
         self.shap = {
             'analysis': {
                 'num_background_samples': 100,
