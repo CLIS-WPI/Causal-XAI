@@ -198,3 +198,36 @@ class SmartFactoryConfig:
                 'ris_state': True
             }
         }
+
+        # In config.py, update the cameras configuration:
+        self.cameras = {
+            'top': {
+                'position': [10.0, 10.0, 20.0],
+                'look_at': [10.0, 10.0, 0.0],
+                'up': [0.0, 1.0, 0.0],
+                'fov': 60.0,
+                'filename': 'top_view.png'
+            },
+            'side': {
+                'position': [35.0, 10.0, 5.0],
+                'look_at': [10.0, 10.0, 2.5],
+                'up': [0.0, 0.0, 1.0],
+                'fov': 45.0,
+                'filename': 'side_view.png'
+            },
+            'corner': {
+                'position': [30.0, 30.0, 15.0],
+                'look_at': [10.0, 10.0, 2.5],
+                'up': [0.0, 0.0, 1.0],
+                'fov': 50.0,
+                'filename': 'corner_view.png'
+            }
+        }
+
+        # Add render configuration
+        self.render_config = {
+            'width': 1920,
+            'height': 1080,
+            'background_color': [0.8, 0.8, 0.8],
+            'ambient_light': [0.3, 0.3, 0.3]
+        }

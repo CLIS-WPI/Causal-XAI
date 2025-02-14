@@ -10,7 +10,7 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
         <integer name="max_depth" value="12"/>
     </integrator>
     <emitter type="constant" id="World">
-        <rgb name="radiance" value="1.0 1.0 1.0"/>
+        <rgb name="radiance" value="1.5 1.5 1.5"/>
     </emitter>
 
     <!-- ======================

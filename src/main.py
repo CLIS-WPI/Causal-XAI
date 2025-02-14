@@ -546,19 +546,28 @@ def main():
             raise ValueError("Scene setup failed")
         logger.debug("Scene setup completed")
 
-        # Add the camera configuration here:
-        logger.info("Configuring scene camera...")
+        # Configure camera and render settings
+        logger.info("Configuring scene camera and render settings...")
         scene.camera = {
             'position': [30.0, 10.0, 2.5],  # Side view
             'look_at': [10.0, 10.0, 2.5],   # Look at center
             'up': [0, 0, 1]
         }
 
-        # Then continue with the existing code:
+        # Set render configuration
+        scene.render_config = {
+            'width': 1920,
+            'height': 1080,
+            'background_color': [0.8, 0.8, 0.8]  # Light gray background
+        }
+
+        # Verify LOS paths and preview
         verify_los_paths(scene)
         scene.preview()
+
+        # Render with "preview" camera
         scene.render_to_file(
-            camera="preview",
+            camera="preview",  # Use "preview" instead of "camera"
             filename="my_scene_preview.png"
         )
 
