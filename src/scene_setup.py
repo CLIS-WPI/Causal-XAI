@@ -4,7 +4,7 @@ import logging
 from sionna.rt import Scene, RadioMaterial
 from scene_manager import SceneManager
 from config import SmartFactoryConfig
-
+import numpy as np
 # Setup logger
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)

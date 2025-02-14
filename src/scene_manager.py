@@ -1,5 +1,5 @@
 import tensorflow as tf
-from sionna.rt import Scene, Transmitter, Receiver, RIS, RadioMaterial, PlanarArray
+from sionna.rt import Scene, SceneObject , Transmitter, Receiver, RIS, RadioMaterial, PlanarArray
 import logging
 from config import SmartFactoryConfig
 from sionna.rt import CellGrid, DiscretePhaseProfile 
