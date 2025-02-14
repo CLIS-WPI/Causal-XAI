@@ -4,7 +4,7 @@ import sionna
 from scene_setup import setup_scene
 from sionna.constants import SPEED_OF_LIGHT
 from sionna.channel.utils import cir_to_ofdm_channel
-from sionna.rt import Scene, Transmitter, Receiver, RIS, PlanarArray, RadioMaterial, Paths
+from sionna.rt import Scene, Transmitter, Receiver, PlanarArray, RadioMaterial, Paths
 from sionna.rt import DiscretePhaseProfile, CellGrid
 import logging
 from sionna.channel.utils import subcarrier_frequencies
@@ -163,7 +163,6 @@ class SmartFactoryChannel:
                 reflection=config.ray_tracing['reflection'],
                 diffraction=config.ray_tracing['diffraction'],
                 scattering=config.ray_tracing['scattering'],
-                ris=config.ray_tracing['ris'],
                 scat_keep_prob=config.ray_tracing['scat_keep_prob'],
                 edge_diffraction=config.ray_tracing['edge_diffraction']
             )

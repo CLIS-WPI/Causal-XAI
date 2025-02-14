@@ -56,19 +56,6 @@ def setup_scene(config: SmartFactoryConfig):
         scene.tx_array = bs.array
         logger.debug(f"BS array configuration: {bs.array}")
 
-        # Debug print RIS configuration
-        logger.debug("\n=== RIS Configuration ===")
-        logger.debug(f"RIS position: {config.ris_position}")
-        logger.debug(f"RIS orientation: {config.ris_orientation}")
-        logger.debug(f"RIS elements: {config.ris_elements}")
-
-        # Add RIS
-        ris = manager.add_ris(
-            name="ris",
-            position=tf.constant(config.ris_position, dtype=tf.float32),
-            orientation=tf.constant(config.ris_orientation, dtype=tf.float32)
-        )
-        _debug_object_state(ris, "RIS")
 
         # Debug print AGV configurations
         logger.debug("\n=== AGV Configurations ===")
@@ -132,7 +119,6 @@ def setup_scene(config: SmartFactoryConfig):
         logger.info("\n=== Final Scene State ===")
         logger.info(f"- Transmitters: {len(scene.transmitters)}")
         logger.info(f"- Receivers: {len(scene.receivers)}")
-        logger.info(f"- RIS: {len(scene.ris)}")
         logger.info(f"- Objects: {len(scene.objects)}")
         logger.info(f"- Ray tracing enabled with:")
         logger.info(f"  - LOS: {config.ray_tracing['los']}")

@@ -32,13 +32,6 @@ class SmartFactoryConfig:
         self.bs_array_pattern = "tr38901"  # Added antenna pattern type
         self.bs_polarization = "VH"        # Added polarization config
         
-        # Enhanced RIS configuration
-        self.ris_position = [10.0, 19.5, 2.5] # 3D position array [x, y, z]
-        self.ris_orientation = [0.0, -90.0, 0.0]  # Facing south # 3D orientation array [rx, ry, rz] 
-        self.ris_elements = [8, 8]  # 8x8 elements # 2D array [num_rows, num_cols]
-        self.ris_spacing = 0.5 * self.wavelength # RIS element spacing
-        self.ris_modes = 1  # Number of modes for RIS # Number of modes for RIS
-        
         # Enhanced AGV configuration
         self.num_agvs = 2
         self.agv_height = 0.5
@@ -53,17 +46,19 @@ class SmartFactoryConfig:
         self.materials = {
             'concrete': {
                 'name': "concrete",
-                'relative_permittivity': 4.5,  # Changed from complex(4.5)
-                'conductivity': 0.01,
+                'relative_permittivity': 5.31,  
+                'conductivity': 0.0462,
+                'roughness': 1e-3, 
                 'scattering_coefficient': 0.2,
                 'xpd_coefficient': 8.0
             },
             'metal': {
                 'name': "metal",
                 'relative_permittivity': 1.0,  # Changed from complex(1.0, -1e7)
-                'conductivity': 1e7,
+                'conductivity': 1.0e7,
+                'roughness': 0.5e-3,
                 'scattering_coefficient': 0.1,
-                'xpd_coefficient': 10.0
+                'xpd_coefficient': 15.0
             }
         }
 
@@ -96,16 +91,19 @@ class SmartFactoryConfig:
 
         # Enhanced Ray tracing parameters
         self.ray_tracing = {
-            'max_depth': 5,         
+            'max_depth': 3,         
             'method': "fibonacci",
-            'num_samples': 4096, 
+            'num_samples': 16384, 
             'diffraction': True,
             'scattering': True ,
             'los': True,
             'reflection': True,
             'ris': True,
             'scene_type': self.scene_type,
-            'scat_keep_prob': 0.5,
+            'scat_keep_prob': 0.3,
+            'diffraction_coefficient': 0.3,
+            'min_arrival_angle': -180.0,
+            'max_arrival_angle': 180.0,
             'edge_diffraction': True
 
         }
@@ -146,6 +144,7 @@ class SmartFactoryConfig:
             'ceiling': True,
             'wall_thickness': 0.2,
             'material': 'concrete',
+            'diffraction_edges': True,
             'scene_type': self.scene_type
         }
 
@@ -157,11 +156,6 @@ class SmartFactoryConfig:
             'beam_azimuth': [-60, 60]
         }
 
-        self.ris_config = {
-            'phase_resolution': 2,
-            'optimization_method': 'gradient',
-            'update_interval': 10
-        }
 
         self.energy = {
             'beam_scan_power': 0.1,
@@ -185,7 +179,7 @@ class SmartFactoryConfig:
 
         self.simulation = {
             'time_step': 0.001,
-            'snr_range': [-10, 30],
+            'snr_range': [-20, 40],
             'channel_estimation_error': 0.1
             }
 
