@@ -512,6 +512,17 @@ def save_channel_data(channel_data, filepath):
         logger.error(f"Error saving channel data to {filepath}: {str(e)}")
         raise
 
+def verify_camera_renders(scene, config):
+    """Verify that all camera renders were successful"""
+    for cam_name, cam_params in config.cameras.items():
+        if not os.path.exists(cam_params['filename']):
+            logger.warning(f"Failed to generate render for {cam_name} camera")
+        else:
+            file_size = os.path.getsize(cam_params['filename'])
+            logger.info(f"Camera {cam_name} render saved: {file_size} bytes")
+            if file_size < 1000:
+                logger.warning(f"Warning: {cam_name} render file is suspiciously small")
+
 def main():
     """Main execution function"""
     try:
@@ -546,32 +557,43 @@ def main():
             raise ValueError("Scene setup failed")
         logger.debug("Scene setup completed")
 
-        # Configure camera and render settings
-        logger.info("Configuring scene camera and render settings...")
-        scene.camera = {
-            'position': [30.0, 10.0, 2.5],  # Side view
-            'look_at': [10.0, 10.0, 2.5],   # Look at center
-            'up': [0, 0, 1]
-        }
+        # Configure cameras and render settings
+        logger.info("Configuring scene cameras and render settings...")
 
-        # Set render configuration
-        scene.render_config = {
-            'width': 1920,
-            'height': 1080,
-            'background_color': [0.8, 0.8, 0.8]  # Light gray background
-        }
+        # Set render configuration from config
+        scene.render_config = config.render_config
 
-        # Verify LOS paths and preview
+        # Add cameras to scene and render from each
+        for cam_name, cam_params in config.cameras.items():
+            try:
+                # Add camera to scene
+                scene.cameras[f"scene-cam-{cam_name}"] = {
+                    'position': cam_params['position'],
+                    'look_at': cam_params['look_at'],
+                    'up': cam_params['up'],
+                    'fov': cam_params['fov']
+                }
+                
+                # Render from this camera
+                logger.info(f"Rendering from {cam_name} camera...")
+                render_filename = os.path.join(result_dir, cam_params['filename'])
+                scene.render_to_file(
+                    camera=f"scene-cam-{cam_name}",
+                    filename=render_filename
+                )
+                logger.info(f"Successfully rendered {render_filename}")
+                
+            except Exception as e:
+                logger.error(f"Error rendering from {cam_name} camera: {str(e)}")
+                continue
+
+        # Verify all renders were successful
+        verify_camera_renders(scene, config)
+
+        # Verify LOS paths
         verify_los_paths(scene)
-        scene.preview()
 
-        # Render with "preview" camera
-        scene.render_to_file(
-            camera="preview",  # Use "preview" instead of "camera"
-            filename="my_scene_preview.png"
-        )
-
-            # Set scene frequency from config
+        # Set scene frequency from config
         scene.frequency = tf.cast(config.carrier_frequency, tf.float32)
         logger.debug(f"Scene frequency set to {config.carrier_frequency/1e9:.2f} GHz")
         
