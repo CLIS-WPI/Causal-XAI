@@ -1,3 +1,4 @@
+#channel_generator.py
 import tensorflow as tf
 import numpy as np
 import sionna

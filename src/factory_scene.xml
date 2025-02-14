@@ -1,69 +1,113 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- factory_scene.xml
+This XML scene file references the generated PLY files for a 20×20×5
+warehouse with five metal shelves, plus concrete floor, ceiling, and walls.
+Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
+-->
 <scene version="2.1.0">
+    <!-- Simple integrator and constant emitter for baseline lighting -->
     <integrator type="path">
         <integer name="max_depth" value="12"/>
     </integrator>
-
     <emitter type="constant" id="World">
-        <rgb value="1.0 1.0 1.0" name="radiance"/>
+        <rgb name="radiance" value="1.0 1.0 1.0"/>
     </emitter>
 
+    <!-- ======================
+        MATERIAL DEFINITIONS
+        ====================== -->
+
+    <!-- Concrete material (for floor, ceiling, walls) -->
     <bsdf type="twosided" id="mat-itu_concrete">
         <bsdf type="diffuse">
-            <rgb value="0.6 0.6 0.6" name="reflectance"/>
+            <rgb name="reflectance" value="0.6 0.6 0.6"/>
         </bsdf>
     </bsdf>
 
-    <shape type="rectangle" id="floor">
-        <transform name="to_world">
-            <scale value="20 20 1"/>
-            <translate value="10 10 0"/>
-        </transform>
-        <ref id="mat-itu_concrete" name="bsdf"/>
+    <!-- Metal material (for shelves) -->
+    <bsdf type="twosided" id="mat-itu_metal">
+        <bsdf type="diffuse">
+            <rgb name="reflectance" value="0.2 0.2 0.2"/>
+        </bsdf>
+    </bsdf>
+
+    <!-- ======================
+        BOUNDARIES (CONCRETE)
+        ====================== -->
+
+    <!-- Floor -->
+    <shape type="ply" id="floor">
+        <string name="filename" value="meshes/floor.ply"/>
+        <boolean name="face_normals" value="true"/>
+        <ref name="bsdf" id="mat-itu_concrete"/>
     </shape>
 
-    <shape type="rectangle" id="ceiling">
-        <transform name="to_world">
-            <scale value="20 20 1"/>
-            <translate value="10 10 5"/>
-            <rotate x="1" angle="180"/>
-        </transform>
-        <ref id="mat-itu_concrete" name="bsdf"/>
+    <!-- Ceiling -->
+    <shape type="ply" id="ceiling">
+        <string name="filename" value="meshes/ceiling.ply"/>
+        <boolean name="face_normals" value="true"/>
+        <ref name="bsdf" id="mat-itu_concrete"/>
     </shape>
 
-    <shape type="rectangle" id="wall_north">
-        <transform name="to_world">
-            <scale value="20 5 1"/>
-            <translate value="10 20 2.5"/>
-            <rotate x="1" angle="-90"/>
-        </transform>
-        <ref id="mat-itu_concrete" name="bsdf"/>
+    <!-- Wall XP (x-positive) -->
+    <shape type="ply" id="wall_xp">
+        <string name="filename" value="meshes/wall_xp.ply"/>
+        <boolean name="face_normals" value="true"/>
+        <ref name="bsdf" id="mat-itu_concrete"/>
     </shape>
 
-    <shape type="rectangle" id="wall_south">
-        <transform name="to_world">
-            <scale value="20 5 1"/>
-            <translate value="10 0 2.5"/>
-            <rotate x="1" angle="90"/>
-        </transform>
-        <ref id="mat-itu_concrete" name="bsdf"/>
+    <!-- Wall XM (x-negative) -->
+    <shape type="ply" id="wall_xm">
+        <string name="filename" value="meshes/wall_xm.ply"/>
+        <boolean name="face_normals" value="true"/>
+        <ref name="bsdf" id="mat-itu_concrete"/>
     </shape>
 
-    <shape type="rectangle" id="wall_east">
-        <transform name="to_world">
-            <scale value="20 5 1"/>
-            <translate value="20 10 2.5"/>
-            <rotate y="1" angle="-90"/>
-        </transform>
-        <ref id="mat-itu_concrete" name="bsdf"/>
+    <!-- Wall YP (y-positive) -->
+    <shape type="ply" id="wall_yp">
+        <string name="filename" value="meshes/wall_yp.ply"/>
+        <boolean name="face_normals" value="true"/>
+        <ref name="bsdf" id="mat-itu_concrete"/>
     </shape>
 
-    <shape type="rectangle" id="wall_west">
-        <transform name="to_world">
-            <scale value="20 5 1"/>
-            <translate value="0 10 2.5"/>
-            <rotate y="1" angle="90"/>
-        </transform>
-        <ref id="mat-itu_concrete" name="bsdf"/>
+    <!-- Wall YM (y-negative) -->
+    <shape type="ply" id="wall_ym">
+        <string name="filename" value="meshes/wall_ym.ply"/>
+        <boolean name="face_normals" value="true"/>
+        <ref name="bsdf" id="mat-itu_concrete"/>
+    </shape>
+
+    <!-- ======================
+        SHELVES (METAL)
+        ====================== -->
+
+    <shape type="ply" id="shelf_0">
+        <string name="filename" value="meshes/shelf_0.ply"/>
+        <boolean name="face_normals" value="true"/>
+        <ref name="bsdf" id="mat-itu_metal"/>
+    </shape>
+
+    <shape type="ply" id="shelf_1">
+        <string name="filename" value="meshes/shelf_1.ply"/>
+        <boolean name="face_normals" value="true"/>
+        <ref name="bsdf" id="mat-itu_metal"/>
+    </shape>
+
+    <shape type="ply" id="shelf_2">
+        <string name="filename" value="meshes/shelf_2.ply"/>
+        <boolean name="face_normals" value="true"/>
+        <ref name="bsdf" id="mat-itu_metal"/>
+    </shape>
+
+    <shape type="ply" id="shelf_3">
+        <string name="filename" value="meshes/shelf_3.ply"/>
+        <boolean name="face_normals" value="true"/>
+        <ref name="bsdf" id="mat-itu_metal"/>
+    </shape>
+
+    <shape type="ply" id="shelf_4">
+        <string name="filename" value="meshes/shelf_4.ply"/>
+        <boolean name="face_normals" value="true"/>
+        <ref name="bsdf" id="mat-itu_metal"/>
     </shape>
 </scene>

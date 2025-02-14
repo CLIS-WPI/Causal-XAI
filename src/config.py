@@ -11,7 +11,7 @@ class SmartFactoryConfig:
         self.dtype = tf.complex64
         self.real_dtype = tf.float32  # Add this for real number operations
         self.seed = 42
-        self.num_subcarriers = 1024 #Number of OFDM subcarriers
+        self.num_subcarriers = 128 #Number of OFDM subcarriers
         self.subcarrier_spacing = 15e3  # 15 kHz subcarrier spacing (typical for 5G)
         self.scene_type = "indoor"  # Explicit scene type at top level
         self.ris_pattern = "iso"
@@ -90,9 +90,9 @@ class SmartFactoryConfig:
 
         # Update ray tracing parameters for better path detection
         self.ray_tracing = {
-            'max_depth': 6,              # Reduced for more focused paths
+            'max_depth': 12,              # Reduced for more focused paths
             'method': "fibonacci",
-            'num_samples': 301072,       # Doubled for better coverage
+            'num_samples': 30072,       # Doubled for better coverage
             'diffraction': True,
             'scattering': True,
             'los': True,

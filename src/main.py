@@ -1,4 +1,4 @@
-#
+#main.py
 from config import SmartFactoryConfig
 from scene_setup import setup_scene, verify_los_paths
 import tensorflow as tf
@@ -548,6 +548,13 @@ def main():
         
         #verification call
         verify_los_paths(scene)
+
+        scene.preview()
+
+        scene.render_to_file(
+            camera="preview",
+            filename="my_scene_preview.png"
+        )
 
             # Set scene frequency from config
         scene.frequency = tf.cast(config.carrier_frequency, tf.float32)
