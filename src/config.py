@@ -1,6 +1,6 @@
 import tensorflow as tf
 from sionna.constants import SPEED_OF_LIGHT
-
+import os
 class SmartFactoryConfig:
     """Configuration class for Smart Factory Channel Simulation using Ray Tracing"""
     def __init__(self):
@@ -168,7 +168,8 @@ class SmartFactoryConfig:
             'room_dims': self.room_dim,  # Use existing room dimensions
             'shelf_dims': self.scene_objects['shelf_dimensions'],  # Use existing shelf dimensions
             'shelf_positions': self.scene_objects['shelf_positions'],  # Use existing shelf positions
-            'output_dir': 'meshes',  # Default output directory
+            'output_dir': os.path.join(os.path.dirname(__file__), 'meshes'),
+            'material': 'concrete',  # default material for static structures
             'geometry_mapping': {
                 'floor': {'z': 0},
                 'ceiling': {'z': self.room_dim[2]},

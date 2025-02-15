@@ -541,12 +541,18 @@ def main():
         validate_config(config)
         logger.debug("Configuration initialized and validated")
         
+        # Ensure the meshes directory exists
+        os.makedirs(config.ply_config['output_dir'], exist_ok=True)
+        
         # Update PLY output directory in config
         config.ply_config['output_dir'] = os.path.join(os.path.dirname(__file__), 'meshes')
         
         # Generate PLY files using config
         logger.info("Generating PLY files...")
-        SionnaPLYGenerator.generate_factory_geometries(config)
+        SionnaPLYGenerator.generate_factory_geometries(
+            config=config,
+            output_dir=config.ply_config['output_dir']
+        )
         logger.info("PLY files generated successfully")
         
         # Setup scene

@@ -25,20 +25,9 @@ class SionnaPLYGenerator:
         try:
             logger.debug("Starting PLY file generation...")
             
-            # Create output directory if it doesn't exist
+            # Normalize output directory path
+            output_dir = os.path.abspath(output_dir)
             os.makedirs(output_dir, exist_ok=True)
-            
-            # Generate floor and ceiling using config
-            for name, z_pos in [('floor', 0), ('ceiling', config.room_dim[2])]:
-                output_file = os.path.join(output_dir, f'{name}.ply')
-                material_type = config.static_scene['material']
-                SionnaPLYGenerator._generate_horizontal_surface(
-                    filename=output_file,
-                    width=config.room_dim[0],
-                    depth=config.room_dim[1],
-                    z=z_pos,
-                    material_type=material_type
-                )
             
             # Generate walls using config
             wall_configs = {
@@ -50,6 +39,8 @@ class SionnaPLYGenerator:
             
             for wall_name, wall_config in wall_configs.items():
                 output_file = os.path.join(output_dir, f'{wall_name}.ply')
+                output_file = output_file.replace('\\', '/')  # Use forward slashes
+                
                 SionnaPLYGenerator._generate_vertical_wall(
                     filename=output_file,
                     width=config.room_dim[0] if wall_config['orientation'] == 'xz' else config.room_dim[1],
@@ -59,7 +50,7 @@ class SionnaPLYGenerator:
                     orientation=wall_config['orientation'],
                     material_type=config.static_scene['material']
                 )
-            
+                        
             # Generate shelves using config
             shelf_positions = config.scene_objects['shelf_positions']
             shelf_dims = config.scene_objects['shelf_dimensions']
@@ -99,9 +90,16 @@ class SionnaPLYGenerator:
             raise
 
     @staticmethod
-    def _generate_horizontal_surface(filename, width, depth, z=0):
+    def _generate_horizontal_surface(filename, width, depth, z=0, material_type=None):
         """
         Generate horizontal surface (floor or ceiling) PLY
+        
+        Args:
+            filename: Output PLY file path
+            width: Surface width
+            depth: Surface depth
+            z: Z-coordinate (height) of the surface
+            material_type: Material type for the surface (optional)
         """
         try:
             vertices = [
@@ -110,24 +108,35 @@ class SionnaPLYGenerator:
                 (width,  depth, z, 1, 1),  # Top-right
                 (0,      depth, z, 0, 1)   # Top-left
             ]
+            
+            # Add material properties if specified
+            if material_type:
+                vertices = SionnaPLYGenerator._add_material_properties(vertices, material_type)
+                
             faces = [[0, 1, 2], [0, 2, 3]]  # Triangulated faces
             SionnaPLYGenerator._save_binary_ply(filename, vertices, faces)
+            logger.debug(f"Generated horizontal surface: {filename}")
             
         except Exception as e:
             logger.error(f"Error generating horizontal surface PLY {filename}: {str(e)}")
             raise
 
     @staticmethod
-    def _generate_vertical_wall(filename, width, height, x=0, y=0, orientation='xz'):
+    def _generate_vertical_wall(filename, width, height, x=0, y=0, orientation='xz', material_type=None):
         """
         Generate vertical wall PLY
         
         Args:
+            filename: Output PLY file path
+            width: Wall width
+            height: Wall height
+            x: X-coordinate of the wall
+            y: Y-coordinate of the wall
             orientation: 'xz' for walls parallel to XZ plane, 'yz' for walls parallel to YZ plane
+            material_type: Material type for the wall (optional)
         """
         try:
             if orientation == 'xz':
-                # Wall parallel to XZ plane (constant y)
                 vertices = [
                     (0,     y, 0,      0, 0),  # Bottom-left
                     (width, y, 0,      1, 0),  # Bottom-right
@@ -135,7 +144,6 @@ class SionnaPLYGenerator:
                     (0,     y, height, 0, 1)   # Top-left
                 ]
             else:  # orientation == 'yz'
-                # Wall parallel to YZ plane (constant x)
                 vertices = [
                     (x, 0,     0,      0, 0),  # Bottom-left
                     (x, width, 0,      1, 0),  # Bottom-right
@@ -143,8 +151,13 @@ class SionnaPLYGenerator:
                     (x, 0,     height, 0, 1)   # Top-left
                 ]
 
+            # Add material properties if specified
+            if material_type:
+                vertices = SionnaPLYGenerator._add_material_properties(vertices, material_type)
+
             faces = [[0, 1, 2], [0, 2, 3]]  # Triangulated faces
             SionnaPLYGenerator._save_binary_ply(filename, vertices, faces)
+            logger.debug(f"Generated vertical wall: {filename}")
             
         except Exception as e:
             logger.error(f"Error generating vertical wall PLY {filename}: {str(e)}")
@@ -246,11 +259,22 @@ class SionnaPLYGenerator:
         material_props = {
             'shelf': {'reflectivity': 0.8},
             'wall': {'reflectivity': 0.3},
-            'floor': {'reflectivity': 0.2}
+            'floor': {'reflectivity': 0.2},
+            'concrete': {'reflectivity': 0.3},  # Added concrete material
+            'metal': {'reflectivity': 0.9},     # Added metal material
+            'ceiling': {'reflectivity': 0.4}    # Added ceiling material
         }
+        
+        # Check if material type exists
+        if material_type not in material_props:
+            logger.warning(f"Unknown material type '{material_type}', using default properties")
+            # Use default properties if material type is unknown
+            reflectivity = 0.3  # Default reflectivity
+        else:
+            reflectivity = material_props[material_type]['reflectivity']
+        
         # Add material properties to vertices
-        return [vertex + (material_props[material_type]['reflectivity'],) 
-                for vertex in vertices]
+        return [vertex + (reflectivity,) for vertex in vertices]
             
     @staticmethod
     def _generate_modem_ply(filename, dims, position):
@@ -300,10 +324,19 @@ class SionnaPLYGenerator:
     @staticmethod
     def _save_binary_ply(filename, vertices, faces):
         """
-        Save PLY in binary little-endian format
+        Save PLY in binary little-endian format with proper path handling
         """
         try:
-            with open(filename, 'wb') as f:
+            # Clean and normalize the path
+            clean_path = os.path.abspath(filename)
+            clean_path = clean_path.replace('\\', '/')  # Use forward slashes
+            
+            # Ensure directory exists
+            directory = os.path.dirname(clean_path)
+            os.makedirs(directory, exist_ok=True)
+            
+            # Open file with cleaned path
+            with open(clean_path, 'wb') as f:
                 # Write PLY header
                 f.write(b'ply\n')
                 f.write(b'format binary_little_endian 1.0\n')
@@ -320,16 +353,18 @@ class SionnaPLYGenerator:
                 # Write vertex data
                 for vertex in vertices:
                     for coord in vertex:
-                        f.write(struct.pack('<f', coord))
+                        f.write(struct.pack('<f', float(coord)))
                 
                 # Write face data
                 for face in faces:
-                    f.write(struct.pack('<B', len(face)))  # Number of vertices in face
+                    f.write(struct.pack('<B', len(face)))
                     for idx in face:
-                        f.write(struct.pack('<i', idx))    # Vertex indices
+                        f.write(struct.pack('<i', idx))
                         
+            logger.debug(f"Successfully saved PLY file: {clean_path}")
+            
         except Exception as e:
-            logger.error(f"Error saving PLY file {filename}: {str(e)}")
+            logger.error(f"Error saving PLY file {clean_path}: {str(e)}")
             raise
 
     @staticmethod
