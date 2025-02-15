@@ -1,83 +1,102 @@
-#src/sionna_ply_generator.py
+#sionna_ply_generator.py
+import os
+import sys
 import numpy as np
 import struct
-import os
 import logging
-
+from config import SmartFactoryConfig
+# Set up logging
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 class SionnaPLYGenerator:
-    """Generate PLY files for Sionna ray tracing simulations"""
+    """
+    Generate PLY files for Sionna ray tracing simulations
+    
+    Supported materials:
+    - concrete: Building structure (walls, floor, ceiling)
+    - metal: Shelves and metallic objects
+    Each material has specific electromagnetic properties defined in config.
+    """
     
     @staticmethod
-    def generate_factory_geometries(config):
-        """
-        Generate PLY files for factory scenario using configuration
-        
-        Args:
-            config: SmartFactoryConfig object containing all necessary parameters
-        """
+    def generate_factory_geometries(config, output_dir):
+        """Generate PLY files for factory scenario using configuration"""
         try:
             logger.debug("Starting PLY file generation...")
-            logger.debug(f"Output directory: {config.ply_config['output_dir']}")
             
-            # Create output directory
-            os.makedirs(config.ply_config['output_dir'], exist_ok=True)
-
-            # Room boundary generation from config
-            room_dims = config.ply_config['room_dims']
+            # Create output directory if it doesn't exist
+            os.makedirs(output_dir, exist_ok=True)
             
-            # Generate floor and ceiling
-            for name in ['floor', 'ceiling']:
-                output_file = os.path.join(config.ply_config['output_dir'], f'{name}.ply')
-                z_pos = config.ply_config['geometry_mapping'][name]['z']
+            # Generate floor and ceiling using config
+            for name, z_pos in [('floor', 0), ('ceiling', config.room_dim[2])]:
+                output_file = os.path.join(output_dir, f'{name}.ply')
+                material_type = config.static_scene['material']
                 SionnaPLYGenerator._generate_horizontal_surface(
                     filename=output_file,
-                    width=room_dims[0],
-                    depth=room_dims[1],
-                    z=z_pos
+                    width=config.room_dim[0],
+                    depth=config.room_dim[1],
+                    z=z_pos,
+                    material_type=material_type
                 )
-                logger.debug(f"Generated {name}: {output_file}")
-
-            # Generate walls
+            
+            # Generate walls using config
             wall_configs = {
-                'wall_xp': {'x': room_dims[0], 'orientation': 'yz'},
+                'wall_xp': {'x': config.room_dim[0], 'orientation': 'yz'},
                 'wall_xm': {'x': 0, 'orientation': 'yz'},
-                'wall_yp': {'y': room_dims[1], 'orientation': 'xz'},
+                'wall_yp': {'y': config.room_dim[1], 'orientation': 'xz'},
                 'wall_ym': {'y': 0, 'orientation': 'xz'}
             }
-
+            
             for wall_name, wall_config in wall_configs.items():
-                output_file = os.path.join(config.ply_config['output_dir'], f'{wall_name}.ply')
+                output_file = os.path.join(output_dir, f'{wall_name}.ply')
                 SionnaPLYGenerator._generate_vertical_wall(
                     filename=output_file,
-                    width=room_dims[0] if wall_config['orientation'] == 'xz' else room_dims[1],
-                    height=room_dims[2],
+                    width=config.room_dim[0] if wall_config['orientation'] == 'xz' else config.room_dim[1],
+                    height=config.room_dim[2],
                     x=wall_config.get('x', 0),
                     y=wall_config.get('y', 0),
-                    orientation=wall_config['orientation']
+                    orientation=wall_config['orientation'],
+                    material_type=config.static_scene['material']
                 )
-                logger.debug(f"Generated {wall_name}: {output_file}")
-
-            # Generate shelves
-            shelf_dims = config.ply_config['shelf_dims']
-            shelf_positions = config.ply_config['shelf_positions']
-
-            logger.debug(f"Generating {len(shelf_positions)} shelves with dimensions: {shelf_dims}")
+            
+            # Generate shelves using config
+            shelf_positions = config.scene_objects['shelf_positions']
+            shelf_dims = config.scene_objects['shelf_dimensions']
+            
             for i, pos in enumerate(shelf_positions):
-                output_file = os.path.join(config.ply_config['output_dir'], f'shelf_{i}.ply')
+                output_file = os.path.join(output_dir, f'shelf_{i}.ply')
                 SionnaPLYGenerator._generate_shelf_ply(
                     filename=output_file,
                     dims=shelf_dims,
+                    position=pos,
+                    material_type=config.scene_objects['shelf_material']
+                )
+            
+            # Generate AGV robots using config
+            robot_dims = [0.5, 0.5, config.agv_height]
+            for i, pos in enumerate(config.agv_positions):
+                output_file = os.path.join(output_dir, f'agv_robot_{i}.ply')
+                SionnaPLYGenerator._generate_robot_ply(
+                    filename=output_file,
+                    dims=robot_dims,
                     position=pos
                 )
-                logger.debug(f"Generated shelf PLY {i} at position {pos}")
-
+            
+            # Generate base station using config
+            bs_dims = [0.2, 0.2, 0.1]
+            output_file = os.path.join(output_dir, 'base_station.ply')
+            SionnaPLYGenerator._generate_modem_ply(
+                filename=output_file,
+                dims=bs_dims,
+                position=config.bs_position
+            )
+            
             logger.info("PLY file generation completed successfully")
             
         except Exception as e:
             logger.error(f"Error generating PLY files: {str(e)}")
-            raise RuntimeError(f"PLY file generation failed: {str(e)}") from e
+            raise
 
     @staticmethod
     def _generate_horizontal_surface(filename, width, depth, z=0):
@@ -134,7 +153,7 @@ class SionnaPLYGenerator:
     @staticmethod
     def _generate_shelf_ply(filename, dims, position):
         """
-        Generate shelf PLY with all six faces
+        Generate shelf PLY with all six faces (box geometry)
         """
         try:
             width, depth, height = dims
@@ -175,6 +194,107 @@ class SionnaPLYGenerator:
             
         except Exception as e:
             logger.error(f"Error generating shelf PLY {filename}: {str(e)}")
+            raise
+
+    @staticmethod
+    def _generate_robot_ply(filename, dims, position):
+        """
+        Generate AGV robot PLY with all six faces (box geometry)
+        """
+        try:
+            width, depth, height = dims
+            x, y, z = position
+
+            # Define vertices for a box representing the robot
+            vertices = [
+                # Front face vertices (y constant)
+                (x,         y,         z,         0, 0),  # 0 bottom-left
+                (x+width,   y,         z,         1, 0),  # 1 bottom-right
+                (x+width,   y,         z+height,  1, 1),  # 2 top-right
+                (x,         y,         z+height,  0, 1),  # 3 top-left
+                
+                # Back face vertices (y+depth)
+                (x,         y+depth,   z,         0, 0),  # 4 bottom-left
+                (x+width,   y+depth,   z,         1, 0),  # 5 bottom-right
+                (x+width,   y+depth,   z+height,  1, 1),  # 6 top-right
+                (x,         y+depth,   z+height,  0, 1),  # 7 top-left
+            ]
+            
+            faces = [
+                # Front face
+                [0, 1, 2], [0, 2, 3],
+                # Back face
+                [5, 4, 7], [5, 7, 6],
+                # Top face
+                [3, 2, 6], [3, 6, 7],
+                # Bottom face
+                [4, 5, 1], [4, 1, 0],
+                # Left face
+                [4, 0, 3], [4, 3, 7],
+                # Right face
+                [1, 5, 6], [1, 6, 2]
+            ]
+            
+            SionnaPLYGenerator._save_binary_ply(filename, vertices, faces)
+            
+        except Exception as e:
+            logger.error(f"Error generating robot PLY {filename}: {str(e)}")
+            raise
+    @staticmethod
+    def _add_material_properties(vertices, material_type):
+        """Add material-specific properties to vertices"""
+        material_props = {
+            'shelf': {'reflectivity': 0.8},
+            'wall': {'reflectivity': 0.3},
+            'floor': {'reflectivity': 0.2}
+        }
+        # Add material properties to vertices
+        return [vertex + (material_props[material_type]['reflectivity'],) 
+                for vertex in vertices]
+            
+    @staticmethod
+    def _generate_modem_ply(filename, dims, position):
+        """
+        Generate modem PLY with all six faces (box geometry)
+        """
+        try:
+            width, depth, height = dims
+            x, y, z = position
+
+            # Define vertices for a box representing the modem
+            vertices = [
+                # Front face vertices (y constant)
+                (x,         y,         z,         0, 0),  # 0 bottom-left
+                (x+width,   y,         z,         1, 0),  # 1 bottom-right
+                (x+width,   y,         z+height,  1, 1),  # 2 top-right
+                (x,         y,         z+height,  0, 1),  # 3 top-left
+                
+                # Back face vertices (y+depth)
+                (x,         y+depth,   z,         0, 0),  # 4 bottom-left
+                (x+width,   y+depth,   z,         1, 0),  # 5 bottom-right
+                (x+width,   y+depth,   z+height,  1, 1),  # 6 top-right
+                (x,         y+depth,   z+height,  0, 1),  # 7 top-left
+            ]
+            
+            faces = [
+                # Front face
+                [0, 1, 2], [0, 2, 3],
+                # Back face
+                [5, 4, 7], [5, 7, 6],
+                # Top face
+                [3, 2, 6], [3, 6, 7],
+                # Bottom face
+                [4, 5, 1], [4, 1, 0],
+                # Left face
+                [4, 0, 3], [4, 3, 7],
+                # Right face
+                [1, 5, 6], [1, 6, 2]
+            ]
+            
+            SionnaPLYGenerator._save_binary_ply(filename, vertices, faces)
+            
+        except Exception as e:
+            logger.error(f"Error generating modem PLY {filename}: {str(e)}")
             raise
 
     @staticmethod
@@ -234,3 +354,71 @@ class SionnaPLYGenerator:
         except Exception as e:
             logger.error(f"Error verifying PLY file {filename}: {str(e)}")
             return False
+        
+    @staticmethod
+    def validate_config(config):
+        """Validate configuration parameters"""
+        required_fields = ['room_dim', 'static_scene', 'scene_objects']
+        for field in required_fields:
+            if not hasattr(config, field):
+                raise ValueError(f"Missing required configuration field: {field}")
+            
+
+def main():
+    # Get the absolute path of the current script
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    try:
+        # Create config instance
+        config = SmartFactoryConfig()
+        
+        # Validate configuration
+        logger.info("Validating configuration...")
+        SionnaPLYGenerator.validate_config(config)
+        
+        # Define the meshes directory path using config
+        meshes_dir = os.path.join(current_dir, config.ply_config['output_dir'])
+        
+        # Ensure meshes directory exists
+        os.makedirs(meshes_dir, exist_ok=True)
+        
+        # Generate PLY files using config
+        logger.info("Starting PLY file generation...")
+        SionnaPLYGenerator.generate_factory_geometries(
+            config=config,
+            output_dir=meshes_dir
+        )
+        
+        # Verify all generated files
+        logger.info("Verifying generated files...")
+        verification_failed = False
+        files = os.listdir(meshes_dir)
+        for file in files:
+            if file.endswith('.ply'):
+                file_path = os.path.join(meshes_dir, file)
+                if not SionnaPLYGenerator.verify_ply_file(file_path):
+                    logger.error(f"Verification failed for {file}")
+                    verification_failed = True
+        
+        if verification_failed:
+            raise ValueError("One or more PLY files failed verification")
+            
+        # Print success message and file list
+        logger.info("PLY files generated and verified successfully!")
+        print(f"Meshes directory: {meshes_dir}")
+        print("\nGenerated files:")
+        for file in files:
+            print(f"- {file}")
+            
+    except Exception as e:
+        logger.error(f"Error in PLY generation process: {str(e)}")
+        raise
+    
+    return 0  # Successful execution
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except Exception as e:
+        logger.error(f"Fatal error: {str(e)}")
+        sys.exit(1)

@@ -1,113 +1,134 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- factory_scene.xml
 This XML scene file references the generated PLY files for a 20×20×5
-warehouse with five metal shelves, plus concrete floor, ceiling, and walls.
+smart factory with five metal shelves, AGV robots, base station, and concrete structures.
 Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
 -->
 <scene version="2.1.0">
-    <!-- Simple integrator and constant emitter for baseline lighting -->
+    
+    <!-- Improved rendering settings for better quality -->
+    <default name="spp" value="4096"/>
+    <default name="resx" value="1920"/>  <!-- Matched to render_config -->
+    <default name="resy" value="1080"/>  <!-- Matched to render_config -->
+
+    <!-- Updated integrator settings based on ray_tracing config -->
     <integrator type="path">
-        <integer name="max_depth" value="12"/>
+        <integer name="max_depth" value="6"/>  <!-- Matched to ray_tracing max_depth -->
     </integrator>
+
+    <!-- Camera settings based on cameras config -->
+    <sensor type="perspective" id="Camera-Top">
+        <string name="fov_axis" value="x"/>
+        <float name="fov" value="70.0"/>  <!-- Matched to cameras config -->
+        <transform name="to_world">
+            <lookat origin="10.0 10.0 30.0" 
+                    target="10.0 10.0 0.0" 
+                    up="0.0 1.0 0.0"/>
+        </transform>
+        <sampler type="independent">
+            <integer name="sample_count" value="64"/>  <!-- Matched to render_config -->
+        </sampler>
+        <film type="hdrfilm">
+            <integer name="width" value="$resx"/>
+            <integer name="height" value="$resy"/>
+        </film>
+    </sensor>
+
+    <!-- Updated lighting based on render_config -->
     <emitter type="constant" id="World">
-        <rgb name="radiance" value="1.5 1.5 1.5"/>
+        <rgb name="radiance" value="0.1 0.1 0.1"/>  <!-- Ambient light from config -->
     </emitter>
 
-    <!-- ======================
-        MATERIAL DEFINITIONS
-        ====================== -->
-
-    <!-- Concrete material (for floor, ceiling, walls) -->
-    <bsdf type="twosided" id="mat-itu_concrete">
-        <bsdf type="diffuse">
-            <rgb name="reflectance" value="0.6 0.6 0.6"/>
+    <!-- Material definitions based on config materials -->
+    <bsdf type="twosided" id="mat-concrete">
+        <bsdf type="roughconductor">
+            <float name="alpha" value="0.1"/>  <!-- Roughness from materials config -->
+            <string name="distribution" value="ggx"/>
+            <float name="relative_permittivity" value="5.31"/>  <!-- From concrete material -->
         </bsdf>
     </bsdf>
 
-    <!-- Metal material (for shelves) -->
-    <bsdf type="twosided" id="mat-itu_metal">
-        <bsdf type="diffuse">
-            <rgb name="reflectance" value="0.2 0.2 0.2"/>
+    <bsdf type="twosided" id="mat-metal">
+        <bsdf type="roughconductor">
+            <float name="alpha" value="0.2"/>  <!-- From metal material -->
+            <string name="distribution" value="ggx"/>
+            <float name="conductivity" value="1.0e7"/>  <!-- From metal material -->
         </bsdf>
     </bsdf>
 
-    <!-- ======================
-        BOUNDARIES (CONCRETE)
-        ====================== -->
-
-    <!-- Floor -->
+    <!-- Static Scene Elements -->
     <shape type="ply" id="floor">
         <string name="filename" value="meshes/floor.ply"/>
-        <boolean name="face_normals" value="true"/>
-        <ref name="bsdf" id="mat-itu_concrete"/>
+        <ref name="bsdf" id="mat-concrete"/>
     </shape>
 
-    <!-- Ceiling -->
     <shape type="ply" id="ceiling">
         <string name="filename" value="meshes/ceiling.ply"/>
-        <boolean name="face_normals" value="true"/>
-        <ref name="bsdf" id="mat-itu_concrete"/>
+        <ref name="bsdf" id="mat-concrete"/>
     </shape>
 
-    <!-- Wall XP (x-positive) -->
+    <!-- Walls with correct positions from config -->
     <shape type="ply" id="wall_xp">
         <string name="filename" value="meshes/wall_xp.ply"/>
-        <boolean name="face_normals" value="true"/>
-        <ref name="bsdf" id="mat-itu_concrete"/>
+        <ref name="bsdf" id="mat-concrete"/>
     </shape>
 
-    <!-- Wall XM (x-negative) -->
     <shape type="ply" id="wall_xm">
         <string name="filename" value="meshes/wall_xm.ply"/>
-        <boolean name="face_normals" value="true"/>
-        <ref name="bsdf" id="mat-itu_concrete"/>
+        <ref name="bsdf" id="mat-concrete"/>
     </shape>
 
-    <!-- Wall YP (y-positive) -->
     <shape type="ply" id="wall_yp">
         <string name="filename" value="meshes/wall_yp.ply"/>
-        <boolean name="face_normals" value="true"/>
-        <ref name="bsdf" id="mat-itu_concrete"/>
+        <ref name="bsdf" id="mat-concrete"/>
     </shape>
 
-    <!-- Wall YM (y-negative) -->
     <shape type="ply" id="wall_ym">
         <string name="filename" value="meshes/wall_ym.ply"/>
-        <boolean name="face_normals" value="true"/>
-        <ref name="bsdf" id="mat-itu_concrete"/>
+        <ref name="bsdf" id="mat-concrete"/>
     </shape>
 
-    <!-- ======================
-        SHELVES (METAL)
-        ====================== -->
-
+    <!-- Shelves with positions from config -->
     <shape type="ply" id="shelf_0">
         <string name="filename" value="meshes/shelf_0.ply"/>
-        <boolean name="face_normals" value="true"/>
-        <ref name="bsdf" id="mat-itu_metal"/>
+        <ref name="bsdf" id="mat-metal"/>
     </shape>
 
     <shape type="ply" id="shelf_1">
         <string name="filename" value="meshes/shelf_1.ply"/>
-        <boolean name="face_normals" value="true"/>
-        <ref name="bsdf" id="mat-itu_metal"/>
+        <ref name="bsdf" id="mat-metal"/>
     </shape>
 
     <shape type="ply" id="shelf_2">
         <string name="filename" value="meshes/shelf_2.ply"/>
-        <boolean name="face_normals" value="true"/>
-        <ref name="bsdf" id="mat-itu_metal"/>
+        <ref name="bsdf" id="mat-metal"/>
     </shape>
 
     <shape type="ply" id="shelf_3">
         <string name="filename" value="meshes/shelf_3.ply"/>
-        <boolean name="face_normals" value="true"/>
-        <ref name="bsdf" id="mat-itu_metal"/>
+        <ref name="bsdf" id="mat-metal"/>
     </shape>
 
     <shape type="ply" id="shelf_4">
         <string name="filename" value="meshes/shelf_4.ply"/>
-        <boolean name="face_normals" value="true"/>
-        <ref name="bsdf" id="mat-itu_metal"/>
+        <ref name="bsdf" id="mat-metal"/>
     </shape>
+
+    <!-- AGV Robots with actual positions from config -->
+    <shape type="ply" id="agv_robot_0">
+        <string name="filename" value="meshes/agv_robot_0.ply"/>
+        <ref name="bsdf" id="mat-metal"/>
+    </shape>
+
+    <shape type="ply" id="agv_robot_1">
+        <string name="filename" value="meshes/agv_robot_1.ply"/>
+        <ref name="bsdf" id="mat-metal"/>
+    </shape>
+
+    <!-- Base Station -->
+    <shape type="ply" id="base_station">
+        <string name="filename" value="meshes/base_station.ply"/>
+        <ref name="bsdf" id="mat-metal"/>
+    </shape>
+
 </scene>

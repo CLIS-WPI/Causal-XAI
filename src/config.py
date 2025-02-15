@@ -231,7 +231,7 @@ class SmartFactoryConfig:
             'background_color': [0.8, 0.8, 0.8],  # RGB background color
             
             # Camera settings
-            'fov': 45.0,                      # Field of view in degrees
+            'fov': 120.0,                      # Field of view in degrees
             'near': 0.1,                      # Near clipping plane
             'far': 1000.0,                    # Far clipping plane
             
