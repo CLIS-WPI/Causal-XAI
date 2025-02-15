@@ -170,13 +170,33 @@ def verify_geometry(scene):
     logger.info(f"Number of objects in scene: {len(scene.objects)}")
     
     # List all objects
-    for obj in scene.objects:
-        logger.info(f"Object: {obj.name}")
+    for obj_name, obj in scene.objects.items():  # Access both name and object
+        logger.info(f"Object name: {obj_name}")
         if hasattr(obj, 'vertices'):
             logger.info(f"  - Vertices: {len(obj.vertices)}")
         if hasattr(obj, 'faces'):
             logger.info(f"  - Faces: {len(obj.faces)}")
+        if hasattr(obj, 'material'):
+            logger.info(f"  - Material: {obj.material}")
             
+    # List loaded materials
+    logger.info("\nAvailable materials:")
+    for mat_name in scene.radio_materials:
+        logger.info(f"  - {mat_name}")
+        
+    # Verify specific objects are present
+    expected_objects = [
+        'floor', 'ceiling',
+        'wall_xp', 'wall_xm', 'wall_yp', 'wall_ym',
+        'shelf_0', 'shelf_1', 'shelf_2', 'shelf_3', 'shelf_4'
+    ]
+    
+    missing_objects = [obj for obj in expected_objects if obj not in scene.objects]
+    if missing_objects:
+        logger.warning(f"Missing expected objects: {missing_objects}")
+    else:
+        logger.info("All expected objects are present in the scene")
+
 def verify_los_paths(scene):
     """
     Check and log basic LOS path info from the base station to each receiver.
