@@ -140,6 +140,15 @@ def generate_channel_data(scene, config):
     """Generate enhanced channel data using ray tracing"""
     try:
         logger.info("Starting channel data generation...")
+        
+        # this is new section for beam management
+        if hasattr(self, 'beam_manager'):
+            logger.info("Using beam manager for adaptive beamforming...")
+            current_beams = self.beam_manager.get_current_beams()
+            if current_beams is not None:
+                for tx in scene.transmitters.values():
+                    tx.antenna.apply_beam_weights(current_beams)
+
         # Initialize expected_los with a default value
         expected_los = False
         
@@ -217,6 +226,19 @@ def generate_channel_data(scene, config):
             tf.zeros_like(a),
             a
         )
+
+        # After computing paths but before CIR calculation
+        if hasattr(self, 'beam_manager'):
+            # Update beam manager with current channel state
+            self.beam_manager.update_channel_state({
+                'paths': paths,
+                'los_available': expected_los,
+                'scene_state': {
+                    'agv_positions': [rx.position for rx in scene.receivers.values()],
+                    'obstacle_positions': [obj.center for obj in scene.objects.values() 
+                                        if 'shelf' in obj.name]
+                }
+            })
 
         # Then continue with the existing code
         # Check CIR values - handle complex numbers correctly
@@ -442,9 +464,18 @@ def generate_channel_data(scene, config):
             'temporal_data': {
                 'timestamp': tf.timestamp(),
                 'agv_velocities': velocities.numpy(),
-                'path_conditions': los_conditions.numpy()
-                
+                'path_conditions': los_conditions.numpy(),
+            'beam_adaptation': {
+                'current_beam_weights': self.beam_manager.get_current_beams() if hasattr(self, 'beam_manager') else None,
+                'beam_optimization_history': self.beam_manager.get_optimization_history() if hasattr(self, 'beam_manager') else None,
+                'adaptation_performance': {
+                    'snr_improvement': self.beam_manager.get_snr_improvement() if hasattr(self, 'beam_manager') else 0.0,
+                    'convergence_time': self.beam_manager.get_convergence_time() if hasattr(self, 'beam_manager') else 0.0
+                }
             }
+        }
+
+                
         }
         
         # Log key metrics only if paths exist
