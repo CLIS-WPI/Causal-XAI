@@ -136,7 +136,7 @@ def add_snr_config(config):
     config.path_loss_db = 80  # Typical value for indoor factory environment
 
 
-def generate_channel_data(scene, config):
+def generate_channel_data(self, scene, config):
     """Generate enhanced channel data using ray tracing"""
     try:
         logger.info("Starting channel data generation...")
@@ -484,8 +484,15 @@ def generate_channel_data(scene, config):
             logger.info(f"LOS Ratio: {los_statistics['los_ratio']:.2f}")
             logger.info(f"Average SNR: {tf.reduce_mean(snr):.2f} dB")  # Changed from snr_db to snr
             logger.info(f"Maximum Doppler Shift: {tf.reduce_max(tf.abs(doppler_shifts)):.2f} Hz")
-    
+
+        if hasattr(self, 'beam_manager'):
+            channel_data['beam_data'] = {
+                'current_beams': self.beam_manager.get_current_beams(),
+                'beam_history': self.beam_manager.get_beam_history(),
+                'adaptation_metrics': self.beam_manager.get_adaptation_metrics()
+            }
         print("Enhanced channel data generation completed")
+        
         return channel_data
         
     except Exception as e:
