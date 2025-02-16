@@ -146,11 +146,16 @@ def generate_channel_data(scene, config, beam_manager=None):
             logger.info("Using beam manager for adaptive beamforming...")
             current_beams = beam_manager.get_current_beams()
             if current_beams is not None:
+                logger.debug(f"Current beams type: {type(current_beams)}")
+                logger.debug(f"Current beams value: {current_beams}")
+                
                 for tx in scene.transmitters.values():
-                    # Add these debug messages before and after setting steering angles
-                    logger.debug(f"Current beams shape: {current_beams.shape}")
-                    logger.debug(f"Applying steering angles to transmitter array...")
-                    tx.array.set_steering_angles(current_beams)
+                    logger.debug(f"Transmitter array type: {type(tx.array)}")
+                    logger.debug(f"Current steering angle before update: {tx.array.steering_angle}")
+                    
+                    # Using steering_angle instead of set_steering_angles
+                    tx.array.steering_angle = current_beams
+                    logger.debug(f"Steering angle after update: {tx.array.steering_angle}")
                     logger.debug(f"Steering angles applied successfully")
 
         # Initialize expected_los with a default value
@@ -239,7 +244,7 @@ def generate_channel_data(scene, config, beam_manager=None):
                 'los_available': expected_los,
                 'scene_state': {
                     'agv_positions': [rx.position for rx in scene.receivers.values()],
-                    'obstacle_positions': [obj.center for obj in scene.objects.values() 
+                    'obstacle_positions': [obj.position for obj in scene.objects.values()  # Changed from obj.center to obj.position
                                         if 'shelf' in obj.name]
                 }
             })

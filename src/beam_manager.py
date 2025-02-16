@@ -3,6 +3,8 @@ import tensorflow as tf
 import numpy as np
 from dowhy import CausalModel
 import pandas as pd
+import logging
+logger = logging.getLogger(__name__)
 
 class BeamManager:
     def __init__(self, config):
@@ -10,7 +12,9 @@ class BeamManager:
         self.current_beam = None
         self.beam_history = []
         self.causal_data = []
-
+        self.current_channel_state = None 
+        self.channel_state_history = []    
+        
     def get_current_beams(self):
         """Return the current beam configuration"""
         return self.current_beam
@@ -68,8 +72,11 @@ class BeamManager:
                 # Direct path beamforming
                 best_beam = self._calculate_direct_beam(agv_pos)
             optimal_beams.append(best_beam)
+        
+        # Update current_beam with the new optimal beams as a tensor
+        self.current_beam = tf.stack(optimal_beams)
             
-        return optimal_beams
+        return self.current_beam
         
     def perform_causal_analysis(self):
         """Perform causal inference on beam selection impact"""
@@ -190,23 +197,108 @@ class BeamManager:
         
         return tf.stack([azimuth_deg, elevation_deg])
     
-    def optimize_beam_direction(self, channel_data, agv_positions, obstacle_positions):
-        """Optimize beam direction based on channel conditions and blockage"""
-        blocked = self.detect_blockage(channel_data, agv_positions, obstacle_positions)
+    def update_channel_state(self, state_info):
+        """Update the channel state information for beam management
         
-        # Calculate optimal beam directions for each AGV
-        optimal_beams = []
-        for i, agv_pos in enumerate(agv_positions):
-            if blocked[i]:
-                # Find best reflection path
-                best_beam = self._find_reflection_path(
-                    agv_pos, obstacle_positions, channel_data)
-            else:
-                # Direct path beamforming
-                best_beam = self._calculate_direct_beam(agv_pos)
-            optimal_beams.append(best_beam)
-        
-        # Update current_beam with the new optimal beams
-        self.current_beam = optimal_beams
+        Args:
+            state_info: Dictionary containing:
+                - paths: Ray tracing paths object
+                - los_available: Boolean indicating if LOS path is available
+                - scene_state: Dictionary with AGV and obstacle positions
+        """
+        try:
+            self.current_channel_state = state_info
             
-        return optimal_beams
+            # If you want to store the state in history (optional)
+            if hasattr(self, 'channel_state_history'):
+                self.channel_state_history.append(state_info)
+            else:
+                self.channel_state_history = [state_info]
+                
+            logger.debug(f"Channel state updated successfully")
+            
+        except Exception as e:
+            logger.error(f"Error updating channel state: {str(e)}")
+            
+    def get_optimization_history(self):
+        """Return the history of beam optimization steps"""
+        try:
+            # If we have channel state history, include that in the optimization history
+            history = []
+            for idx, beam in enumerate(self.beam_history):
+                history_entry = {
+                    'beam_configuration': beam.numpy(),
+                    'channel_state': self.channel_state_history[idx] if idx < len(self.channel_state_history) else None,
+                    'timestamp': idx
+                }
+                history.append(history_entry)
+            
+            return history
+        except Exception as e:
+            logger.error(f"Error getting optimization history: {str(e)}")
+            return None
+
+    def get_snr_improvement(self):
+        """Calculate SNR improvement from initial to current beam configuration"""
+        try:
+            if not hasattr(self, 'channel_state_history') or len(self.channel_state_history) < 2:
+                return 0.0
+            
+            # Get initial and current SNR values
+            initial_state = self.channel_state_history[0]
+            current_state = self.channel_state_history[-1]
+            
+            # Extract SNR values if they exist in the channel state
+            initial_snr = 0.0
+            current_snr = 0.0
+            
+            if isinstance(initial_state, dict) and 'paths' in initial_state:
+                initial_snr = tf.reduce_mean(tf.abs(initial_state['paths'].A))
+            
+            if isinstance(current_state, dict) and 'paths' in current_state:
+                current_snr = tf.reduce_mean(tf.abs(current_state['paths'].A))
+                
+            # Calculate improvement in dB
+            improvement = 20 * tf.math.log(current_snr / (initial_snr + 1e-10)) / tf.math.log(10.0)
+            
+            return float(improvement.numpy())
+        except Exception as e:
+            logger.error(f"Error calculating SNR improvement: {str(e)}")
+            return 0.0
+        
+    def get_convergence_time(self):
+        """Calculate the time taken for beam adaptation to converge"""
+        try:
+            if not hasattr(self, 'channel_state_history') or len(self.channel_state_history) < 2:
+                return 0.0
+                
+            # Get timestamps from history
+            start_time = self.channel_state_history[0].get('timestamp', 0)
+            
+            # Find when SNR stabilizes (convergence)
+            convergence_threshold = 0.1  # dB
+            convergence_time = 0.0
+            
+            for i in range(1, len(self.channel_state_history)):
+                current_state = self.channel_state_history[i]
+                prev_state = self.channel_state_history[i-1]
+                
+                # Extract SNR values
+                current_snr = 0.0
+                prev_snr = 0.0
+                
+                if isinstance(current_state, dict) and 'paths' in current_state:
+                    current_snr = tf.reduce_mean(tf.abs(current_state['paths'].A))
+                if isinstance(prev_state, dict) and 'paths' in prev_state:
+                    prev_snr = tf.reduce_mean(tf.abs(prev_state['paths'].A))
+                
+                # Check if SNR has stabilized
+                snr_change = abs(current_snr - prev_snr)
+                if snr_change < convergence_threshold:
+                    convergence_time = current_state.get('timestamp', i) - start_time
+                    break
+                    
+            return float(convergence_time)
+        except Exception as e:
+            logger.error(f"Error calculating convergence time: {str(e)}")
+            return 0.0    
