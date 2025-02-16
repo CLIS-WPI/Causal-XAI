@@ -148,7 +148,11 @@ def generate_channel_data(scene, config, beam_manager=None):
             current_beams = beam_manager.get_current_beams()
             if current_beams is not None:
                 for tx in scene.transmitters.values():
-                    tx.antenna.apply_beam_weights(current_beams)
+                    # Add these debug messages before and after setting steering angles
+                    logger.debug(f"Current beams shape: {current_beams.shape}")
+                    logger.debug(f"Applying steering angles to transmitter array...")
+                    tx.array.set_steering_angles(current_beams)
+                    logger.debug(f"Steering angles applied successfully")
 
         # Initialize expected_los with a default value
         expected_los = False
