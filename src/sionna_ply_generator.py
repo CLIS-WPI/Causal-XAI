@@ -60,6 +60,16 @@ class SionnaPLYGenerator:
                 material_type='floor'  # Use floor material type
             )
 
+            # Generate ceiling
+            output_file = output_path / 'ceiling.ply'
+            SionnaPLYGenerator._generate_horizontal_surface(
+                filename=str(output_file),
+                width=config.room_dim[0],
+                depth=config.room_dim[1],
+                z=config.room_dim[2],  # Ceiling at room height
+                material_type='ceiling'  # Use ceiling material type
+            )
+
             # Generate shelves using config
             shelf_positions = config.scene_objects['shelf_positions']
             shelf_dims = config.scene_objects['shelf_dimensions']
@@ -83,13 +93,13 @@ class SionnaPLYGenerator:
                     position=pos
                 )
             
-            # Generate base station using config
+            # Update base station generation
             bs_dims = [0.2, 0.2, 0.1]
             output_file = os.path.join(output_dir, 'base_station.ply')
             SionnaPLYGenerator._generate_modem_ply(
                 filename=output_file,
                 dims=bs_dims,
-                position=config.bs_position
+                position=[10.0, 0.5, 4.5]  # Updated to match original specification
             )
             
             logger.info("PLY file generation completed successfully")
@@ -339,16 +349,17 @@ class SionnaPLYGenerator:
         except Exception as e:
             logger.error(f"Error generating robot PLY {filename}: {str(e)}")
             raise
+
     @staticmethod
     def _add_material_properties(vertices, material_type):
         """Add material-specific properties to vertices"""
         material_props = {
-            'shelf': {'reflectivity': 0.8},
-            'wall': {'reflectivity': 0.3},
-            'floor': {'reflectivity': 0.2},
-            'concrete': {'reflectivity': 0.3},  # Added concrete material
-            'metal': {'reflectivity': 0.9},     # Added metal material
-            'ceiling': {'reflectivity': 0.4}    # Added ceiling material
+            'shelf': {'reflectivity': 0.087140},  # Updated metal reflectivity
+            'wall': {'reflectivity': 0.603815},   # Updated concrete reflectivity
+            'floor': {'reflectivity': 0.603815},  # Updated concrete reflectivity
+            'concrete': {'reflectivity': 0.603815},  # ITU standard concrete
+            'metal': {'reflectivity': 0.087140},    # ITU standard metal
+            'ceiling': {'reflectivity': 0.603815}   # Same as walls (concrete)
         }
         
         # Check if material type exists
@@ -488,11 +499,14 @@ class SionnaPLYGenerator:
     @staticmethod
     def validate_config(config):
         """Validate configuration parameters"""
-        required_fields = ['room_dim', 'static_scene', 'scene_objects']
+        required_fields = ['room_dim', 'static_scene', 'scene_objects', 'bs_position']
         for field in required_fields:
             if not hasattr(config, field):
                 raise ValueError(f"Missing required configuration field: {field}")
-            
+        
+        # Validate base station position
+        if config.bs_position != [10.0, 0.5, 4.5]:
+            logger.warning("Base station position does not match original specification")
 
 def main():
     # Get the absolute path of the current script

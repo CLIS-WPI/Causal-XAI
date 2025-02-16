@@ -8,25 +8,26 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
     
     <!-- Improved rendering settings for better quality -->
     <default name="spp" value="4096"/>
-    <default name="resx" value="1920"/>  <!-- Matched to render_config -->
-    <default name="resy" value="1080"/>  <!-- Matched to render_config -->
+    <default name="resx" value="1920"/>
+    <default name="resy" value="1080"/>
 
     <!-- Updated integrator settings based on ray_tracing config -->
     <integrator type="path">
-        <integer name="max_depth" value="6"/>  <!-- Matched to ray_tracing max_depth -->
+        <integer name="max_depth" value="6"/>
     </integrator>
 
     <!-- Camera settings based on cameras config -->
     <sensor type="perspective" id="Camera-Top">
         <string name="fov_axis" value="x"/>
-        <float name="fov" value="70.0"/>  <!-- Matched to cameras config -->
+        <float name="fov" value="70.0"/>
         <transform name="to_world">
-            <lookat origin="10.0 10.0 30.0" 
-                    target="10.0 10.0 0.0" 
+            <!-- Updated camera position to match correct BS position -->
+            <lookat origin="10.0 0.5 30.0" 
+                    target="10.0 0.5 0.0" 
                     up="0.0 1.0 0.0"/>
         </transform>
         <sampler type="independent">
-            <integer name="sample_count" value="64"/>  <!-- Matched to render_config -->
+            <integer name="sample_count" value="64"/>
         </sampler>
         <film type="hdrfilm">
             <integer name="width" value="$resx"/>
@@ -36,19 +37,21 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
 
     <!-- Updated lighting based on render_config -->
     <emitter type="constant" id="World">
-        <rgb name="radiance" value="0.1 0.1 0.1"/>  <!-- Ambient light from config -->
+        <rgb name="radiance" value="0.1 0.1 0.1"/>
     </emitter>
 
-    <!-- Material definitions -->
+    <!-- Updated Material definitions with ITU standard properties -->
     <bsdf type="twosided" id="itu_concrete">
         <bsdf type="diffuse">
-            <rgb name="reflectance" value="0.539479 0.539479 0.539480"/>
+            <!-- Updated concrete reflectance values based on ITU standards -->
+            <rgb name="reflectance" value="0.603815 0.603815 0.588347"/>
         </bsdf>
     </bsdf>
 
     <bsdf type="twosided" id="itu_metal">
         <bsdf type="diffuse">
-            <rgb name="reflectance" value="0.147314 0.147314 0.147314"/>
+            <!-- Updated metal reflectance values based on ITU standards -->
+            <rgb name="reflectance" value="0.087140 0.087140 0.087140"/>
         </bsdf>
     </bsdf>
 
@@ -58,7 +61,16 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
         <ref name="bsdf" id="itu_concrete"/>
     </shape>
 
-    <!-- Walls with correct positions from config -->
+    <!-- Added ceiling -->
+    <shape type="ply" id="ceiling">
+        <string name="filename" value="meshes/ceiling.ply"/>
+        <ref name="bsdf" id="itu_concrete"/>
+        <transform name="to_world">
+            <translate value="0 0 5"/> <!-- Positioned at height 5m -->
+        </transform>
+    </shape>
+
+    <!-- Walls with verified material properties -->
     <shape type="ply" id="wall_xp">
         <string name="filename" value="meshes/wall_xp.ply"/>
         <ref name="bsdf" id="itu_concrete"/>
@@ -116,9 +128,13 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
         <ref name="bsdf" id="itu_metal"/>
     </shape>
 
-    <!-- Base Station -->
+    <!-- Base Station with corrected position -->
     <shape type="ply" id="base_station">
         <string name="filename" value="meshes/base_station.ply"/>
+        <transform name="to_world">
+            <!-- Updated to match original specification [10, 0.5, 4.5] -->
+            <translate value="10.0 0.5 4.5"/>
+        </transform>
         <ref name="bsdf" id="itu_metal"/>
     </shape>
 
