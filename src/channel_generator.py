@@ -204,7 +204,7 @@ class SmartFactoryChannel:
                 'channel_matrices': h_freq,
                 'path_delays': tau,
                 'los_conditions': paths.LOS,
-                'agv_positions': tf.stack([rx.position for rx in scene.receivers.values()])
+                'agv_positions': tf.stack([rx.position for rx in self.scene.receivers.values()])
             }
             
             logger.debug("Channel data generation completed successfully")
