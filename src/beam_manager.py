@@ -18,6 +18,23 @@ class BeamManager:
     def get_current_beams(self):
         """Return the current beam configuration"""
         return self.current_beam
+    
+    def get_beam_history(self):
+        """Return the history of beam configurations"""
+        try:
+            history_list = []
+            for beam in self.beam_history:
+                # Convert tensors to numpy arrays for easier serialization
+                if isinstance(beam, tf.Tensor):
+                    history_list.append(beam.numpy())
+                else:
+                    history_list.append(beam)
+                    
+            return history_list
+            
+        except Exception as e:
+            logger.error(f"Error getting beam history: {str(e)}")
+            return []
         
     def detect_blockage(self, channel_data, agv_positions, obstacle_positions):
         """Detect if AGVs are blocked by obstacles"""
