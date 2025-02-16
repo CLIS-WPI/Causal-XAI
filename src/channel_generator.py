@@ -9,7 +9,7 @@ from sionna.rt import Scene, Transmitter, Receiver, PlanarArray, RadioMaterial, 
 from sionna.rt import DiscretePhaseProfile, CellGrid
 import logging
 from sionna.channel.utils import subcarrier_frequencies
-
+from beam_manager import BeamManager
 # Initialize logger
 logger = logging.getLogger(__name__)
 
@@ -146,7 +146,8 @@ class SmartFactoryChannel:
         
         return h
 
-    def generate_channel_data(scene, config):
+#generate_channel_data method signature and implementation:
+    def generate_channel_data(self, config):
         """Generate channel data using ray tracing"""
         try:
             logger.debug("=== Generating channel data ===")
@@ -156,9 +157,8 @@ class SmartFactoryChannel:
             logger.debug(f"- Num samples: {config.ray_tracing['num_samples']}")
             logger.debug(f"- LOS enabled: {config.ray_tracing['los']}")
             
-            # Compute paths using ray tracing
-            logger.debug("Computing paths...")
-            paths = scene.compute_paths(
+            # Use self.scene instead of scene
+            paths = self.scene.compute_paths(
                 max_depth=config.ray_tracing['max_depth'],
                 method="fibonacci",
                 num_samples=config.ray_tracing['num_samples'],
@@ -169,6 +169,7 @@ class SmartFactoryChannel:
                 scat_keep_prob=config.ray_tracing['scat_keep_prob'],
                 edge_diffraction=config.ray_tracing['edge_diffraction']
             )
+            
             
             if paths is None:
                 logger.error("Path computation failed - no paths found")

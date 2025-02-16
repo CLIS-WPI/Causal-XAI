@@ -666,8 +666,7 @@ def main():
 
             # Generate channel data
             channel_generator = SmartFactoryChannel(config, scene)
-            channel_data = channel_generator.generate_channel_data(scene, config)
-
+            channel_data = channel_generator.generate_channel_data(config)
             # Detect blockages
             los_blocked = beam_manager.detect_blockage(
                 channel_data=channel_data,
