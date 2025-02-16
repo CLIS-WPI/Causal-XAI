@@ -39,6 +39,12 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
         <rgb name="radiance" value="0.1 0.1 0.1"/>  <!-- Ambient light from config -->
     </emitter>
 
+    <bsdf type="twosided" id="itu_concrete">
+        <bsdf type="diffuse">
+            <rgb name="reflectance" value="0.539479 0.539479 0.539480"/>
+        </bsdf>
+    </bsdf>
+
     <!-- Material definitions based on config materials -->
     <bsdf type="twosided" id="mat-concrete">
         <bsdf type="diffuse">
@@ -55,7 +61,7 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
     <!-- Static Scene Elements -->
     <shape type="ply" id="floor">
         <string name="filename" value="meshes/floor.ply"/>
-        <ref name="bsdf" id="itu_concrete"/>  <!-- Changed to use ITU material -->
+        <ref name="bsdf" id="itu_concrete"/>
     </shape>
 
     <!-- Walls with correct positions from config -->
