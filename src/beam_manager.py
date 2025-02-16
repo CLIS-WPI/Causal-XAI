@@ -318,4 +318,28 @@ class BeamManager:
             return float(convergence_time)
         except Exception as e:
             logger.error(f"Error calculating convergence time: {str(e)}")
-            return 0.0    
+            return 0.0 
+        
+    def get_adaptation_metrics(self):
+            """Return metrics about beam adaptation performance"""
+            try:
+                metrics = {
+                    'snr_improvement': self.get_snr_improvement(),
+                    'convergence_time': self.get_convergence_time(),
+                    'beam_history_length': len(self.beam_history),
+                    'current_state': {
+                        'beam_angles': self.current_beam.numpy() if self.current_beam is not None else None,
+                        'channel_state': self.current_channel_state
+                    }
+                }
+                
+                return metrics
+                
+            except Exception as e:
+                logger.error(f"Error getting adaptation metrics: {str(e)}")
+                return {
+                    'snr_improvement': 0.0,
+                    'convergence_time': 0.0,
+                    'beam_history_length': 0,
+                    'current_state': None
+                }    
