@@ -508,17 +508,45 @@ class SionnaPLYGenerator:
         if config.bs_position != [10.0, 0.5, 4.5]:
             logger.warning("Base station position does not match original specification")
 
+    @staticmethod
     def validate_scene_geometry(scene):
         """Validate scene geometry for LOS paths"""
-        bs_position = scene.transmitters['bs'].position
-        
-        # Check for obstacles near BS
-        for obj in scene.objects:
-            if obj.name != 'base_station':
-                distance = tf.norm(obj.center - bs_position)
-                if distance < 1.0:  # 1 meter threshold
-                    logger.warning(f"Object {obj.name} too close to BS: {distance:.2f}m")
-                    
+        try:
+            # Verify base station exists
+            if 'bs' not in scene.transmitters:
+                logger.error("Base station not found in scene")
+                return False
+                
+            bs_position = scene.transmitters['bs'].position
+            
+            # Check for obstacles near BS
+            for obj_name, obj in scene.objects.items():
+                logger.debug(f"Validating object: {obj_name}")
+                
+                if obj_name != 'base_station':
+                    try:
+                        # Get object position - handle different object types
+                        if hasattr(obj, 'center'):
+                            obj_position = obj.center
+                        elif hasattr(obj, 'position'):
+                            obj_position = obj.position
+                        else:
+                            logger.warning(f"Object {obj_name} has no position information")
+                            continue
+                            
+                        # Calculate distance
+                        distance = tf.norm(obj_position - bs_position)
+                        if distance < 1.0:  # 1 meter threshold
+                            logger.warning(f"Object {obj_name} too close to BS: {distance:.2f}m")
+                            
+                    except Exception as e:
+                        logger.warning(f"Could not validate object {obj_name}: {str(e)}")
+                        
+            return True
+            
+        except Exception as e:
+            logger.error(f"Scene geometry validation failed: {str(e)}")
+            return False
 def main():
     # Get the absolute path of the current script
     current_dir = os.path.dirname(os.path.abspath(__file__))
