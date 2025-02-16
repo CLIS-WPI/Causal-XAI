@@ -50,7 +50,16 @@ class SionnaPLYGenerator:
                     orientation=wall_config['orientation'],
                     material_type=config.static_scene['material']
                 )
-                                
+            # Generate floor
+            output_file = output_path / 'floor.ply'
+            SionnaPLYGenerator._generate_horizontal_surface(
+                filename=str(output_file),
+                width=config.room_dim[0],
+                depth=config.room_dim[1],
+                z=0,  # Floor is at z=0
+                material_type='floor'  # Use floor material type
+            )
+
             # Generate shelves using config
             shelf_positions = config.scene_objects['shelf_positions']
             shelf_dims = config.scene_objects['shelf_dimensions']
