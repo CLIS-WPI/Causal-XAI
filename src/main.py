@@ -670,11 +670,28 @@ def main():
                 obstacle_positions=obstacle_positions
             )
 
-            # Optimize beam directions
+            # First optimize the beam directions
             optimal_beams = beam_manager.optimize_beam_direction(
-                channel_data=channel_data_history[-1] if channel_data_history else None,
+                channel_data=channel_data,
                 agv_positions=agv_positions,
                 obstacle_positions=obstacle_positions
+            )
+
+            # Now you can get the current beams (which were set by optimize_beam_direction)
+            current_beams = beam_manager.get_current_beams()
+
+            # Update the causal data if needed
+            beam_manager.update_causal_data(
+                beam_direction=current_beams,
+                channel_metrics={
+                    'snr': channel_data['snr'],
+                    'throughput': channel_data['throughput'],
+                    'los_blocked': channel_data.get('los_blocked', False)
+                },
+                agv_state={
+                    'speed': agv_speed,
+                    'distance': distance_to_bs
+                }
             )
 
             # Apply optimal beams
