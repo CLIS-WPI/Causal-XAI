@@ -176,9 +176,9 @@ class BeamManager:
             horizontal_distance
         )
         
-        # Convert to degrees
-        azimuth_deg = tf.math.degrees(azimuth)
-        elevation_deg = tf.math.degrees(elevation)
+        # Convert to degrees (multiply by 180/pi)
+        azimuth_deg = azimuth * 180.0 / tf.constant(np.pi, dtype=tf.float32)
+        elevation_deg = elevation * 180.0 / tf.constant(np.pi, dtype=tf.float32)
         
         # Ensure angles are within valid ranges
         azimuth_deg = tf.where(azimuth_deg < 0, azimuth_deg + 360, azimuth_deg)
