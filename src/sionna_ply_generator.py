@@ -161,57 +161,57 @@ class SionnaPLYGenerator:
             orientation: 'xz' for walls parallel to XZ plane, 'yz' for walls parallel to YZ plane
             material_type: Material type for the wall (optional)
         """
-    try:
-        # Write binary PLY file
-        with open(filename, 'wb') as f:
-            # Write header
-            f.write(b'ply\n')
-            f.write(b'format binary_little_endian 1.0\n')
-            f.write(b'element vertex 4\n')
-            f.write(b'property float x\n')
-            f.write(b'property float y\n')
-            f.write(b'property float z\n')
-            f.write(b'property float u\n')
-            f.write(b'property float v\n')
-            f.write(b'element face 2\n')
-            f.write(b'property list uchar int vertex_indices\n')
-            f.write(b'end_header\n')
+        try:
+            # Write binary PLY file
+            with open(filename, 'wb') as f:
+                # Write header
+                f.write(b'ply\n')
+                f.write(b'format binary_little_endian 1.0\n')
+                f.write(b'element vertex 4\n')
+                f.write(b'property float x\n')
+                f.write(b'property float y\n')
+                f.write(b'property float z\n')
+                f.write(b'property float u\n')
+                f.write(b'property float v\n')
+                f.write(b'element face 2\n')
+                f.write(b'property list uchar int vertex_indices\n')
+                f.write(b'end_header\n')
 
-            # Define vertices based on orientation
-            if orientation == 'xz':
-                vertices = [
-                    (x,       y, 0,      0.0, 0.0),  # Bottom-left
-                    (x+width, y, 0,      1.0, 0.0),  # Bottom-right
-                    (x+width, y, height, 1.0, 1.0),  # Top-right
-                    (x,       y, height, 0.0, 1.0)   # Top-left
-                ]
-            else:  # orientation == 'yz'
-                vertices = [
-                    (x, y,       0,      0.0, 0.0),  # Bottom-left
-                    (x, y+width, 0,      1.0, 0.0),  # Bottom-right
-                    (x, y+width, height, 1.0, 1.0),  # Top-right
-                    (x, y,       height, 0.0, 1.0)   # Top-left
-                ]
+                # Define vertices based on orientation
+                if orientation == 'xz':
+                    vertices = [
+                        (x,       y, 0,      0.0, 0.0),  # Bottom-left
+                        (x+width, y, 0,      1.0, 0.0),  # Bottom-right
+                        (x+width, y, height, 1.0, 1.0),  # Top-right
+                        (x,       y, height, 0.0, 1.0)   # Top-left
+                    ]
+                else:  # orientation == 'yz'
+                    vertices = [
+                        (x, y,       0,      0.0, 0.0),  # Bottom-left
+                        (x, y+width, 0,      1.0, 0.0),  # Bottom-right
+                        (x, y+width, height, 1.0, 1.0),  # Top-right
+                        (x, y,       height, 0.0, 1.0)   # Top-left
+                    ]
 
-            # Write vertex data
-            for vertex in vertices:
-                for value in vertex:
-                    f.write(struct.pack('<f', float(value)))
+                # Write vertex data
+                for vertex in vertices:
+                    for value in vertex:
+                        f.write(struct.pack('<f', float(value)))
 
-            # Write face data - two triangles
-            # First triangle: vertices 0,1,2
-            f.write(struct.pack('<B', 3))  # number of vertices in face
-            f.write(struct.pack('<3i', 0, 1, 2))
-            
-            # Second triangle: vertices 0,2,3
-            f.write(struct.pack('<B', 3))  # number of vertices in face
-            f.write(struct.pack('<3i', 0, 2, 3))
+                # Write face data - two triangles
+                # First triangle: vertices 0,1,2
+                f.write(struct.pack('<B', 3))  # number of vertices in face
+                f.write(struct.pack('<3i', 0, 1, 2))
+                
+                # Second triangle: vertices 0,2,3
+                f.write(struct.pack('<B', 3))  # number of vertices in face
+                f.write(struct.pack('<3i', 0, 2, 3))
 
-        logger.debug(f"Generated vertical wall: {filename}")
-            
-    except Exception as e:
-        logger.error(f"Error generating vertical wall PLY {filename}: {str(e)}")
-        raise
+            logger.debug(f"Generated vertical wall: {filename}")
+                
+        except Exception as e:
+            logger.error(f"Error generating vertical wall PLY {filename}: {str(e)}")
+            raise
 
     @staticmethod
     def _generate_shelf_ply(filename, dims, position, material_type=None):
@@ -228,43 +228,69 @@ class SionnaPLYGenerator:
             width, depth, height = dims
             x, y, z = position
 
-            # Define all vertices for a complete 3D box
+            # Define vertices for a box (8 vertices)
             vertices = [
-                # Front face vertices (y constant)
-                (x,         y,         z,         0, 0),  # 0 bottom-left
-                (x+width,   y,         z,         1, 0),  # 1 bottom-right
-                (x+width,   y,         z+height,  1, 1),  # 2 top-right
-                (x,         y,         z+height,  0, 1),  # 3 top-left
+                # Front face vertices
+                (x,         y,         z),          # 0 bottom-left-front
+                (x+width,   y,         z),          # 1 bottom-right-front
+                (x+width,   y,         z+height),   # 2 top-right-front
+                (x,         y,         z+height),   # 3 top-left-front
                 
-                # Back face vertices (y+depth)
-                (x,         y+depth,   z,         0, 0),  # 4 bottom-left
-                (x+width,   y+depth,   z,         1, 0),  # 5 bottom-right
-                (x+width,   y+depth,   z+height,  1, 1),  # 6 top-right
-                (x,         y+depth,   z+height,  0, 1),  # 7 top-left
+                # Back face vertices
+                (x,         y+depth,   z),          # 4 bottom-left-back
+                (x+width,   y+depth,   z),          # 5 bottom-right-back
+                (x+width,   y+depth,   z+height),   # 6 top-right-back
+                (x,         y+depth,   z+height)    # 7 top-left-back
             ]
-            
-            # Add material properties if specified
-            if material_type:
-                vertices = SionnaPLYGenerator._add_material_properties(vertices, material_type)
-                
-            # Define faces - each face is made of two triangles
+
+            # Define triangular faces (12 triangles for 6 faces)
             faces = [
                 # Front face
-                [0, 1, 2], [0, 2, 3],
+                (0, 1, 2),
+                (0, 2, 3),
                 # Back face
-                [5, 4, 7], [5, 7, 6],
+                (5, 4, 7),
+                (5, 7, 6),
                 # Top face
-                [3, 2, 6], [3, 6, 7],
+                (3, 2, 6),
+                (3, 6, 7),
                 # Bottom face
-                [4, 5, 1], [4, 1, 0],
+                (4, 5, 1),
+                (4, 1, 0),
                 # Left face
-                [4, 0, 3], [4, 3, 7],
+                (4, 0, 3),
+                (4, 3, 7),
                 # Right face
-                [1, 5, 6], [1, 6, 2]
+                (1, 5, 6),
+                (1, 6, 2)
             ]
-            
-            SionnaPLYGenerator._save_binary_ply(filename, vertices, faces)
-            
+
+            # Write binary PLY file
+            with open(filename, 'wb') as f:
+                # Write header
+                f.write(b'ply\n')
+                f.write(b'format binary_little_endian 1.0\n')
+                f.write(f'element vertex {len(vertices)}\n'.encode())
+                f.write(b'property float x\n')
+                f.write(b'property float y\n')
+                f.write(b'property float z\n')
+                f.write(f'element face {len(faces)}\n'.encode())
+                f.write(b'property list uchar int vertex_indices\n')
+                f.write(b'end_header\n')
+
+                # Write vertex data
+                for vertex in vertices:
+                    for coord in vertex:
+                        f.write(struct.pack('<f', float(coord)))
+
+                # Write face data
+                for face in faces:
+                    f.write(struct.pack('<B', 3))  # 3 vertices per face
+                    for idx in face:
+                        f.write(struct.pack('<i', idx))
+
+            logger.debug(f"Generated shelf PLY: {filename}")
+
         except Exception as e:
             logger.error(f"Error generating shelf PLY {filename}: {str(e)}")
             raise
