@@ -82,3 +82,46 @@ class BeamManager:
             'agv_speed': agv_state['speed'],
             'distance_to_bs': agv_state['distance']
         })
+
+    def _ray_intersects_obstacle(self, start_point, end_point, obstacle_position):
+        """
+        Check if a ray between two points intersects with an obstacle
+        
+        Args:
+            start_point: Starting point of the ray (e.g., BS position)
+            end_point: End point of the ray (e.g., AGV position)
+            obstacle_position: Position of the obstacle to check against
+            
+        Returns:
+            bool: True if ray intersects obstacle, False otherwise
+        """
+        # Convert points to TensorFlow tensors if they aren't already
+        start = tf.cast(start_point, tf.float32)
+        end = tf.cast(end_point, tf.float32)
+        obstacle = tf.cast(obstacle_position, tf.float32)
+        
+        # Calculate ray direction
+        ray_direction = end - start
+        ray_length = tf.norm(ray_direction)
+        ray_direction = ray_direction / ray_length
+        
+        # Calculate vector from start to obstacle
+        to_obstacle = obstacle - start
+        
+        # Project obstacle point onto ray
+        projection = tf.reduce_sum(to_obstacle * ray_direction)
+        
+        # Find closest point on ray to obstacle
+        closest_point = start + projection * ray_direction
+        
+        # Calculate distance from obstacle to ray
+        distance_to_ray = tf.norm(obstacle - closest_point)
+        
+        # Check if projection point is between start and end
+        is_between = (projection >= 0) & (projection <= ray_length)
+        
+        # Define obstacle radius (adjust based on your needs)
+        obstacle_radius = 1.0  # meters
+        
+        # Return True if ray intersects obstacle
+        return tf.logical_and(distance_to_ray < obstacle_radius, is_between)
