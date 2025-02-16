@@ -562,6 +562,10 @@ def main():
             raise ValueError("Scene setup failed")
         logger.debug("Scene setup completed")
 
+        # Add validation call here
+        logger.info("Validating scene geometry...")
+        SionnaPLYGenerator.validate_scene_geometry(scene)  
+
         # Add verification
         verify_geometry(scene)
 
