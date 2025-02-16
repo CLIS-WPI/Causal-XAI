@@ -136,7 +136,6 @@ def add_snr_config(config):
     # Add typical path loss for indoor factory at 28GHz
     config.path_loss_db = 80  # Typical value for indoor factory environment
 
-
 def generate_channel_data(scene, config, beam_manager=None):
     """Generate enhanced channel data using ray tracing"""
     try:
