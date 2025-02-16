@@ -39,20 +39,14 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
         <rgb name="radiance" value="0.1 0.1 0.1"/>  <!-- Ambient light from config -->
     </emitter>
 
+    <!-- Material definitions -->
     <bsdf type="twosided" id="itu_concrete">
         <bsdf type="diffuse">
             <rgb name="reflectance" value="0.539479 0.539479 0.539480"/>
         </bsdf>
     </bsdf>
 
-    <!-- Material definitions based on config materials -->
-    <bsdf type="twosided" id="mat-concrete">
-        <bsdf type="diffuse">
-            <rgb name="reflectance" value="0.539479 0.539479 0.539480"/>
-        </bsdf>
-    </bsdf>
-
-    <bsdf type="twosided" id="mat-metal">
+    <bsdf type="twosided" id="itu_metal">
         <bsdf type="diffuse">
             <rgb name="reflectance" value="0.147314 0.147314 0.147314"/>
         </bsdf>
@@ -67,65 +61,65 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
     <!-- Walls with correct positions from config -->
     <shape type="ply" id="wall_xp">
         <string name="filename" value="meshes/wall_xp.ply"/>
-        <ref name="bsdf" id="mat-concrete"/>
+        <ref name="bsdf" id="itu_concrete"/>
     </shape>
 
     <shape type="ply" id="wall_xm">
         <string name="filename" value="meshes/wall_xm.ply"/>
-        <ref name="bsdf" id="mat-concrete"/>
+        <ref name="bsdf" id="itu_concrete"/>
     </shape>
 
     <shape type="ply" id="wall_yp">
         <string name="filename" value="meshes/wall_yp.ply"/>
-        <ref name="bsdf" id="mat-concrete"/>
+        <ref name="bsdf" id="itu_concrete"/>
     </shape>
 
     <shape type="ply" id="wall_ym">
         <string name="filename" value="meshes/wall_ym.ply"/>
-        <ref name="bsdf" id="mat-concrete"/>
+        <ref name="bsdf" id="itu_concrete"/>
     </shape>
 
     <!-- Shelves with positions from config -->
     <shape type="ply" id="shelf_0">
         <string name="filename" value="meshes/shelf_0.ply"/>
-        <ref name="bsdf" id="mat-metal"/>
+        <ref name="bsdf" id="itu_metal"/>
     </shape>
 
     <shape type="ply" id="shelf_1">
         <string name="filename" value="meshes/shelf_1.ply"/>
-        <ref name="bsdf" id="mat-metal"/>
+        <ref name="bsdf" id="itu_metal"/>
     </shape>
 
     <shape type="ply" id="shelf_2">
         <string name="filename" value="meshes/shelf_2.ply"/>
-        <ref name="bsdf" id="mat-metal"/>
+        <ref name="bsdf" id="itu_metal"/>
     </shape>
 
     <shape type="ply" id="shelf_3">
         <string name="filename" value="meshes/shelf_3.ply"/>
-        <ref name="bsdf" id="mat-metal"/>
+        <ref name="bsdf" id="itu_metal"/>
     </shape>
 
     <shape type="ply" id="shelf_4">
         <string name="filename" value="meshes/shelf_4.ply"/>
-        <ref name="bsdf" id="mat-metal"/>
+        <ref name="bsdf" id="itu_metal"/>
     </shape>
 
     <!-- AGV Robots with actual positions from config -->
     <shape type="ply" id="agv_robot_0">
         <string name="filename" value="meshes/agv_robot_0.ply"/>
-        <ref name="bsdf" id="mat-metal"/>
+        <ref name="bsdf" id="itu_metal"/>
     </shape>
 
     <shape type="ply" id="agv_robot_1">
         <string name="filename" value="meshes/agv_robot_1.ply"/>
-        <ref name="bsdf" id="mat-metal"/>
+        <ref name="bsdf" id="itu_metal"/>
     </shape>
 
     <!-- Base Station -->
     <shape type="ply" id="base_station">
         <string name="filename" value="meshes/base_station.ply"/>
-        <ref name="bsdf" id="mat-metal"/>
+        <ref name="bsdf" id="itu_metal"/>
     </shape>
 
 </scene>
