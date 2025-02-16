@@ -25,7 +25,7 @@ class SmartFactoryConfig:
         self.wavelength = tf.cast(SPEED_OF_LIGHT/self.carrier_frequency, tf.float32)
         
         # Enhanced Base station configuration
-        self.bs_position = [10.0, 10.0, 4.5]  # Center of room, near ceiling
+        self.bs_position = [10.0, 0.5, 4.5]  # Center of room, near ceiling
         self.bs_orientation = [0.0, 0.0, -90.0]  # Facing downward
         self.bs_array = [16, 4]  # 16x4 UPA
         self.bs_array_spacing = 0.5 * self.wavelength
