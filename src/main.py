@@ -142,9 +142,9 @@ def generate_channel_data(scene, config, beam_manager=None):
         logger.info("Starting channel data generation...")
         
         # this is new section for beam management
-        if hasattr(self, 'beam_manager'):
+        if beam_manager is not None:
             logger.info("Using beam manager for adaptive beamforming...")
-            current_beams = self.beam_manager.get_current_beams()
+            current_beams = beam_manager.get_current_beams()
             if current_beams is not None:
                 for tx in scene.transmitters.values():
                     tx.antenna.apply_beam_weights(current_beams)
@@ -228,9 +228,9 @@ def generate_channel_data(scene, config, beam_manager=None):
         )
 
         # After computing paths but before CIR calculation
-        if hasattr(self, 'beam_manager'):
+        if beam_manager is not None:
             # Update beam manager with current channel state
-            self.beam_manager.update_channel_state({
+            beam_manager.update_channel_state({
                 'paths': paths,
                 'los_available': expected_los,
                 'scene_state': {
@@ -485,11 +485,11 @@ def generate_channel_data(scene, config, beam_manager=None):
             logger.info(f"Average SNR: {tf.reduce_mean(snr):.2f} dB")  # Changed from snr_db to snr
             logger.info(f"Maximum Doppler Shift: {tf.reduce_max(tf.abs(doppler_shifts)):.2f} Hz")
 
-        if hasattr(self, 'beam_manager'):
+        if beam_manager is not None:
             channel_data['beam_data'] = {
-                'current_beams': self.beam_manager.get_current_beams(),
-                'beam_history': self.beam_manager.get_beam_history(),
-                'adaptation_metrics': self.beam_manager.get_adaptation_metrics()
+                'current_beams': beam_manager.get_current_beams(),
+                'beam_history': beam_manager.get_beam_history(),
+                'adaptation_metrics': beam_manager.get_adaptation_metrics()
             }
         print("Enhanced channel data generation completed")
         
