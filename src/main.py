@@ -126,8 +126,8 @@ def add_snr_config(config):
     """Add SNR-related parameters to configuration"""
     config.snr_parameters = {
         'noise_figure_db': 10,        # Typical value for mmWave receivers
-        'implementation_loss_db': 3,   # Typical system implementation loss
-        'thermal_noise_temp': 290,     # Room temperature in Kelvin
+        'implementation_loss_db': 3,  # Typical system implementation loss
+        'thermal_noise_temp': 290,    # Room temperature in Kelvin
         'min_snr_db': -20,            # Minimum detectable SNR
         'max_snr_db': 40,             # Maximum expected SNR
     }
