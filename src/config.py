@@ -6,7 +6,7 @@ class SmartFactoryConfig:
     def __init__(self):
         # Keep existing basic parameters
         self.num_time_steps = 100
-        self.sampling_frequency = tf.cast(1000, tf.float32)
+        self.sampling_frequency = tf.cast(5000, tf.float32)
         self.batch_size = 1
         self.dtype = tf.complex64
         self.real_dtype = tf.float32  # Add this for real number operations
@@ -92,7 +92,7 @@ class SmartFactoryConfig:
         self.ray_tracing = {
             'max_depth': 6,              # Reduced for more focused paths
             'method': "fibonacci",
-            'num_samples': 1000,       # Doubled for better coverage
+            'num_samples': 5000,       # Doubled for better coverage
             'diffraction': True,
             'scattering': True,
             'los': True,

@@ -146,7 +146,6 @@ class SmartFactoryChannel:
         
         return h
 
-#generate_channel_data method signature and implementation:
     def generate_channel_data(self, config):
         """Generate channel data using ray tracing"""
         try:
@@ -157,7 +156,6 @@ class SmartFactoryChannel:
             logger.debug(f"- Num samples: {config.ray_tracing['num_samples']}")
             logger.debug(f"- LOS enabled: {config.ray_tracing['los']}")
             
-            # Use self.scene instead of scene
             paths = self.scene.compute_paths(
                 max_depth=config.ray_tracing['max_depth'],
                 method="fibonacci",
@@ -170,17 +168,18 @@ class SmartFactoryChannel:
                 edge_diffraction=config.ray_tracing['edge_diffraction']
             )
             
-            
             if paths is None:
                 logger.error("Path computation failed - no paths found")
                 raise RuntimeError("Path computation failed")
-            
-            logger.debug(f"Number of paths found: {len(paths)}")
+
+            # Instead of len(paths), use tf.size() on the paths.LOS tensor
+            num_paths = tf.size(paths.LOS)
+            logger.debug(f"Number of paths found: {num_paths}")
             logger.debug(f"LOS paths: {tf.reduce_sum(tf.cast(paths.LOS, tf.int32))}")
 
             # Get channel impulse responses
             logger.debug("Computing channel impulse responses...")
-            a, tau = paths.cir(normalize=True)
+            a, tau = paths.cir()
             logger.debug(f"CIR shape - a: {a.shape}, tau: {tau.shape}")
             
             # Calculate frequencies
