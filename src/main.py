@@ -653,9 +653,8 @@ def main():
 
         # Get AGV and obstacle positions
         agv_positions = [receiver.position for receiver in scene.receivers.values()]
-        obstacle_positions = [obj.center for obj in scene.objects.values() 
-                            if 'shelf' in obj.name]
-
+        obstacle_positions = [obj.position for obj in scene.objects.values() if 'shelf' in obj.name]
+        
         # Simulation loop for adaptive beamforming
         logger.info("Starting adaptive beamforming simulation...")
         channel_data_history = []
@@ -689,7 +688,8 @@ def main():
             # Update causal analysis data
             for agv_idx, beam in enumerate(optimal_beams):
                 beam_manager.update_causal_data(
-                    beam_direction=beam,
+                    beam,  # Pass beam as first positional argument
+                    obstacle_positions,  # Pass obstacle_positions as second positional argument
                     channel_metrics={
                         'snr': current_channel['average_snr'],
                         'throughput': current_channel.get('throughput', 0),
