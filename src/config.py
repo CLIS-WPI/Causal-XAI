@@ -128,33 +128,24 @@ class SmartFactoryConfig:
             'scene_type': self.scene_type
         }
 
-        # Keep existing configurations
+
+    
+        # Add beamforming configuration
         self.beamforming = {
-            'num_beams': 64,
-            'codebook_type': 'DFT',
-            'beam_elevation': [-60, 60],
-            'beam_azimuth': [-60, 60]
-        }
-
-
-        self.energy = {
-            'beam_scan_power': 0.1,
-            'ris_config_power': 0.5,
-            'rf_chain_power': 1.0,
-            'power_amplifier_efficiency': 0.3
+            'num_beams': 32,  # Number of possible beam directions
+            'beam_width': 15, # Beam width in degrees
+            'max_steering_angle': 60, # Maximum steering angle
+            'adaptation_interval': 0.1, # Beam update interval (seconds)
+            'min_snr_threshold': 10.0, # Minimum acceptable SNR (dB)
         }
         
+        # Add causal analysis parameters
         self.causal = {
-            # In causal
-            'variables': {
-                'agv_position': True,
-                'los_condition': True,
-                'beam_choice': True,
-                'ris_state': True,
-                'path_gains': True
-            },
-            'analysis_interval': 5,
-            'min_correlation_threshold': 0.3
+            'observation_window': 100,  # Number of samples for causal analysis
+            'treatment_variables': ['beam_direction', 'obstacle_presence'],
+            'outcome_variables': ['snr', 'throughput'],
+            'confounders': ['agv_speed', 'distance_to_bs'],
+            'effect_threshold': 0.3  # Minimum effect size to consider significant
         }
 
         self.simulation = {

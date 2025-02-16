@@ -50,6 +50,8 @@ class SmartFactoryChannel:
             self.verify_scene_configuration()
             logger.debug("Scene configuration verified successfully")
 
+            self.beam_manager = BeamManager(config)
+            
         except Exception as e:
             logger.error(f"Channel initialization failed: {str(e)}")
             raise RuntimeError(f"Channel initialization failed: {str(e)}") from e

@@ -1,5 +1,6 @@
 #sionna_ply_generator.py
 import os
+import tensorflow as tf
 import sys
 import numpy as np
 import struct
@@ -508,11 +509,12 @@ class SionnaPLYGenerator:
         if config.bs_position != [10.0, 0.5, 4.5]:
             logger.warning("Base station position does not match original specification")
 
+
     @staticmethod
     def validate_scene_geometry(scene):
         """Validate scene geometry for LOS paths"""
         try:
-            # Verify base station exists
+            # Get base station position from transmitters
             if 'bs' not in scene.transmitters:
                 logger.error("Base station not found in scene")
                 return False
@@ -534,13 +536,14 @@ class SionnaPLYGenerator:
                             logger.warning(f"Object {obj_name} has no position information")
                             continue
                             
-                        # Calculate distance
+                        # Calculate distance using TensorFlow
                         distance = tf.norm(obj_position - bs_position)
                         if distance < 1.0:  # 1 meter threshold
                             logger.warning(f"Object {obj_name} too close to BS: {distance:.2f}m")
                             
                     except Exception as e:
                         logger.warning(f"Could not validate object {obj_name}: {str(e)}")
+                        continue
                         
             return True
             

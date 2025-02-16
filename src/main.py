@@ -16,6 +16,8 @@ from sionna.channel.utils import subcarrier_frequencies
 from sionna_ply_generator import SionnaPLYGenerator
 from sionna.constants import SPEED_OF_LIGHT
 from scene_setup import verify_geometry
+from beam_manager import BeamManager
+
 # Environment setup
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
@@ -563,7 +565,6 @@ def main():
             raise ValueError("Scene setup failed")
         logger.debug("Scene setup completed")
 
-
         try:
             logger.info("Validating scene geometry...")
             if not SionnaPLYGenerator.validate_scene_geometry(scene):
@@ -576,74 +577,120 @@ def main():
 
         # Configure cameras and render settings
         logger.info("Configuring scene cameras and render settings...")
-
-        # Set render configuration
         scene.render_config = config.render_config
 
-        # Register and render from each camera
+        # Camera setup and rendering (existing camera code remains the same)
         for cam_name, cam_params in config.cameras.items():
             try:
                 logger.info(f"Setting up {cam_name} camera...")
-                
-                # Create a Camera instance
                 camera = Camera(
                     name=cam_name,
                     position=cam_params['position']
                 )
-                
-                # Set camera properties
                 camera.look_at(cam_params['look_at'])
                 camera.up = cam_params['up']
-                
-                # Add camera to scene
                 scene.add(camera)
                 
                 logger.info(f"Rendering from {cam_name} camera...")
                 render_filename = os.path.join(result_dir, cam_params['filename'])
-                
-                scene.render_to_file(
-                    camera=cam_name,
-                    filename=render_filename
-                )
+                scene.render_to_file(camera=cam_name, filename=render_filename)
                 logger.info(f"Successfully rendered {render_filename}")
                 
             except Exception as e:
                 logger.error(f"Error with {cam_name} camera: {str(e)}")
                 continue
 
-        # Log registered cameras
+        # Verify scene setup
         logger.info(f"Registered cameras: {list(scene.cameras.keys())}")
-
-        # Verify all renders were successful
         verify_camera_renders(scene, config, result_dir)
-
-        # Verify LOS paths
         verify_los_paths(scene)
 
-        # Set scene frequency from config
+        # Set scene frequency and initialize beam manager
         scene.frequency = tf.cast(config.carrier_frequency, tf.float32)
         logger.debug(f"Scene frequency set to {config.carrier_frequency/1e9:.2f} GHz")
         
-        # Generate channel data
-        logger.info("Generating channel data...")
-        channel_data = generate_channel_data(scene, config)
-        logger.info("Channel data generation completed")
+        # Initialize beam manager
+        logger.info("Initializing beam manager...")
+        beam_manager = BeamManager(config)
+
+        # Get AGV and obstacle positions
+        agv_positions = [receiver.position for receiver in scene.receivers.values()]
+        obstacle_positions = [obj.center for obj in scene.objects.values() 
+                            if 'shelf' in obj.name]
+
+        # Simulation loop for adaptive beamforming
+        logger.info("Starting adaptive beamforming simulation...")
+        channel_data_history = []
+        num_iterations = config.simulation.get('num_iterations', 10)
+
+        for iteration in range(num_iterations):
+            logger.debug(f"Iteration {iteration+1}/{num_iterations}")
+
+            # Detect blockages
+            los_blocked = beam_manager.detect_blockage(
+                channel_data=channel_data_history[-1] if channel_data_history else None,
+                agv_positions=agv_positions,
+                obstacle_positions=obstacle_positions
+            )
+
+            # Optimize beam directions
+            optimal_beams = beam_manager.optimize_beam_direction(
+                channel_data=channel_data_history[-1] if channel_data_history else None,
+                agv_positions=agv_positions,
+                obstacle_positions=obstacle_positions
+            )
+
+            # Apply optimal beams
+            for beam_idx, beam in enumerate(optimal_beams):
+                scene.transmitters['bs'].antenna.steering_angle = beam
+
+            # Generate channel data
+            current_channel = generate_channel_data(scene, config)
+            channel_data_history.append(current_channel)
+
+            # Update causal analysis data
+            for agv_idx, beam in enumerate(optimal_beams):
+                beam_manager.update_causal_data(
+                    beam_direction=beam,
+                    channel_metrics={
+                        'snr': current_channel['average_snr'],
+                        'throughput': current_channel.get('throughput', 0),
+                        'los_blocked': los_blocked[agv_idx]
+                    },
+                    agv_state={
+                        'speed': config.agv_speed,
+                        'distance': tf.norm(agv_positions[agv_idx] - 
+                                        scene.transmitters['bs'].position)
+                    }
+                )
+
+        # Perform causal analysis
+        logger.info("Performing causal analysis...")
+        causal_effect = beam_manager.perform_causal_analysis()
         
-        # Save channel data
+        # Aggregate final channel data
+        final_channel_data = channel_data_history[-1]
+        final_channel_data['causal_analysis'] = {
+            'effect_size': causal_effect.value if causal_effect else None,
+            'confidence_intervals': causal_effect.confidence_intervals if causal_effect else None,
+            'beam_history': beam_manager.beam_history
+        }
+
+        # Save final channel data
         h5_filepath = os.path.join(result_dir, 'channel_data.h5')
         logger.info(f"Saving channel data to: {h5_filepath}")
-        save_channel_data(channel_data, h5_filepath)
-        logger.info("Channel data saved successfully")
+        save_channel_data(final_channel_data, h5_filepath)
         
         # Print statistics
         logger.info("\nChannel Data Statistics:")
         stats = {
-            'Channel matrices shape': channel_data['channel_matrices'].shape,
-            'Path delays shape': channel_data['path_delays'].shape,
-            'Number of receivers': len(channel_data['agv_positions']),
-            'LOS ratio': channel_data['los_statistics']['los_ratio'],
-            'Average SNR (dB)': channel_data['average_snr'],
-            'Max Doppler shift (Hz)': tf.reduce_max(tf.abs(channel_data['doppler_shifts']))
+            'Channel matrices shape': final_channel_data['channel_matrices'].shape,
+            'Path delays shape': final_channel_data['path_delays'].shape,
+            'Number of receivers': len(final_channel_data['agv_positions']),
+            'LOS ratio': final_channel_data['los_statistics']['los_ratio'],
+            'Average SNR (dB)': final_channel_data['average_snr'],
+            'Max Doppler shift (Hz)': tf.reduce_max(tf.abs(final_channel_data['doppler_shifts'])),
+            'Causal effect size': final_channel_data['causal_analysis']['effect_size']
         }
         
         for key, value in stats.items():
@@ -658,7 +705,6 @@ def main():
         logger.info("Execution completed")
 
 if __name__ == "__main__":
-    # Set up logging format
     logging.basicConfig(
         level=logging.DEBUG,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -667,6 +713,4 @@ if __name__ == "__main__":
             logging.StreamHandler()
         ]
     )
-    
-    # Run main function
     main()
