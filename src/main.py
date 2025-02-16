@@ -136,7 +136,7 @@ def add_snr_config(config):
     config.path_loss_db = 80  # Typical value for indoor factory environment
 
 
-def generate_channel_data(self, scene, config):
+def generate_channel_data(scene, config):
     """Generate enhanced channel data using ray tracing"""
     try:
         logger.info("Starting channel data generation...")
