@@ -55,7 +55,7 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
     <!-- Static Scene Elements -->
     <shape type="ply" id="floor">
         <string name="filename" value="meshes/floor.ply"/>
-        <ref name="bsdf" id="mat-concrete"/>
+        <ref name="bsdf" id="itu_concrete"/>  <!-- Changed to use ITU material -->
     </shape>
 
     <!-- Walls with correct positions from config -->
