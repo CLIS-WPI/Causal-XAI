@@ -679,7 +679,7 @@ def main():
 
             # Apply optimal beams
             for beam_idx, beam in enumerate(optimal_beams):
-                scene.transmitters['bs'].antenna.steering_angle = beam
+                scene.transmitters['bs'].array.steering_angle = beam
 
             # Generate channel data
             current_channel = generate_channel_data(scene, config)

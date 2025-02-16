@@ -61,7 +61,7 @@ class SmartFactoryConfig:
                 'xpd_coefficient': 15.0
             }
         }
-                # Add camera configurations
+        # Add camera configurations
         self.cameras = {
             'top': {
                 'position': [10.0, 10.0, 20.0],
