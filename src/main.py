@@ -136,7 +136,7 @@ def add_snr_config(config):
     config.path_loss_db = 80  # Typical value for indoor factory environment
 
 
-def generate_channel_data(scene, config):
+def generate_channel_data(scene, config, beam_manager=None):
     """Generate enhanced channel data using ray tracing"""
     try:
         logger.info("Starting channel data generation...")
@@ -466,11 +466,11 @@ def generate_channel_data(scene, config):
                 'agv_velocities': velocities.numpy(),
                 'path_conditions': los_conditions.numpy(),
             'beam_adaptation': {
-                'current_beam_weights': self.beam_manager.get_current_beams() if hasattr(self, 'beam_manager') else None,
-                'beam_optimization_history': self.beam_manager.get_optimization_history() if hasattr(self, 'beam_manager') else None,
+                'current_beam_weights': beam_manager.get_current_beams() if beam_manager is not None else None,
+                'beam_optimization_history': beam_manager.get_optimization_history() if beam_manager is not None else None,
                 'adaptation_performance': {
-                    'snr_improvement': self.beam_manager.get_snr_improvement() if hasattr(self, 'beam_manager') else 0.0,
-                    'convergence_time': self.beam_manager.get_convergence_time() if hasattr(self, 'beam_manager') else 0.0
+                    'snr_improvement': beam_manager.get_snr_improvement() if beam_manager is not None else 0.0,
+                    'convergence_time': beam_manager.get_convergence_time() if beam_manager is not None else 0.0
                 }
             }
         }
@@ -682,7 +682,7 @@ def main():
                 scene.transmitters['bs'].array.steering_angle = beam
 
             # Generate channel data
-            current_channel = generate_channel_data(scene, config)
+            current_channel = generate_channel_data(scene, config, beam_manager)
             channel_data_history.append(current_channel)
 
             # Update causal analysis data
