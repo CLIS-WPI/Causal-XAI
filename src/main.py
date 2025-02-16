@@ -17,6 +17,7 @@ from sionna_ply_generator import SionnaPLYGenerator
 from sionna.constants import SPEED_OF_LIGHT
 from scene_setup import verify_geometry
 from beam_manager import BeamManager
+from channel_generator import SmartFactoryChannel
 
 # Environment setup
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -654,7 +655,7 @@ def main():
         # Get AGV and obstacle positions
         agv_positions = [receiver.position for receiver in scene.receivers.values()]
         obstacle_positions = [obj.position for obj in scene.objects.values() if 'shelf' in obj.name]
-        
+
         # Simulation loop for adaptive beamforming
         logger.info("Starting adaptive beamforming simulation...")
         channel_data_history = []
@@ -663,38 +664,54 @@ def main():
         for iteration in range(num_iterations):
             logger.debug(f"Iteration {iteration+1}/{num_iterations}")
 
+            # Generate channel data
+            channel_generator = SmartFactoryChannel(config, scene)
+            channel_data = channel_generator.generate_channel_data(scene, config)
+
             # Detect blockages
             los_blocked = beam_manager.detect_blockage(
-                channel_data=channel_data_history[-1] if channel_data_history else None,
-                agv_positions=agv_positions,
-                obstacle_positions=obstacle_positions
-            )
-
-            # First optimize the beam directions
-            optimal_beams = beam_manager.optimize_beam_direction(
                 channel_data=channel_data,
                 agv_positions=agv_positions,
                 obstacle_positions=obstacle_positions
             )
 
-            # Now you can get the current beams (which were set by optimize_beam_direction)
-            current_beams = beam_manager.get_current_beams()
-
-            # Update the causal data if needed
-            beam_manager.update_causal_data(
-                beam_direction=current_beams,
-                channel_metrics={
-                    'snr': channel_data['snr'],
-                    'throughput': channel_data['throughput'],
-                    'los_blocked': channel_data.get('los_blocked', False)
-                },
-                agv_state={
-                    'speed': agv_speed,
-                    'distance': distance_to_bs
-                }
+            # Optimize beam direction
+            beam_manager.optimize_beam_direction(
+                channel_data=channel_data,
+                agv_positions=agv_positions,
+                obstacle_positions=obstacle_positions
             )
 
+            # Get optimal beams
+            optimal_beams = beam_manager.get_current_beams()
+
             # Apply optimal beams
+            for beam_idx, beam in enumerate(optimal_beams):
+                scene.transmitters['bs'].array.steering_angle = beam
+
+            # Generate channel data
+            current_channel = generate_channel_data(scene, config, beam_manager)
+            channel_data_history.append(current_channel)
+
+            # Update causal analysis data
+            for beam_idx, beam in enumerate(optimal_beams):
+                beam_manager.update_causal_data(
+                    beam,
+                    obstacle_positions,
+                    channel_metrics={
+                        'snr': current_channel['average_snr'],
+                        'throughput': current_channel.get('throughput', 0),
+                        'los_blocked': los_blocked[beam_idx]
+                    },
+                    agv_state={
+                        'speed': config.agv_speed,
+                        'distance': tf.norm(agv_positions[beam_idx] - 
+                                        scene.transmitters['bs'].position)
+                    }
+                )
+
+            # Apply optimal beams
+            optimal_beams = beam_manager.get_current_beams()
             for beam_idx, beam in enumerate(optimal_beams):
                 scene.transmitters['bs'].array.steering_angle = beam
 
