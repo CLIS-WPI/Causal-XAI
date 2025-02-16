@@ -25,9 +25,10 @@ class SionnaPLYGenerator:
         try:
             logger.debug("Starting PLY file generation...")
             
-            # Normalize output directory path
-            output_dir = os.path.abspath(output_dir)
-            os.makedirs(output_dir, exist_ok=True)
+            # Use pathlib for path handling
+            from pathlib import Path
+            output_path = Path(output_dir)
+            output_path.mkdir(parents=True, exist_ok=True)
             
             # Generate walls using config
             wall_configs = {
@@ -38,11 +39,10 @@ class SionnaPLYGenerator:
             }
             
             for wall_name, wall_config in wall_configs.items():
-                output_file = os.path.join(output_dir, f'{wall_name}.ply')
-                output_file = output_file.replace('\\', '/')  # Use forward slashes
+                output_file = output_path / f'{wall_name}.ply'
                 
                 SionnaPLYGenerator._generate_vertical_wall(
-                    filename=output_file,
+                    filename=str(output_file),
                     width=config.room_dim[0] if wall_config['orientation'] == 'xz' else config.room_dim[1],
                     height=config.room_dim[2],
                     x=wall_config.get('x', 0),
@@ -50,6 +50,7 @@ class SionnaPLYGenerator:
                     orientation=wall_config['orientation'],
                     material_type=config.static_scene['material']
                 )
+        
                         
             # Generate shelves using config
             shelf_positions = config.scene_objects['shelf_positions']
@@ -137,28 +138,32 @@ class SionnaPLYGenerator:
         """
         try:
             if orientation == 'xz':
+                # For y-oriented walls, swap width with x dimension
                 vertices = [
-                    (0,     y, 0,      0, 0),  # Bottom-left
-                    (width, y, 0,      1, 0),  # Bottom-right
-                    (width, y, height, 1, 1),  # Top-right
-                    (0,     y, height, 0, 1)   # Top-left
+                    (x,     y, 0,      0, 0),  # Bottom-left
+                    (x+width, y, 0,      1, 0),  # Bottom-right
+                    (x+width, y, height, 1, 1),  # Top-right
+                    (x,     y, height, 0, 1)   # Top-left
                 ]
             else:  # orientation == 'yz'
                 vertices = [
-                    (x, 0,     0,      0, 0),  # Bottom-left
-                    (x, width, 0,      1, 0),  # Bottom-right
-                    (x, width, height, 1, 1),  # Top-right
-                    (x, 0,     height, 0, 1)   # Top-left
+                    (x, y,     0,      0, 0),  # Bottom-left
+                    (x, y+width, 0,      1, 0),  # Bottom-right
+                    (x, y+width, height, 1, 1),  # Top-right
+                    (x, y,     height, 0, 1)   # Top-left
                 ]
 
             # Add material properties if specified
             if material_type:
                 vertices = SionnaPLYGenerator._add_material_properties(vertices, material_type)
 
-            faces = [[0, 1, 2], [0, 2, 3]]  # Triangulated faces
+            # Ensure proper face orientation
+            faces = [[0, 1, 2], [0, 2, 3]]  # Counter-clockwise orientation
+            
+            # Save the PLY file
             SionnaPLYGenerator._save_binary_ply(filename, vertices, faces)
             logger.debug(f"Generated vertical wall: {filename}")
-            
+                
         except Exception as e:
             logger.error(f"Error generating vertical wall PLY {filename}: {str(e)}")
             raise
@@ -327,16 +332,25 @@ class SionnaPLYGenerator:
         Save PLY in binary little-endian format with proper path handling
         """
         try:
-            # Clean and normalize the path
-            clean_path = os.path.abspath(filename)
-            clean_path = clean_path.replace('\\', '/')  # Use forward slashes
+            # Convert to raw string to handle special characters
+            filename = str(filename)
             
-            # Ensure directory exists
-            directory = os.path.dirname(clean_path)
+            # Create absolute path and normalize it
+            abs_path = os.path.abspath(filename)
+            
+            # Create directory if it doesn't exist
+            directory = os.path.dirname(abs_path)
             os.makedirs(directory, exist_ok=True)
             
-            # Open file with cleaned path
-            with open(clean_path, 'wb') as f:
+            # Use pathlib for robust path handling
+            from pathlib import Path
+            file_path = Path(abs_path)
+            
+            # Ensure parent directory exists
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Open file using pathlib Path object
+            with file_path.open(mode='wb') as f:
                 # Write PLY header
                 f.write(b'ply\n')
                 f.write(b'format binary_little_endian 1.0\n')
@@ -361,10 +375,10 @@ class SionnaPLYGenerator:
                     for idx in face:
                         f.write(struct.pack('<i', idx))
                         
-            logger.debug(f"Successfully saved PLY file: {clean_path}")
+            logger.debug(f"Successfully saved PLY file: {file_path}")
             
         except Exception as e:
-            logger.error(f"Error saving PLY file {clean_path}: {str(e)}")
+            logger.error(f"Error saving PLY file {filename}: {str(e)}")
             raise
 
     @staticmethod
