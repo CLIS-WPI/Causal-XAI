@@ -161,37 +161,57 @@ class SionnaPLYGenerator:
             orientation: 'xz' for walls parallel to XZ plane, 'yz' for walls parallel to YZ plane
             material_type: Material type for the wall (optional)
         """
-        try:
+    try:
+        # Write binary PLY file
+        with open(filename, 'wb') as f:
+            # Write header
+            f.write(b'ply\n')
+            f.write(b'format binary_little_endian 1.0\n')
+            f.write(b'element vertex 4\n')
+            f.write(b'property float x\n')
+            f.write(b'property float y\n')
+            f.write(b'property float z\n')
+            f.write(b'property float u\n')
+            f.write(b'property float v\n')
+            f.write(b'element face 2\n')
+            f.write(b'property list uchar int vertex_indices\n')
+            f.write(b'end_header\n')
+
+            # Define vertices based on orientation
             if orientation == 'xz':
-                # For y-oriented walls, swap width with x dimension
                 vertices = [
-                    (x,     y, 0,      0, 0),  # Bottom-left
-                    (x+width, y, 0,      1, 0),  # Bottom-right
-                    (x+width, y, height, 1, 1),  # Top-right
-                    (x,     y, height, 0, 1)   # Top-left
+                    (x,       y, 0,      0.0, 0.0),  # Bottom-left
+                    (x+width, y, 0,      1.0, 0.0),  # Bottom-right
+                    (x+width, y, height, 1.0, 1.0),  # Top-right
+                    (x,       y, height, 0.0, 1.0)   # Top-left
                 ]
             else:  # orientation == 'yz'
                 vertices = [
-                    (x, y,     0,      0, 0),  # Bottom-left
-                    (x, y+width, 0,      1, 0),  # Bottom-right
-                    (x, y+width, height, 1, 1),  # Top-right
-                    (x, y,     height, 0, 1)   # Top-left
+                    (x, y,       0,      0.0, 0.0),  # Bottom-left
+                    (x, y+width, 0,      1.0, 0.0),  # Bottom-right
+                    (x, y+width, height, 1.0, 1.0),  # Top-right
+                    (x, y,       height, 0.0, 1.0)   # Top-left
                 ]
 
-            # Add material properties if specified
-            if material_type:
-                vertices = SionnaPLYGenerator._add_material_properties(vertices, material_type)
+            # Write vertex data
+            for vertex in vertices:
+                for value in vertex:
+                    f.write(struct.pack('<f', float(value)))
 
-            # Ensure proper face orientation
-            faces = [[0, 1, 2], [0, 2, 3]]  # Counter-clockwise orientation
+            # Write face data - two triangles
+            # First triangle: vertices 0,1,2
+            f.write(struct.pack('<B', 3))  # number of vertices in face
+            f.write(struct.pack('<3i', 0, 1, 2))
             
-            # Save the PLY file
-            SionnaPLYGenerator._save_binary_ply(filename, vertices, faces)
-            logger.debug(f"Generated vertical wall: {filename}")
-                
-        except Exception as e:
-            logger.error(f"Error generating vertical wall PLY {filename}: {str(e)}")
-            raise
+            # Second triangle: vertices 0,2,3
+            f.write(struct.pack('<B', 3))  # number of vertices in face
+            f.write(struct.pack('<3i', 0, 2, 3))
+
+        logger.debug(f"Generated vertical wall: {filename}")
+            
+    except Exception as e:
+        logger.error(f"Error generating vertical wall PLY {filename}: {str(e)}")
+        raise
 
     @staticmethod
     def _generate_shelf_ply(filename, dims, position, material_type=None):
