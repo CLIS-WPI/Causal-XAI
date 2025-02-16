@@ -41,18 +41,14 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
 
     <!-- Material definitions based on config materials -->
     <bsdf type="twosided" id="mat-concrete">
-        <bsdf type="roughconductor">
-            <float name="alpha" value="0.1"/>  <!-- Roughness from materials config -->
-            <string name="distribution" value="ggx"/>
-            <float name="relative_permittivity" value="5.31"/>  <!-- From concrete material -->
+        <bsdf type="diffuse">
+            <rgb name="reflectance" value="0.539479 0.539479 0.539480"/>
         </bsdf>
     </bsdf>
 
     <bsdf type="twosided" id="mat-metal">
-        <bsdf type="roughconductor">
-            <float name="alpha" value="0.2"/>  <!-- From metal material -->
-            <string name="distribution" value="ggx"/>
-            <float name="conductivity" value="1.0e7"/>  <!-- From metal material -->
+        <bsdf type="diffuse">
+            <rgb name="reflectance" value="0.147314 0.147314 0.147314"/>
         </bsdf>
     </bsdf>
 

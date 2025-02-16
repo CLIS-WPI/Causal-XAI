@@ -50,19 +50,18 @@ class SionnaPLYGenerator:
                     orientation=wall_config['orientation'],
                     material_type=config.static_scene['material']
                 )
-        
-                        
+                                
             # Generate shelves using config
             shelf_positions = config.scene_objects['shelf_positions']
             shelf_dims = config.scene_objects['shelf_dimensions']
-            
+
             for i, pos in enumerate(shelf_positions):
                 output_file = os.path.join(output_dir, f'shelf_{i}.ply')
                 SionnaPLYGenerator._generate_shelf_ply(
                     filename=output_file,
                     dims=shelf_dims,
                     position=pos,
-                    material_type=config.scene_objects['shelf_material']
+                    material_type=config.scene_objects['shelf_material']  # Pass material type
                 )
             
             # Generate AGV robots using config
@@ -169,9 +168,15 @@ class SionnaPLYGenerator:
             raise
 
     @staticmethod
-    def _generate_shelf_ply(filename, dims, position):
+    def _generate_shelf_ply(filename, dims, position, material_type=None):
         """
         Generate shelf PLY with all six faces (box geometry)
+        
+        Args:
+            filename: Output PLY file path
+            dims: Tuple of (width, depth, height)
+            position: Tuple of (x, y, z) position
+            material_type: Material type for the shelf (optional)
         """
         try:
             width, depth, height = dims
@@ -192,6 +197,10 @@ class SionnaPLYGenerator:
                 (x,         y+depth,   z+height,  0, 1),  # 7 top-left
             ]
             
+            # Add material properties if specified
+            if material_type:
+                vertices = SionnaPLYGenerator._add_material_properties(vertices, material_type)
+                
             # Define faces - each face is made of two triangles
             faces = [
                 # Front face
