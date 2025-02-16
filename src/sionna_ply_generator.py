@@ -508,6 +508,17 @@ class SionnaPLYGenerator:
         if config.bs_position != [10.0, 0.5, 4.5]:
             logger.warning("Base station position does not match original specification")
 
+    def validate_scene_geometry(scene):
+        """Validate scene geometry for LOS paths"""
+        bs_position = scene.transmitters['bs'].position
+        
+        # Check for obstacles near BS
+        for obj in scene.objects:
+            if obj.name != 'base_station':
+                distance = tf.norm(obj.center - bs_position)
+                if distance < 1.0:  # 1 meter threshold
+                    logger.warning(f"Object {obj.name} too close to BS: {distance:.2f}m")
+                    
 def main():
     # Get the absolute path of the current script
     current_dir = os.path.dirname(os.path.abspath(__file__))
