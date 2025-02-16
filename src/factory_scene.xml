@@ -58,11 +58,6 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
         <ref name="bsdf" id="mat-concrete"/>
     </shape>
 
-    <shape type="ply" id="ceiling">
-        <string name="filename" value="meshes/ceiling.ply"/>
-        <ref name="bsdf" id="mat-concrete"/>
-    </shape>
-
     <!-- Walls with correct positions from config -->
     <shape type="ply" id="wall_xp">
         <string name="filename" value="meshes/wall_xp.ply"/>

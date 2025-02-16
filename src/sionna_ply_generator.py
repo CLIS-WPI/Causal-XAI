@@ -104,51 +104,43 @@ class SionnaPLYGenerator:
         Generate horizontal surface (floor or ceiling) PLY
         """
         try:
-            # Define vertices for a rectangle (4 corners)
-            # Using the same format as Sionna's example floor.ply
-            vertices = [
-                (0.0,    0.0,    z, 0.0, 0.0),  # Bottom-left
-                (width,  0.0,    z, 1.0, 0.0),  # Bottom-right
-                (width,  depth,  z, 1.0, 1.0),  # Top-right
-                (0.0,    depth,  z, 0.0, 1.0)   # Top-left
-            ]
-            
-            # Add material properties if specified
-            if material_type:
-                vertices = SionnaPLYGenerator._add_material_properties(vertices, material_type)
-                
-            # Define faces - IMPORTANT: Use the correct winding order
-            faces = [
-                [0, 1, 2],  # First triangle
-                [0, 2, 3]   # Second triangle
-            ]
-            
-            # Save the PLY file with face_normals
+            # Write binary PLY file
             with open(filename, 'wb') as f:
-                # Write PLY header
+                # Write header
                 f.write(b'ply\n')
                 f.write(b'format binary_little_endian 1.0\n')
-                f.write(f'element vertex {len(vertices)}\n'.encode())
+                f.write(b'element vertex 4\n')
                 f.write(b'property float x\n')
                 f.write(b'property float y\n')
                 f.write(b'property float z\n')
                 f.write(b'property float u\n')
                 f.write(b'property float v\n')
-                f.write(f'element face {len(faces)}\n'.encode())
+                f.write(b'element face 2\n')
                 f.write(b'property list uchar int vertex_indices\n')
                 f.write(b'end_header\n')
+
+                # Write vertex data (x,y,z,u,v) for each corner
+                vertices = [
+                    (0.0, 0.0, z, 0.0, 0.0),      # Bottom-left
+                    (width, 0.0, z, 1.0, 0.0),    # Bottom-right
+                    (width, depth, z, 1.0, 1.0),   # Top-right
+                    (0.0, depth, z, 0.0, 1.0)      # Top-left
+                ]
                 
-                # Write vertex data
+                # Write vertices in binary format
                 for vertex in vertices:
                     for value in vertex:
                         f.write(struct.pack('<f', float(value)))
+
+                # Write face data - two triangles
+                # First triangle: vertices 0,1,2
+                f.write(struct.pack('<B', 3))  # number of vertices in face
+                f.write(struct.pack('<3i', 0, 1, 2))
                 
-                # Write face data
-                for face in faces:
-                    f.write(struct.pack('<B', len(face)))  # Number of vertices in face (3)
-                    for idx in face:
-                        f.write(struct.pack('<i', idx))
-                        
+                # Second triangle: vertices 0,2,3
+                f.write(struct.pack('<B', 3))  # number of vertices in face
+                f.write(struct.pack('<3i', 0, 2, 3))
+
             logger.debug(f"Generated horizontal surface: {filename}")
             
         except Exception as e:
