@@ -28,7 +28,27 @@ class BeamManager:
                 los_blocked.append(False)
                 
         return los_blocked
+
+    def _find_reflection_path(self, agv_pos, obstacle_positions, channel_data):
+        """
+        Find best reflection path when direct path is blocked
         
+        Args:
+            agv_pos: Position vector of the AGV
+            obstacle_positions: List of obstacle positions
+            channel_data: Dictionary containing channel metrics
+            
+        Returns:
+            tf.Tensor: Best beam direction angles [azimuth, elevation]
+        """
+        # For now, return a simple offset from direct path
+        # This should be enhanced with actual reflection calculations
+        direct_beam = self._calculate_direct_beam(agv_pos)
+        
+        # Add small offset to try to find path around obstacle
+        offset = tf.constant([15.0, 5.0])  # [azimuth, elevation] offset in degrees
+        return direct_beam + offset
+    
     def optimize_beam_direction(self, channel_data, agv_positions, obstacle_positions):
         """Optimize beam direction based on channel conditions and blockage"""
         blocked = self.detect_blockage(channel_data, agv_positions, obstacle_positions)
@@ -125,3 +145,43 @@ class BeamManager:
         
         # Return True if ray intersects obstacle
         return tf.logical_and(distance_to_ray < obstacle_radius, is_between)
+    
+    def _calculate_direct_beam(self, agv_position):
+        """
+        Calculate optimal beam direction for direct line-of-sight path
+        
+        Args:
+            agv_position: Position vector of the AGV [x, y, z]
+            
+        Returns:
+            tf.Tensor: Optimal beam direction angles [azimuth, elevation]
+        """
+        # Convert positions to TensorFlow tensors
+        agv_pos = tf.cast(agv_position, tf.float32)
+        bs_pos = tf.cast(self.config.bs_position, tf.float32)
+        
+        # Calculate vector from BS to AGV
+        direction_vector = agv_pos - bs_pos
+        
+        # Calculate azimuth angle (in xy-plane)
+        azimuth = tf.math.atan2(
+            direction_vector[1],  # y component
+            direction_vector[0]   # x component
+        )
+        
+        # Calculate elevation angle
+        horizontal_distance = tf.norm(direction_vector[:2])  # Distance in xy-plane
+        elevation = tf.math.atan2(
+            direction_vector[2],  # z component
+            horizontal_distance
+        )
+        
+        # Convert to degrees
+        azimuth_deg = tf.math.degrees(azimuth)
+        elevation_deg = tf.math.degrees(elevation)
+        
+        # Ensure angles are within valid ranges
+        azimuth_deg = tf.where(azimuth_deg < 0, azimuth_deg + 360, azimuth_deg)
+        elevation_deg = tf.clip_by_value(elevation_deg, -90, 90)
+        
+        return tf.stack([azimuth_deg, elevation_deg])
