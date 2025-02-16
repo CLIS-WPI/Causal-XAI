@@ -260,65 +260,96 @@ class BeamManager:
         try:
             if not hasattr(self, 'channel_state_history') or len(self.channel_state_history) < 2:
                 return 0.0
-            
-            # Get initial and current SNR values
+
+            # Get the initial and current channel state dictionaries
             initial_state = self.channel_state_history[0]
             current_state = self.channel_state_history[-1]
-            
-            # Extract SNR values if they exist in the channel state
+
             initial_snr = 0.0
             current_snr = 0.0
-            
+
+            # For the initial state, extract channel impulse responses using cir()
             if isinstance(initial_state, dict) and 'paths' in initial_state:
-                initial_snr = tf.reduce_mean(tf.abs(initial_state['paths'].A))
-            
+                a_init, _ = initial_state['paths'].cir(
+                    los=True,
+                    reflection=True,
+                    diffraction=True,
+                    scattering=True,
+                    ris=True
+                )
+                # Combine all paths to form the effective channel matrix
+                H_init = tf.reduce_sum(a_init, axis=-2)
+                initial_snr = tf.reduce_mean(tf.abs(H_init))
+
+            # For the current state, extract channel impulse responses using cir()
             if isinstance(current_state, dict) and 'paths' in current_state:
-                current_snr = tf.reduce_mean(tf.abs(current_state['paths'].A))
-                
+                a_cur, _ = current_state['paths'].cir(
+                    los=True,
+                    reflection=True,
+                    diffraction=True,
+                    scattering=True,
+                    ris=True
+                )
+                H_cur = tf.reduce_sum(a_cur, axis=-2)
+                current_snr = tf.reduce_mean(tf.abs(H_cur))
+
             # Calculate improvement in dB
             improvement = 20 * tf.math.log(current_snr / (initial_snr + 1e-10)) / tf.math.log(10.0)
-            
             return float(improvement.numpy())
         except Exception as e:
             logger.error(f"Error calculating SNR improvement: {str(e)}")
             return 0.0
-        
+
     def get_convergence_time(self):
         """Calculate the time taken for beam adaptation to converge"""
         try:
             if not hasattr(self, 'channel_state_history') or len(self.channel_state_history) < 2:
                 return 0.0
-                
-            # Get timestamps from history
+
+            # Get the timestamp from the initial state
             start_time = self.channel_state_history[0].get('timestamp', 0)
-            
-            # Find when SNR stabilizes (convergence)
-            convergence_threshold = 0.1  # dB
+            convergence_threshold = 0.1  # dB threshold for convergence
             convergence_time = 0.0
-            
+
+            # Iterate over the channel state history to detect convergence
             for i in range(1, len(self.channel_state_history)):
                 current_state = self.channel_state_history[i]
-                prev_state = self.channel_state_history[i-1]
-                
-                # Extract SNR values
+                prev_state = self.channel_state_history[i - 1]
+
                 current_snr = 0.0
                 prev_snr = 0.0
-                
+
                 if isinstance(current_state, dict) and 'paths' in current_state:
-                    current_snr = tf.reduce_mean(tf.abs(current_state['paths'].A))
+                    a_cur, _ = current_state['paths'].cir(
+                        los=True,
+                        reflection=True,
+                        diffraction=True,
+                        scattering=True,
+                        ris=True
+                    )
+                    H_cur = tf.reduce_sum(a_cur, axis=-2)
+                    current_snr = tf.reduce_mean(tf.abs(H_cur))
                 if isinstance(prev_state, dict) and 'paths' in prev_state:
-                    prev_snr = tf.reduce_mean(tf.abs(prev_state['paths'].A))
-                
-                # Check if SNR has stabilized
+                    a_prev, _ = prev_state['paths'].cir(
+                        los=True,
+                        reflection=True,
+                        diffraction=True,
+                        scattering=True,
+                        ris=True
+                    )
+                    H_prev = tf.reduce_sum(a_prev, axis=-2)
+                    prev_snr = tf.reduce_mean(tf.abs(H_prev))
+
                 snr_change = abs(current_snr - prev_snr)
                 if snr_change < convergence_threshold:
                     convergence_time = current_state.get('timestamp', i) - start_time
                     break
-                    
+
             return float(convergence_time)
         except Exception as e:
             logger.error(f"Error calculating convergence time: {str(e)}")
-            return 0.0 
+            return 0.0
+
         
     def get_adaptation_metrics(self):
             """Return metrics about beam adaptation performance"""

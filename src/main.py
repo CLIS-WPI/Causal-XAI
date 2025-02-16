@@ -703,8 +703,7 @@ def main():
             # Update causal analysis data
             for beam_idx, beam in enumerate(optimal_beams):
                 beam_manager.update_causal_data(
-                    beam,
-                    obstacle_positions,
+                    beam_direction=beam,
                     channel_metrics={
                         'snr': current_channel['average_snr'],
                         'throughput': current_channel.get('throughput', 0),
@@ -729,8 +728,7 @@ def main():
             # Update causal analysis data
             for agv_idx, beam in enumerate(optimal_beams):
                 beam_manager.update_causal_data(
-                    beam,  # Pass beam as first positional argument
-                    obstacle_positions,  # Pass obstacle_positions as second positional argument
+                    beam_direction=beam,
                     channel_metrics={
                         'snr': current_channel['average_snr'],
                         'throughput': current_channel.get('throughput', 0),
