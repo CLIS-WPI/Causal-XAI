@@ -10,6 +10,10 @@ class BeamManager:
         self.current_beam = None
         self.beam_history = []
         self.causal_data = []
+
+    def get_current_beams(self):
+        """Return the current beam configuration"""
+        return self.current_beam
         
     def detect_blockage(self, channel_data, agv_positions, obstacle_positions):
         """Detect if AGVs are blocked by obstacles"""
@@ -185,3 +189,24 @@ class BeamManager:
         elevation_deg = tf.clip_by_value(elevation_deg, -90, 90)
         
         return tf.stack([azimuth_deg, elevation_deg])
+    
+    def optimize_beam_direction(self, channel_data, agv_positions, obstacle_positions):
+        """Optimize beam direction based on channel conditions and blockage"""
+        blocked = self.detect_blockage(channel_data, agv_positions, obstacle_positions)
+        
+        # Calculate optimal beam directions for each AGV
+        optimal_beams = []
+        for i, agv_pos in enumerate(agv_positions):
+            if blocked[i]:
+                # Find best reflection path
+                best_beam = self._find_reflection_path(
+                    agv_pos, obstacle_positions, channel_data)
+            else:
+                # Direct path beamforming
+                best_beam = self._calculate_direct_beam(agv_pos)
+            optimal_beams.append(best_beam)
+        
+        # Update current_beam with the new optimal beams
+        self.current_beam = optimal_beams
+            
+        return optimal_beams
