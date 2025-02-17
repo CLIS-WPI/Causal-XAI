@@ -68,13 +68,6 @@ class SceneManager:
             metal.roughness = self.config.materials['metal']['roughness']
             self._scene.add(metal)
 
-    # COMMENTED OUT: No in-Python geometry creation
-    # def _add_room_boundaries(self):
-    #     pass
-
-    # def _add_metal_shelves(self):
-    #     pass
-
     def add_transmitter(self, name: str, position: tf.Tensor, orientation: tf.Tensor) -> Transmitter:
         """
         Add a new transmitter (e.g., base station).
@@ -113,40 +106,4 @@ class SceneManager:
         self._scene.add(rx)
         return rx
 
-    def add_ris(self, name: str, position: tf.Tensor, orientation: tf.Tensor) -> RIS:
-        """
-        Example method to add a Reconfigurable Intelligent Surface (RIS), if needed.
-        """
-        ris = RIS(
-            name=name,
-            position=position,
-            orientation=orientation,
-            num_rows=self.config.ris_elements[0],
-            num_cols=self.config.ris_elements[1],
-            dtype=self._scene.dtype
-        )
-        # Example of setting up a discrete phase profile
-        cell_grid = CellGrid(
-            num_rows=self.config.ris_elements[0],
-            num_cols=self.config.ris_elements[1],
-            dtype=self._scene.dtype
-        )
-        phase_values = tf.zeros([1, self.config.ris_elements[0],
-                                self.config.ris_elements[1]],
-                                dtype=tf.float32)
-        phase_profile = DiscretePhaseProfile(
-            cell_grid=cell_grid,
-            values=phase_values,
-            dtype=self._scene.dtype
-        )
-        ris.phase_profile = phase_profile
-
-        ris.scene = self._scene
-        self._scene.add(ris)
-        return ris
-
-    # If you still want a custom LOS check, you can keep or remove the method below.
-    # Just note that shelves/walls are now from XML, so python-based bounding box checks might be moot.
-    # def _check_visibility(self):
-    #     return {}
 

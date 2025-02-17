@@ -125,35 +125,35 @@ class SmartFactoryChannel:
             current_pos = current_positions[i]
             
             # Get next position from path manager
-            new_pos = self.path_manager.get_next_position(i, current_pos)
+            # Change this line to use proper AGV ID format
+            new_pos = self.path_manager.get_next_position(f'agv_{i+1}', current_pos)
             
-            # Check for obstacle collisions
-            if self.config.agv_movement['obstacle_avoidance']:
-                new_pos = self._avoid_obstacles(new_pos)
-            
+            # Store new position
             new_positions.append(new_pos)
             self.positions_history[i].append(new_pos.copy())
-            
+        
         self.agv_positions = tf.convert_to_tensor(new_positions, dtype=self.config.real_dtype)
+
+    def get_agv_status(self):
+        """Get current status of all AGVs"""
+        status = {}
+        for i in range(self.config.num_agvs):
+            agv_id = f'agv_{i+1}'
+            status[agv_id] = self.path_manager.get_current_status(agv_id)
+        return status
         
-    def _avoid_obstacles(self, position):
-        """Check and avoid obstacles"""
-        min_distance = self.config.agv_movement['min_distance']
-        
-        # Get obstacle positions from scene
-        obstacles = self.scene.get_objects_by_material("metal")  # Assuming metal shelves
-        
-        for obstacle in obstacles:
-            obstacle_pos = obstacle.position
-            distance = np.linalg.norm(position[:2] - obstacle_pos[:2])
-            
-            if distance < min_distance:
-                # Calculate repulsion vector
-                direction = position[:2] - obstacle_pos[:2]
-                direction = direction / np.linalg.norm(direction)
-                position[:2] = obstacle_pos[:2] + direction * min_distance
-                
-        return position
+
+    def simulate_movement(self, num_steps):
+        """Simulate AGV movements for specified number of steps"""
+        movement_data = []
+        for step in range(num_steps):
+            self._update_agv_positions(step)
+            movement_data.append({
+                'step': step,
+                'positions': self.agv_positions.numpy(),
+                'status': self.get_agv_status()
+            })
+        return movement_data
 
     def monitor_channel_quality(self, h):
         """Monitor channel matrix quality"""
