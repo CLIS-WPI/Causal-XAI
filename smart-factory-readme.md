@@ -1,7 +1,7 @@
 # Smart Factory Simulation with AGV Beamforming
 
 ## Project Overview
-This project simulates an indoor smart factory environment featuring Autonomous Guided Vehicles (AGVs) with dynamic beamforming adaptation. The simulation uses Sionna (NVIDIA's deep learning-based wireless simulator) to model beamforming adaptation, causal inference, and explainable AI for 6G massive MIMO research.
+This project simulates an indoor smart factory environment featuring Autonomous Guided Vehicles (AGVs) with dynamic beamforming adaptation. The simulation uses Sionna NVIDIA' to simulate how the beam changes dynamically when an AGV moves behind an obstacle, temporarily blocking the LoS (Line of Sight), forcing the BS (Base Station) to switch beams to maintain connectivity.
 
 ## Environment Specifications
 
@@ -55,9 +55,7 @@ This project simulates an indoor smart factory environment featuring Autonomous 
   - NLoS: Rayleigh fading
 
 ### AI Components
-- Adaptive Beamforming: RL-based beam selection
-- Causal Inference: Analysis of AGV movement impact
-- XAI Implementation: SHAP (Shapley Additive Explanations)
+
 
 ## Core Functionalities
 
@@ -73,35 +71,12 @@ This project simulates an indoor smart factory environment featuring Autonomous 
    - Dynamic signal strength calculation
 
 4. Beamforming Adaptation
-   - RL-based optimization
    - Position-based beam selection
 
-5. Causal Inference Analysis
-   - Movement-to-beam-switching analysis
-   - Statistical causal modeling
-
-6. XAI Analysis
-   - SHAP analysis implementation
-   - Beamforming decision visualization
 
 ## Expected Outcomes
-- Validation of causal inference for beam adaptation
-- Demonstration of adaptive beamforming effectiveness
-- Interpretable XAI approach
-- Reproducible experimental framework
-
-## Implementation Requirements
-All configurations are managed through SmartFactoryConfig, including:
-- Factory environment settings
-- AGV movement paths
-- Obstacle placement
-- Wireless channel properties
-- Beamforming algorithm parameters
-- Causal inference settings
-
-## Development Guidelines
-- Reference this documentation for all implementations
-- Maintain specified paths and obstacle configurations
-- Align beamforming logic with AGV motion
-- Implement causal inference for movement impact analysis
-- Utilize XAI techniques for beam selection explanation
+   -observing beam changes dynamically when an AGV moves behind an obstacle.
+   -Performance metrics to observe beam adaptation:
+   -SNR drop when AGV moves behind a shelf.
+   -Time taken for beam switch to restore connectivity.
+   -Packet success rate & BER impact during beam changes.
