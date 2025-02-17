@@ -117,6 +117,10 @@ class SmartFactoryChannel:
 
     def _update_agv_positions(self, time_step):
         """Update AGV positions"""
+    #   Current implementation is basic - needs enhancement for:
+    # - Predefined paths
+    # - Obstacle avoidance
+    # - Periodic blockage simulation
         current_positions = self.agv_positions.numpy()
         new_positions = []
         
