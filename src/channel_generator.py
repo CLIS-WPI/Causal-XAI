@@ -359,7 +359,17 @@ class SmartFactoryChannel:
             logger.error(f"Error tracking LOS/NLOS paths: {str(e)}")
             raise
 
-
+    def apply_fading(self, channel, los_condition):
+        """Apply appropriate fading model based on LOS condition"""
+        if los_condition:
+            # Rician fading for LOS
+            k_factor = self.config.channel_params['rician_k_factor'] 
+            return self._apply_rician_fading(channel, k_factor)
+        else:
+            # Rayleigh fading for NLOS
+            sigma = self.config.channel_params['rayleigh_sigma']
+            return self._apply_rayleigh_fading(channel, sigma)
+    
     def calculate_beam_performance(self):
         """Track beam performance metrics"""
         try:
