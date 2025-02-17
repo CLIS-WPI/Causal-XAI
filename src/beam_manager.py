@@ -74,26 +74,65 @@ class BeamManager:
         offset = tf.constant([15.0, 5.0])  # [azimuth, elevation] offset in degrees
         return direct_beam + offset
     
-    def optimize_beam_direction(self, channel_data, agv_positions, obstacle_positions):
-        """Optimize beam direction based on channel conditions and blockage"""
-        blocked = self.detect_blockage(channel_data, agv_positions, obstacle_positions)
+    def optimize_beam_direction(self, channel_data, path_manager, obstacle_positions):
+        """
+        Optimize beam direction based on channel conditions and AGV positions from path manager
         
-        # Calculate optimal beam directions for each AGV
-        optimal_beams = []
-        for i, agv_pos in enumerate(agv_positions):
-            if blocked[i]:
-                # Find best reflection path
-                best_beam = self._find_reflection_path(
-                    agv_pos, obstacle_positions, channel_data)
-            else:
-                # Direct path beamforming
-                best_beam = self._calculate_direct_beam(agv_pos)
-            optimal_beams.append(best_beam)
+        Args:
+            channel_data: Dictionary containing channel metrics and conditions
+            path_manager: Instance of AGVPathManager for position tracking
+            obstacle_positions: List/array of obstacle positions in the environment
         
-        # Update current_beam with the new optimal beams as a tensor
-        self.current_beam = tf.stack(optimal_beams)
+        Returns:
+            tf.Tensor: Optimized beam directions for all AGVs
+        """
+        try:
+            # Get current AGV positions from path manager
+            agv_positions = []
+            for agv_id in ['agv_1', 'agv_2']:
+                agv_status = path_manager.get_current_status(agv_id)
+                if agv_status['position'] is not None:
+                    agv_positions.append(agv_status['position'])
+                else:
+                    logger.warning(f"No position data available for {agv_id}")
+                    return self.current_beam  # Return last known beam configuration
+                    
+            # Convert to numpy array or tensor for processing
+            agv_positions = np.array(agv_positions)
             
-        return self.current_beam
+            # Detect blockage for each AGV
+            blocked = self.detect_blockage(channel_data, agv_positions, obstacle_positions)
+            
+            # Calculate optimal beam directions for each AGV
+            optimal_beams = []
+            for i, agv_pos in enumerate(agv_positions):
+                if blocked[i]:
+                    # Find best reflection path when direct path is blocked
+                    best_beam = self._find_reflection_path(
+                        agv_pos, 
+                        obstacle_positions, 
+                        channel_data
+                    )
+                    logger.debug(f"AGV {i+1} blocked - using reflection path")
+                else:
+                    # Use direct path beamforming when unblocked
+                    best_beam = self._calculate_direct_beam(agv_pos)
+                    logger.debug(f"AGV {i+1} unblocked - using direct path")
+                    
+                optimal_beams.append(best_beam)
+                
+            # Update current_beam with the new optimal beams as a tensor
+            self.current_beam = tf.stack(optimal_beams)
+            
+            # Log optimization results
+            logger.info(f"Beam optimization completed - {len(optimal_beams)} beams configured")
+            logger.debug(f"Optimal beam configurations: {self.current_beam.numpy()}")
+            
+            return self.current_beam
+            
+        except Exception as e:
+            logger.error(f"Error in beam optimization: {str(e)}")
+            return self.current_beam  # Return last known beam configuration
         
     def perform_causal_analysis(self):
         """Perform causal inference on beam selection impact"""

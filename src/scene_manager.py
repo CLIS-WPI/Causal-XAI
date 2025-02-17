@@ -106,4 +106,9 @@ class SceneManager:
         self._scene.add(rx)
         return rx
 
-
+    def update_scene_with_agv_positions(self, agv_positions):
+        """Update receiver positions based on AGV movements-If needed, add AGV position updates to the scene:"""
+        for i, position in enumerate(agv_positions):
+            receiver_name = f'agv_{i+1}'
+            if receiver_name in self.scene.receivers:
+                self.scene.receivers[receiver_name].position = position
