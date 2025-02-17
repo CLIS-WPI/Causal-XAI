@@ -1,8 +1,6 @@
 # src/beam_manager.py
 import tensorflow as tf
 import numpy as np
-from dowhy import CausalModel
-import pandas as pd
 import logging
 logger = logging.getLogger(__name__)
 
@@ -11,10 +9,31 @@ class BeamManager:
         self.config = config
         self.current_beam = None
         self.beam_history = []
-        self.causal_data = []
         self.current_channel_state = None 
-        self.channel_state_history = []    
+        self.channel_state_history = []
         
+        # Initialize beam codebook for 16x4 array
+        self.num_beams_azimuth = 16
+        self.num_beams_elevation = 4
+        self._initialize_beam_codebook()
+        
+    def _initialize_beam_codebook(self):
+        """Initialize DFT-based beam codebook for 16x4 array"""
+        try:
+            azimuth_angles = np.linspace(-60, 60, self.num_beams_azimuth)
+            elevation_angles = np.linspace(-30, 30, self.num_beams_elevation)
+            
+            self.beam_codebook = []
+            for el in elevation_angles:
+                for az in azimuth_angles:
+                    self.beam_codebook.append([az, el])
+            
+            self.beam_codebook = tf.convert_to_tensor(self.beam_codebook, dtype=tf.float32)
+            logger.info(f"Beam codebook initialized with {len(self.beam_codebook)} beam directions")
+            
+        except Exception as e:
+            logger.error(f"Error initializing beam codebook: {str(e)}")
+    
     def get_current_beams(self):
         """Return the current beam configuration"""
         return self.current_beam
@@ -22,377 +41,201 @@ class BeamManager:
     def get_beam_history(self):
         """Return the history of beam configurations"""
         try:
-            history_list = []
-            for beam in self.beam_history:
-                # Convert tensors to numpy arrays for easier serialization
-                if isinstance(beam, tf.Tensor):
-                    history_list.append(beam.numpy())
-                else:
-                    history_list.append(beam)
-                    
-            return history_list
-            
+            return [beam.numpy() if isinstance(beam, tf.Tensor) else beam 
+                    for beam in self.beam_history]
         except Exception as e:
             logger.error(f"Error getting beam history: {str(e)}")
             return []
         
     def detect_blockage(self, channel_data, agv_positions, obstacle_positions):
-        """Detect if AGVs are blocked by obstacles"""
-        los_blocked = []
-        for agv_pos in agv_positions:
-            bs_to_agv = agv_pos - self.config.bs_position
-            distance = tf.norm(bs_to_agv)
-            
-            # Check intersection with obstacles
-            for obstacle in obstacle_positions:
-                if self._ray_intersects_obstacle(
-                    self.config.bs_position, agv_pos, obstacle):
-                    los_blocked.append(True)
-                    break
-            else:
-                los_blocked.append(False)
+        """Enhanced blockage detection with SNR threshold"""
+        try:
+            los_blocked = []
+            for agv_pos in agv_positions:
+                # Check direct path blockage
+                direct_blocked = False
+                for obstacle in obstacle_positions:
+                    if self._ray_intersects_obstacle(
+                        self.config.bs_position, agv_pos, obstacle):
+                        direct_blocked = True
+                        break
                 
-        return los_blocked
+                # Check SNR if channel data is available
+                if channel_data and 'snr' in channel_data:
+                    snr_threshold = self.config.beamforming['min_snr_threshold']
+                    snr_blocked = channel_data['snr'] < snr_threshold
+                    los_blocked.append(direct_blocked or snr_blocked)
+                else:
+                    los_blocked.append(direct_blocked)
+                    
+            return los_blocked
+            
+        except Exception as e:
+            logger.error(f"Error in blockage detection: {str(e)}")
+            return [True] * len(agv_positions)  # Conservative approach
 
     def _find_reflection_path(self, agv_pos, obstacle_positions, channel_data):
-        """
-        Find best reflection path when direct path is blocked
-        
-        Args:
-            agv_pos: Position vector of the AGV
-            obstacle_positions: List of obstacle positions
-            channel_data: Dictionary containing channel metrics
+        """Enhanced reflection path finding"""
+        try:
+            direct_beam = self._calculate_direct_beam(agv_pos)
             
-        Returns:
-            tf.Tensor: Best beam direction angles [azimuth, elevation]
-        """
-        # For now, return a simple offset from direct path
-        # This should be enhanced with actual reflection calculations
-        direct_beam = self._calculate_direct_beam(agv_pos)
-        
-        # Add small offset to try to find path around obstacle
-        offset = tf.constant([15.0, 5.0])  # [azimuth, elevation] offset in degrees
-        return direct_beam + offset
+            # Search through beam codebook for best alternative
+            best_beam = None
+            best_metric = -float('inf')
+            
+            for beam in self.beam_codebook:
+                # Skip beams too close to blocked direct path
+                if tf.norm(beam - direct_beam) < 15.0:  # Minimum angular separation
+                    continue
+                    
+                # Calculate expected path metric
+                metric = self._calculate_path_metric(
+                    beam, agv_pos, obstacle_positions, channel_data)
+                
+                if metric > best_metric:
+                    best_metric = metric
+                    best_beam = beam
+            
+            return best_beam if best_beam is not None else direct_beam
+            
+        except Exception as e:
+            logger.error(f"Error finding reflection path: {str(e)}")
+            return direct_beam
+    
+    def _calculate_path_metric(self, beam, agv_pos, obstacle_positions, channel_data):
+        """Calculate metric for potential beam direction"""
+        try:
+            # Convert beam angles to direction vector
+            azimuth, elevation = beam[0], beam[1]
+            direction = self._angles_to_vector(azimuth, elevation)
+            
+            # Check for obstacles in path
+            for obstacle in obstacle_positions:
+                if self._ray_intersects_obstacle(
+                    self.config.bs_position, 
+                    self.config.bs_position + direction * 20.0,  # Project ray
+                    obstacle):
+                    return -float('inf')
+            
+            # Include channel quality if available
+            metric = 0.0
+            if channel_data and 'snr' in channel_data:
+                metric += channel_data['snr']
+            
+            # Prefer smaller steering angles
+            metric -= 0.1 * tf.norm(beam)  # Penalty for large steering angles
+            
+            return float(metric)
+            
+        except Exception as e:
+            logger.error(f"Error calculating path metric: {str(e)}")
+            return -float('inf')
     
     def optimize_beam_direction(self, channel_data, path_manager, obstacle_positions):
-        """
-        Optimize beam direction based on channel conditions and AGV positions from path manager
-        
-        Args:
-            channel_data: Dictionary containing channel metrics and conditions
-            path_manager: Instance of AGVPathManager for position tracking
-            obstacle_positions: List/array of obstacle positions in the environment
-        
-        Returns:
-            tf.Tensor: Optimized beam directions for all AGVs
-        """
+        """Optimized beam direction calculation"""
         try:
-            # Get current AGV positions from path manager
+            # Get current AGV positions
             agv_positions = []
             for agv_id in ['agv_1', 'agv_2']:
                 agv_status = path_manager.get_current_status(agv_id)
                 if agv_status['position'] is not None:
                     agv_positions.append(agv_status['position'])
                 else:
-                    logger.warning(f"No position data available for {agv_id}")
-                    return self.current_beam  # Return last known beam configuration
-                    
-            # Convert to numpy array or tensor for processing
-            agv_positions = np.array(agv_positions)
+                    logger.warning(f"No position data for {agv_id}")
+                    return self.current_beam
             
-            # Detect blockage for each AGV
+            # Detect blockages
             blocked = self.detect_blockage(channel_data, agv_positions, obstacle_positions)
             
-            # Calculate optimal beam directions for each AGV
+            # Calculate optimal beams
             optimal_beams = []
             for i, agv_pos in enumerate(agv_positions):
                 if blocked[i]:
-                    # Find best reflection path when direct path is blocked
                     best_beam = self._find_reflection_path(
-                        agv_pos, 
-                        obstacle_positions, 
-                        channel_data
-                    )
+                        agv_pos, obstacle_positions, channel_data)
                     logger.debug(f"AGV {i+1} blocked - using reflection path")
                 else:
-                    # Use direct path beamforming when unblocked
                     best_beam = self._calculate_direct_beam(agv_pos)
                     logger.debug(f"AGV {i+1} unblocked - using direct path")
-                    
-                optimal_beams.append(best_beam)
                 
-            # Update current_beam with the new optimal beams as a tensor
-            self.current_beam = tf.stack(optimal_beams)
+                optimal_beams.append(best_beam)
             
-            # Log optimization results
-            logger.info(f"Beam optimization completed - {len(optimal_beams)} beams configured")
-            logger.debug(f"Optimal beam configurations: {self.current_beam.numpy()}")
+            # Update current beam configuration
+            self.current_beam = tf.stack(optimal_beams)
+            self.beam_history.append(self.current_beam)
             
             return self.current_beam
             
         except Exception as e:
             logger.error(f"Error in beam optimization: {str(e)}")
-            return self.current_beam  # Return last known beam configuration
-        
-
+            return self.current_beam
 
     def _ray_intersects_obstacle(self, start_point, end_point, obstacle_position):
-        """
-        Check if a ray between two points intersects with an obstacle
-        
-        Args:
-            start_point: Starting point of the ray (e.g., BS position)
-            end_point: End point of the ray (e.g., AGV position)
-            obstacle_position: Position of the obstacle to check against
+        """Optimized ray-obstacle intersection check"""
+        try:
+            start = tf.cast(start_point, tf.float32)
+            end = tf.cast(end_point, tf.float32)
+            obstacle = tf.cast(obstacle_position, tf.float32)
             
-        Returns:
-            bool: True if ray intersects obstacle, False otherwise
-        """
-        # Convert points to TensorFlow tensors if they aren't already
-        start = tf.cast(start_point, tf.float32)
-        end = tf.cast(end_point, tf.float32)
-        obstacle = tf.cast(obstacle_position, tf.float32)
-        
-        # Calculate ray direction
-        ray_direction = end - start
-        ray_length = tf.norm(ray_direction)
-        ray_direction = ray_direction / ray_length
-        
-        # Calculate vector from start to obstacle
-        to_obstacle = obstacle - start
-        
-        # Project obstacle point onto ray
-        projection = tf.reduce_sum(to_obstacle * ray_direction)
-        
-        # Find closest point on ray to obstacle
-        closest_point = start + projection * ray_direction
-        
-        # Calculate distance from obstacle to ray
-        distance_to_ray = tf.norm(obstacle - closest_point)
-        
-        # Check if projection point is between start and end
-        is_between = (projection >= 0) & (projection <= ray_length)
-        
-        # Define obstacle radius (adjust based on your needs)
-        obstacle_radius = 1.0  # meters
-        
-        # Return True if ray intersects obstacle
-        return tf.logical_and(distance_to_ray < obstacle_radius, is_between)
+            ray_direction = end - start
+            ray_length = tf.norm(ray_direction)
+            ray_direction = ray_direction / ray_length
+            
+            to_obstacle = obstacle - start
+            projection = tf.reduce_sum(to_obstacle * ray_direction)
+            closest_point = start + projection * ray_direction
+            
+            distance_to_ray = tf.norm(obstacle - closest_point)
+            is_between = (projection >= 0) & (projection <= ray_length)
+            
+            # Adjusted obstacle radius based on shelf dimensions
+            obstacle_radius = 1.5  # Increased for safety margin
+            
+            return tf.logical_and(distance_to_ray < obstacle_radius, is_between)
+            
+        except Exception as e:
+            logger.error(f"Error in ray intersection check: {str(e)}")
+            return True  # Conservative approach
     
     def _calculate_direct_beam(self, agv_position):
-        """
-        Calculate optimal beam direction for direct line-of-sight path
-        
-        Args:
-            agv_position: Position vector of the AGV [x, y, z]
-            
-        Returns:
-            tf.Tensor: Optimal beam direction angles [azimuth, elevation]
-        """
-        # Convert positions to TensorFlow tensors
-        agv_pos = tf.cast(agv_position, tf.float32)
-        bs_pos = tf.cast(self.config.bs_position, tf.float32)
-        
-        # Calculate vector from BS to AGV
-        direction_vector = agv_pos - bs_pos
-        
-        # Calculate azimuth angle (in xy-plane)
-        azimuth = tf.math.atan2(
-            direction_vector[1],  # y component
-            direction_vector[0]   # x component
-        )
-        
-        # Calculate elevation angle
-        horizontal_distance = tf.norm(direction_vector[:2])  # Distance in xy-plane
-        elevation = tf.math.atan2(
-            direction_vector[2],  # z component
-            horizontal_distance
-        )
-        
-        # Convert to degrees (multiply by 180/pi)
-        azimuth_deg = azimuth * 180.0 / tf.constant(np.pi, dtype=tf.float32)
-        elevation_deg = elevation * 180.0 / tf.constant(np.pi, dtype=tf.float32)
-        
-        # Ensure angles are within valid ranges
-        azimuth_deg = tf.where(azimuth_deg < 0, azimuth_deg + 360, azimuth_deg)
-        elevation_deg = tf.clip_by_value(elevation_deg, -90, 90)
-        
-        return tf.stack([azimuth_deg, elevation_deg])
-    
-    def update_channel_state(self, state_info):
-        """Update the channel state information for beam management
-        
-        Args:
-            state_info: Dictionary containing:
-                - paths: Ray tracing paths object
-                - los_available: Boolean indicating if LOS path is available
-                - scene_state: Dictionary with AGV and obstacle positions
-        """
+        """Calculate direct beam angles to AGV"""
         try:
-            self.current_channel_state = state_info
+            agv_pos = tf.cast(agv_position, tf.float32)
+            bs_pos = tf.cast(self.config.bs_position, tf.float32)
             
-            # If you want to store the state in history (optional)
-            if hasattr(self, 'channel_state_history'):
-                self.channel_state_history.append(state_info)
-            else:
-                self.channel_state_history = [state_info]
-                
-            logger.debug(f"Channel state updated successfully")
+            direction_vector = agv_pos - bs_pos
+            
+            # Calculate angles
+            azimuth = tf.math.atan2(direction_vector[1], direction_vector[0])
+            horizontal_distance = tf.norm(direction_vector[:2])
+            elevation = tf.math.atan2(direction_vector[2], horizontal_distance)
+            
+            # Convert to degrees
+            azimuth_deg = azimuth * 180.0 / np.pi
+            elevation_deg = elevation * 180.0 / np.pi
+            
+            # Ensure angles are within valid ranges
+            azimuth_deg = tf.where(azimuth_deg < 0, azimuth_deg + 360, azimuth_deg)
+            elevation_deg = tf.clip_by_value(elevation_deg, -30, 30)  # Limited elevation range
+            
+            return tf.stack([azimuth_deg, elevation_deg])
             
         except Exception as e:
-            logger.error(f"Error updating channel state: {str(e)}")
-            
-    def get_optimization_history(self):
-        """Return the history of beam optimization steps"""
+            logger.error(f"Error calculating direct beam: {str(e)}")
+            return tf.constant([0.0, 0.0])  # Default to broadside beam
+
+    def _angles_to_vector(self, azimuth, elevation):
+        """Convert angles to direction vector"""
         try:
-            # If we have channel state history, include that in the optimization history
-            history = []
-            for idx, beam in enumerate(self.beam_history):
-                history_entry = {
-                    'beam_configuration': beam.numpy(),
-                    'channel_state': self.channel_state_history[idx] if idx < len(self.channel_state_history) else None,
-                    'timestamp': idx
-                }
-                history.append(history_entry)
+            azimuth_rad = azimuth * np.pi / 180.0
+            elevation_rad = elevation * np.pi / 180.0
             
-            return history
-        except Exception as e:
-            logger.error(f"Error getting optimization history: {str(e)}")
-            return None
-
-    def get_snr_improvement(self):
-        """Calculate SNR improvement from initial to current beam configuration"""
-        try:
-            if not hasattr(self, 'channel_state_history') or len(self.channel_state_history) < 2:
-                return 0.0
-
-            # Get the initial and current channel state dictionaries
-            initial_state = self.channel_state_history[0]
-            current_state = self.channel_state_history[-1]
-
-            initial_snr = 0.0
-            current_snr = 0.0
-
-            # For the initial state, extract channel impulse responses using cir()
-            if isinstance(initial_state, dict) and 'paths' in initial_state:
-                a_init, _ = initial_state['paths'].cir(
-                    los=True,
-                    reflection=True,
-                    diffraction=True,
-                    scattering=True,
-                    ris=True
-                )
-                # Combine all paths to form the effective channel matrix
-                H_init = tf.reduce_sum(a_init, axis=-2)
-                initial_snr = tf.reduce_mean(tf.abs(H_init))
-
-            # For the current state, extract channel impulse responses using cir()
-            if isinstance(current_state, dict) and 'paths' in current_state:
-                a_cur, _ = current_state['paths'].cir(
-                    los=True,
-                    reflection=True,
-                    diffraction=True,
-                    scattering=True,
-                    ris=True
-                )
-                H_cur = tf.reduce_sum(a_cur, axis=-2)
-                current_snr = tf.reduce_mean(tf.abs(H_cur))
-
-            # Calculate improvement in dB
-            improvement = 20 * tf.math.log(current_snr / (initial_snr + 1e-10)) / tf.math.log(10.0)
-            return float(improvement.numpy())
-        except Exception as e:
-            logger.error(f"Error calculating SNR improvement: {str(e)}")
-            return 0.0
-
-    def get_convergence_time(self):
-        """Calculate the time taken for beam adaptation to converge"""
-        try:
-            if not hasattr(self, 'channel_state_history') or len(self.channel_state_history) < 2:
-                return 0.0
-
-            # Get the timestamp from the initial state
-            start_time = self.channel_state_history[0].get('timestamp', 0)
-            convergence_threshold = 0.1  # dB threshold for convergence
-            convergence_time = 0.0
-
-            # Iterate over the channel state history to detect convergence
-            for i in range(1, len(self.channel_state_history)):
-                current_state = self.channel_state_history[i]
-                prev_state = self.channel_state_history[i - 1]
-
-                current_snr = 0.0
-                prev_snr = 0.0
-
-                if isinstance(current_state, dict) and 'paths' in current_state:
-                    a_cur, _ = current_state['paths'].cir(
-                        los=True,
-                        reflection=True,
-                        diffraction=True,
-                        scattering=True,
-                        ris=True
-                    )
-                    H_cur = tf.reduce_sum(a_cur, axis=-2)
-                    current_snr = tf.reduce_mean(tf.abs(H_cur))
-                if isinstance(prev_state, dict) and 'paths' in prev_state:
-                    a_prev, _ = prev_state['paths'].cir(
-                        los=True,
-                        reflection=True,
-                        diffraction=True,
-                        scattering=True,
-                        ris=True
-                    )
-                    H_prev = tf.reduce_sum(a_prev, axis=-2)
-                    prev_snr = tf.reduce_mean(tf.abs(H_prev))
-
-                snr_change = abs(current_snr - prev_snr)
-                if snr_change < convergence_threshold:
-                    convergence_time = current_state.get('timestamp', i) - start_time
-                    break
-
-            return float(convergence_time)
-        except Exception as e:
-            logger.error(f"Error calculating convergence time: {str(e)}")
-            return 0.0
-
-        
-    def get_adaptation_metrics(self):
-            """Return metrics about beam adaptation performance"""
-            try:
-                metrics = {
-                    'snr_improvement': self.get_snr_improvement(),
-                    'convergence_time': self.get_convergence_time(),
-                    'beam_history_length': len(self.beam_history),
-                    'current_state': {
-                        'beam_angles': self.current_beam.numpy() if self.current_beam is not None else None,
-                        'channel_state': self.current_channel_state
-                    }
-                }
-                
-                return metrics
-                
-            except Exception as e:
-                logger.error(f"Error getting adaptation metrics: {str(e)}")
-                return {
-                    'snr_improvement': 0.0,
-                    'convergence_time': 0.0,
-                    'beam_history_length': 0,
-                    'current_state': None
-                }    
+            x = tf.cos(elevation_rad) * tf.cos(azimuth_rad)
+            y = tf.cos(elevation_rad) * tf.sin(azimuth_rad)
+            z = tf.sin(elevation_rad)
             
-    def calculate_beam_performance(self):
-        try:
-            h = self.monitor_channel_quality(self.generate_channel()['h'])
+            return tf.stack([x, y, z])
             
-            # Calculate SNR
-            noise_power = 1e-13
-            signal_power = tf.reduce_mean(tf.abs(h)**2, axis=-1)
-            snr_db = 10 * tf.math.log(signal_power / noise_power) / tf.math.log(10.0)
-            
-            return {
-                'snr_db': snr_db.numpy(),
-                'avg_power': float(tf.reduce_mean(signal_power))
-            }
         except Exception as e:
-            logger.error(f"Error calculating beam performance: {str(e)}")
-            raise
+            logger.error(f"Error converting angles to vector: {str(e)}")
+            return tf.constant([1.0, 0.0, 0.0])  # Default direction
