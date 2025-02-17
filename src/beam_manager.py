@@ -134,41 +134,7 @@ class BeamManager:
             logger.error(f"Error in beam optimization: {str(e)}")
             return self.current_beam  # Return last known beam configuration
         
-    def perform_causal_analysis(self):
-        """Perform causal inference on beam selection impact"""
-        if len(self.causal_data) < self.config.causal['observation_window']:
-            return None
-            
-        # Prepare data for causal analysis
-        df = pd.DataFrame(self.causal_data[-self.config.causal['observation_window']:])
-        
-        # Create causal model
-        model = CausalModel(
-            data=df,
-            treatment=self.config.causal['treatment_variables'],
-            outcome=self.config.causal['outcome_variables'],
-            common_causes=self.config.causal['confounders']
-        )
-        
-        # Identify causal effect
-        identified_estimand = model.identify_effect()
-        
-        # Estimate effect
-        estimate = model.estimate_effect(identified_estimand,
-                                    method_name="backdoor.linear_regression")
-                                    
-        return estimate
-        
-    def update_causal_data(self, beam_direction, channel_metrics, agv_state):
-        """Update dataset for causal analysis"""
-        self.causal_data.append({
-            'beam_direction': beam_direction,
-            'snr': channel_metrics['snr'],
-            'throughput': channel_metrics['throughput'],
-            'obstacle_presence': channel_metrics['los_blocked'],
-            'agv_speed': agv_state['speed'],
-            'distance_to_bs': agv_state['distance']
-        })
+
 
     def _ray_intersects_obstacle(self, start_point, end_point, obstacle_position):
         """
@@ -413,3 +379,20 @@ class BeamManager:
                     'beam_history_length': 0,
                     'current_state': None
                 }    
+            
+    def calculate_beam_performance(self):
+        try:
+            h = self.monitor_channel_quality(self.generate_channel()['h'])
+            
+            # Calculate SNR
+            noise_power = 1e-13
+            signal_power = tf.reduce_mean(tf.abs(h)**2, axis=-1)
+            snr_db = 10 * tf.math.log(signal_power / noise_power) / tf.math.log(10.0)
+            
+            return {
+                'snr_db': snr_db.numpy(),
+                'avg_power': float(tf.reduce_mean(signal_power))
+            }
+        except Exception as e:
+            logger.error(f"Error calculating beam performance: {str(e)}")
+            raise
