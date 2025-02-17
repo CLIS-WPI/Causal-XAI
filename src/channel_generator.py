@@ -69,34 +69,27 @@ class SmartFactoryChannel:
         """Configure antenna arrays for BS and AGVs"""
         try:
             logger.debug("=== Setting up antenna arrays ===")
-            logger.debug("Configuring BS array:")
-            logger.debug(f"- Array dimensions: {self.config.bs_array}")
-            logger.debug(f"- Spacing: {self.config.bs_array_spacing}")
-            logger.debug(f"- Pattern: {self.config.bs_array_pattern}")
             
+            # Updated BS array configuration for 16x4
             self.bs_array = PlanarArray(
-                num_rows=self.config.bs_array[0],
-                num_cols=self.config.bs_array[1],
-                vertical_spacing=self.config.bs_array_spacing,
-                horizontal_spacing=self.config.bs_array_spacing,
-                pattern=self.config.bs_array_pattern,
-                polarization=self.config.bs_polarization,
+                num_rows=16,  # Changed to 16 rows
+                num_cols=4,   # Changed to 4 columns
+                vertical_spacing=0.5 * self.config.wavelength,
+                horizontal_spacing=0.5 * self.config.wavelength,
+                pattern="tr38901",  # Using 3GPP TR 38.901 pattern
+                polarization="VH",  # Dual polarization
                 dtype=tf.complex64
             )
             logger.debug("BS array configured successfully")
             
-            logger.debug("Configuring AGV array:")
-            logger.debug(f"- Array dimensions: {self.config.agv_array}")
-            logger.debug(f"- Spacing: {self.config.agv_array_spacing}")
-            logger.debug(f"- Pattern: {self.config.agv_array_pattern}")
-            
+            # Simplified AGV array configuration
             self.agv_array = PlanarArray(
-                num_rows=self.config.agv_array[0],
-                num_cols=self.config.agv_array[1],
-                vertical_spacing=self.config.agv_array_spacing,
-                horizontal_spacing=self.config.agv_array_spacing,
-                pattern=self.config.agv_array_pattern,
-                polarization=self.config.agv_polarization,
+                num_rows=1,
+                num_cols=1,
+                vertical_spacing=0.5 * self.config.wavelength,
+                horizontal_spacing=0.5 * self.config.wavelength,
+                pattern="dipole",
+                polarization="cross",
                 dtype=tf.complex64
             )
             logger.debug("AGV array configured successfully")
@@ -156,78 +149,107 @@ class SmartFactoryChannel:
         return movement_data
 
     def monitor_channel_quality(self, h):
-        """Monitor channel matrix quality"""
+        """Enhanced channel matrix quality monitoring"""
         nan_count = tf.reduce_sum(tf.cast(tf.math.is_nan(h), tf.int32))
         inf_count = tf.reduce_sum(tf.cast(tf.math.is_inf(h), tf.int32))
         
         if nan_count > 0 or inf_count > 0:
             logger.warning(f"Channel matrix contains {nan_count} NaN and {inf_count} Inf values")
         
+        # Calculate channel quality metrics
         avg_power = tf.reduce_mean(tf.abs(h)**2)
-        logger.info(f"Average channel power: {avg_power}")
+        peak_power = tf.reduce_max(tf.abs(h)**2)
+        min_power = tf.reduce_min(tf.abs(h)**2)
+        
+        # Calculate condition number for channel matrix
+        s = tf.linalg.svd(h, compute_uv=False)
+        condition_number = s[0] / s[-1]
+        
+        logger.info(f"Channel Quality Metrics:")
+        logger.info(f"- Average power: {avg_power}")
+        logger.info(f"- Peak power: {peak_power}")
+        logger.info(f"- Minimum power: {min_power}")
+        logger.info(f"- Condition number: {condition_number}")
         
         return h
+    # Add new method for beam switching analysis
+    def analyze_beam_switching(self, channel_data):
+        """Analyze channel conditions for beam switching"""
+        try:
+            h_freq = channel_data['channel_matrices']
+            los_conditions = channel_data['los_conditions']
+            
+            # Calculate SNR for each beam
+            noise_power = 1e-13  # Typical thermal noise power
+            signal_power = tf.reduce_mean(tf.abs(h_freq)**2, axis=-1)
+            snr_db = 10 * tf.math.log(signal_power / noise_power) / tf.math.log(10.0)
+            
+            # Detect significant SNR drops
+            snr_threshold = self.config.beamforming['min_snr_threshold']
+            beam_switches_needed = tf.where(snr_db < snr_threshold, True, False)
+            
+            return {
+                'snr_db': snr_db.numpy(),
+                'beam_switches_needed': beam_switches_needed.numpy(),
+                'los_conditions': los_conditions.numpy()
+            }
+        except Exception as e:
+            logger.error(f"Error in beam switching analysis: {str(e)}")
+            raise
 
     def generate_channel_data(self, config):
         """Generate channel data using ray tracing"""
         try:
             logger.debug("=== Generating channel data ===")
-            logger.debug("Ray tracing configuration:")
-            logger.debug(f"- Method: fibonacci")
-            logger.debug(f"- Max depth: {config.ray_tracing['max_depth']}")
-            logger.debug(f"- Num samples: {config.ray_tracing['num_samples']}")
-            logger.debug(f"- LOS enabled: {config.ray_tracing['los']}")
             
+            # Optimize ray tracing parameters for beam switching scenario
             paths = self.scene.compute_paths(
-                max_depth=config.ray_tracing['max_depth'],
+                max_depth=4,  # Reduced for faster computation
                 method="fibonacci",
-                num_samples=config.ray_tracing['num_samples'],
-                los=config.ray_tracing['los'],
-                reflection=config.ray_tracing['reflection'],
-                diffraction=config.ray_tracing['diffraction'],
-                scattering=config.ray_tracing['scattering'],
-                scat_keep_prob=config.ray_tracing['scat_keep_prob'],
-                edge_diffraction=config.ray_tracing['edge_diffraction']
+                num_samples=2000,  # Increased for better accuracy
+                los=True,
+                reflection=True,
+                diffraction=True,
+                scattering=True,
+                scat_keep_prob=1.0,
+                edge_diffraction=True
             )
             
             if paths is None:
                 logger.error("Path computation failed - no paths found")
                 raise RuntimeError("Path computation failed")
 
-            # Instead of len(paths), use tf.size() on the paths.LOS tensor
-            num_paths = tf.size(paths.LOS)
-            logger.debug(f"Number of paths found: {num_paths}")
-            logger.debug(f"LOS paths: {tf.reduce_sum(tf.cast(paths.LOS, tf.int32))}")
-
             # Get channel impulse responses
-            logger.debug("Computing channel impulse responses...")
             a, tau = paths.cir()
-            logger.debug(f"CIR shape - a: {a.shape}, tau: {tau.shape}")
             
             # Calculate frequencies
-            logger.debug("Calculating subcarrier frequencies...")
             frequencies = subcarrier_frequencies(
                 num_subcarriers=config.num_subcarriers,
                 subcarrier_spacing=config.subcarrier_spacing
             )
             
             # Convert to OFDM channel
-            logger.debug("Converting to OFDM channel...")
             h_freq = cir_to_ofdm_channel(
                 frequencies=frequencies,
                 a=tf.cast(a, tf.complex64),
                 tau=tf.cast(tau, tf.float32),
                 normalize=True
             )
-            logger.debug(f"OFDM channel shape: {h_freq.shape}")
             
-            # Create channel data dictionary
+            # Enhanced channel data dictionary
             channel_data = {
                 'channel_matrices': h_freq,
                 'path_delays': tau,
                 'los_conditions': paths.LOS,
-                'agv_positions': tf.stack([rx.position for rx in self.scene.receivers.values()])
+                'agv_positions': tf.stack([rx.position for rx in self.scene.receivers.values()]),
+                'num_paths': tf.size(paths.LOS),
+                'reflection_paths': paths.reflection_paths if hasattr(paths, 'reflection_paths') else None,
+                'diffraction_paths': paths.diffraction_paths if hasattr(paths, 'diffraction_paths') else None
             }
+            
+            # Add beam switching analysis
+            beam_analysis = self.analyze_beam_switching(channel_data)
+            channel_data.update(beam_analysis)
             
             logger.debug("Channel data generation completed successfully")
             return channel_data
