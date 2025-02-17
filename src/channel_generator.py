@@ -10,6 +10,7 @@ from sionna.rt import DiscretePhaseProfile, CellGrid
 import logging
 from sionna.channel.utils import subcarrier_frequencies
 from beam_manager import BeamManager
+from agv_path_manager import AGVPathManager
 # Initialize logger
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,7 @@ class SmartFactoryChannel:
             # Verify scene configuration
             self.verify_scene_configuration()
             logger.debug("Scene configuration verified successfully")
-
+            self.path_manager = AGVPathManager(config)
             self.beam_manager = BeamManager(config)
             
         except Exception as e:
@@ -116,26 +117,43 @@ class SmartFactoryChannel:
         return tf.constant(self.config.agv_positions, dtype=tf.float32)
 
     def _update_agv_positions(self, time_step):
-        """Update AGV positions"""
-    #   Current implementation is basic - needs enhancement for:
-    # - Predefined paths
-    # - Obstacle avoidance
-    # - Periodic blockage simulation
+        """Update AGV positions following predefined trajectories"""
         current_positions = self.agv_positions.numpy()
         new_positions = []
         
         for i in range(self.config.num_agvs):
             current_pos = current_positions[i]
-            new_pos = current_pos + np.array([0.1, 0.1, 0]) * time_step
             
-            new_pos[0] = np.clip(new_pos[0], 0, self.config.room_dim[0])
-            new_pos[1] = np.clip(new_pos[1], 0, self.config.room_dim[1])
-            new_pos[2] = self.config.agv_height
+            # Get next position from path manager
+            new_pos = self.path_manager.get_next_position(i, current_pos)
+            
+            # Check for obstacle collisions
+            if self.config.agv_movement['obstacle_avoidance']:
+                new_pos = self._avoid_obstacles(new_pos)
             
             new_positions.append(new_pos)
             self.positions_history[i].append(new_pos.copy())
+            
+        self.agv_positions = tf.convert_to_tensor(new_positions, dtype=self.config.real_dtype)
         
-        return tf.constant(new_positions, dtype=tf.float32)
+    def _avoid_obstacles(self, position):
+        """Check and avoid obstacles"""
+        min_distance = self.config.agv_movement['min_distance']
+        
+        # Get obstacle positions from scene
+        obstacles = self.scene.get_objects_by_material("metal")  # Assuming metal shelves
+        
+        for obstacle in obstacles:
+            obstacle_pos = obstacle.position
+            distance = np.linalg.norm(position[:2] - obstacle_pos[:2])
+            
+            if distance < min_distance:
+                # Calculate repulsion vector
+                direction = position[:2] - obstacle_pos[:2]
+                direction = direction / np.linalg.norm(direction)
+                position[:2] = obstacle_pos[:2] + direction * min_distance
+                
+        return position
 
     def monitor_channel_quality(self, h):
         """Monitor channel matrix quality"""

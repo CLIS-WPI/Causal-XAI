@@ -73,19 +73,20 @@ class SionnaPLYGenerator:
 
             # Generate shelves using config
             shelf_positions = config.scene_objects['shelf_positions']
-            shelf_dims = config.scene_objects['shelf_dimensions']
+            shelf_dims = config.scene_objects['shelf_dimensions'][i]
 
             for i, pos in enumerate(shelf_positions):
                 output_file = os.path.join(output_dir, f'shelf_{i}.ply')
                 SionnaPLYGenerator._generate_shelf_ply(
                     filename=output_file,
-                    dims=shelf_dims,
+                    dims=shelf_dims,  # Updated to use correct size
                     position=pos,
-                    material_type=config.scene_objects['shelf_material']  # Pass material type
+                    material_type=config.scene_objects['shelf_material']
                 )
+
             
             # Generate AGV robots using config
-            robot_dims = [0.5, 0.5, config.agv_height]
+            robot_dims = config.agv_dimensions
             for i, pos in enumerate(config.agv_positions):
                 output_file = os.path.join(output_dir, f'agv_robot_{i}.ply')
                 SionnaPLYGenerator._generate_robot_ply(
@@ -100,7 +101,7 @@ class SionnaPLYGenerator:
             SionnaPLYGenerator._generate_modem_ply(
                 filename=output_file,
                 dims=bs_dims,
-                position=[10.0, 0.5, 4.5]  # Updated to match original specification
+                position=config.bs_position  # Updated to match original specification
             )
             
             logger.info("PLY file generation completed successfully")
@@ -506,7 +507,7 @@ class SionnaPLYGenerator:
                 raise ValueError(f"Missing required configuration field: {field}")
         
         # Validate base station position
-        if config.bs_position != [10.0, 0.5, 4.5]:
+        if config.bs_position != [10.0, 10.0, 4.5]:
             logger.warning("Base station position does not match original specification")
 
 
