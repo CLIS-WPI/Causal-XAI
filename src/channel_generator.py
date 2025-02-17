@@ -263,50 +263,102 @@ class SmartFactoryChannel:
             raise
 
     def track_los_nlos_paths(self):
+        """Track and analyze LOS/NLOS paths with improved error handling"""
         try:
-            # Get paths from ray tracing
+            logger.debug("Computing paths for LOS/NLOS analysis...")
+            
+            # Get paths from ray tracing with full configuration
             paths = self.scene.compute_paths(
                 max_depth=self.config.ray_tracing['max_depth'],
-                method=self.config.ray_tracing['method']
+                method=self.config.ray_tracing['method'],
+                num_samples=self.config.ray_tracing['num_samples'],
+                los=True,  # Ensure LOS paths are computed
+                reflection=self.config.ray_tracing['reflection'],
+                diffraction=self.config.ray_tracing['diffraction'],
+                scattering=self.config.ray_tracing['scattering']
             )
             
             if paths is None:
-                raise ValueError("No paths computed")
-                    
-            # Extract LOS conditions
-            los_conditions = paths.LOS
-            
-            # Calculate statistics
-            total_paths = tf.size(los_conditions)
-            
-            # Add the warning log here
-            if total_paths == 0:
-                logger.warning("No paths found in channel computation")
-                
-            los_paths = tf.reduce_sum(tf.cast(los_conditions, tf.int32))
-            nlos_paths = total_paths - los_paths
-            
-            # Handle case where total_paths is zero
-            if total_paths > 0:
-                nlos_stats = {
-                    'los_ratio': float(los_paths.numpy()) / float(total_paths.numpy()),
-                    'nlos_ratio': float(nlos_paths.numpy()) / float(total_paths.numpy()),
-                    'total_paths': int(total_paths.numpy()),
-                    'blocked_paths': int(nlos_paths.numpy())
-                }
-            else:
-                nlos_stats = {
+                logger.warning("No paths computed in ray tracing")
+                return {
                     'los_ratio': 0.0,
                     'nlos_ratio': 0.0,
                     'total_paths': 0,
                     'blocked_paths': 0
+                }, None
+                    
+            # Extract LOS conditions and ensure it's a tensor
+            los_conditions = paths.LOS
+            if not isinstance(los_conditions, tf.Tensor):
+                los_conditions = tf.convert_to_tensor(los_conditions, dtype=tf.float32)
+                
+            # Calculate statistics with type checking
+            total_paths = tf.cast(tf.size(los_conditions), tf.float32)
+            
+            # Early warning for no paths
+            if total_paths == 0:
+                logger.warning("No paths found in channel computation")
+                return {
+                    'los_ratio': 0.0,
+                    'nlos_ratio': 0.0,
+                    'total_paths': 0,
+                    'blocked_paths': 0
+                }, los_conditions
+                
+            # Calculate LOS and NLOS paths with safe casting
+            los_paths = tf.cast(tf.reduce_sum(tf.cast(los_conditions, tf.int32)), tf.float32)
+            
+            # Check for NaN values
+            if tf.reduce_any(tf.math.is_nan(los_paths)) or tf.reduce_any(tf.math.is_nan(total_paths)):
+                logger.warning("NaN values detected in path calculations")
+                return {
+                    'los_ratio': 0.0,
+                    'nlos_ratio': 0.0,
+                    'total_paths': 0,
+                    'blocked_paths': 0
+                }, los_conditions
+                
+            nlos_paths = total_paths - los_paths
+            
+            # Safe division for ratios
+            los_ratio = tf.where(total_paths > 0, 
+                                los_paths / total_paths,
+                                tf.zeros_like(total_paths))
+            nlos_ratio = tf.where(total_paths > 0,
+                                nlos_paths / total_paths,
+                                tf.zeros_like(total_paths))
+            
+            # Convert to numpy and handle potential conversion errors
+            try:
+                nlos_stats = {
+                    'los_ratio': float(los_ratio.numpy()),
+                    'nlos_ratio': float(nlos_ratio.numpy()),
+                    'total_paths': int(total_paths.numpy()),
+                    'blocked_paths': int(nlos_paths.numpy())
                 }
-            
-            return nlos_stats, los_conditions
-            
+                
+                # Log detailed statistics
+                logger.debug(f"Path Analysis Results:")
+                logger.debug(f"- Total paths: {nlos_stats['total_paths']}")
+                logger.debug(f"- LOS ratio: {nlos_stats['los_ratio']:.2f}")
+                logger.debug(f"- NLOS ratio: {nlos_stats['nlos_ratio']:.2f}")
+                logger.debug(f"- Blocked paths: {nlos_stats['blocked_paths']}")
+                
+                return nlos_stats, los_conditions
+                
+            except Exception as e:
+                logger.error(f"Error converting path statistics: {str(e)}")
+                return {
+                    'los_ratio': 0.0,
+                    'nlos_ratio': 0.0,
+                    'total_paths': 0,
+                    'blocked_paths': 0
+                }, los_conditions
+                
         except Exception as e:
             logger.error(f"Error tracking LOS/NLOS paths: {str(e)}")
             raise
+
 
     def calculate_beam_performance(self):
         """Track beam performance metrics"""
