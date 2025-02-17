@@ -18,6 +18,7 @@ from sionna.constants import SPEED_OF_LIGHT
 from scene_setup import verify_geometry
 from beam_manager import BeamManager
 from channel_generator import SmartFactoryChannel
+from agv_path_manager import AGVPathManager
 
 # Environment setup
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -619,6 +620,10 @@ def main():
         except Exception as e:
             logger.error(f"Scene validation error: {str(e)}")
 
+        # Initialize AGV Path Manager
+        logger.info("Initializing AGV Path Manager...")
+        path_manager = AGVPathManager(config)
+
         # Add verification
         verify_geometry(scene)
 
@@ -626,7 +631,7 @@ def main():
         logger.info("Configuring scene cameras and render settings...")
         scene.render_config = config.render_config
 
-        # Camera setup and rendering (existing camera code remains the same)
+        # Camera setup and rendering
         for cam_name, cam_params in config.cameras.items():
             try:
                 logger.info(f"Setting up {cam_name} camera...")
@@ -660,10 +665,6 @@ def main():
         logger.info("Initializing beam manager...")
         beam_manager = BeamManager(config)
 
-        # Get AGV and obstacle positions
-        agv_positions = [receiver.position for receiver in scene.receivers.values()]
-        obstacle_positions = [obj.position for obj in scene.objects.values() if 'shelf' in obj.name]
-
         # Simulation loop for adaptive beamforming
         logger.info("Starting adaptive beamforming simulation...")
         channel_data_history = []
@@ -672,61 +673,50 @@ def main():
         for iteration in range(num_iterations):
             logger.debug(f"Iteration {iteration+1}/{num_iterations}")
 
-            # Generate channel data
+            # Update AGV positions using path manager
+            agv_positions = []
+            for i in range(config.num_agvs):
+                agv_id = f'agv_{i+1}'
+                current_pos = scene.receivers[agv_id].position
+                new_pos = path_manager.get_next_position(agv_id, current_pos)
+                scene.receivers[agv_id].position = new_pos
+                agv_positions.append(new_pos)
+            
+            # Get current obstacle positions
+            obstacle_positions = [obj.position for obj in scene.objects.values() 
+                                if 'shelf' in obj.name]
+
+            # Generate channel data with updated positions
             channel_generator = SmartFactoryChannel(config, scene)
             channel_data = channel_generator.generate_channel_data(config)
-            # Detect blockages
+
+            # Detect blockages with updated positions
             los_blocked = beam_manager.detect_blockage(
                 channel_data=channel_data,
                 agv_positions=agv_positions,
                 obstacle_positions=obstacle_positions
             )
 
-            # Optimize beam direction
-            beam_manager.optimize_beam_direction(
+            # Optimize beam direction using path manager
+            optimal_beams = beam_manager.optimize_beam_direction(
                 channel_data=channel_data,
-                agv_positions=agv_positions,
+                path_manager=path_manager,
                 obstacle_positions=obstacle_positions
             )
 
-            # Get optimal beams
-            optimal_beams = beam_manager.get_current_beams()
-
-            # Apply optimal beams
+            # Apply optimal beams to transmitters
             for beam_idx, beam in enumerate(optimal_beams):
                 scene.transmitters['bs'].array.steering_angle = beam
 
-            # Generate channel data
+            # Generate updated channel data with new beam configuration
             current_channel = generate_channel_data(scene, config, beam_manager)
             channel_data_history.append(current_channel)
 
-            # Update causal analysis data
-            for beam_idx, beam in enumerate(optimal_beams):
-                beam_manager.update_causal_data(
-                    beam_direction=beam,
-                    channel_metrics={
-                        'snr': current_channel['average_snr'],
-                        'throughput': current_channel.get('throughput', 0),
-                        'los_blocked': los_blocked[beam_idx]
-                    },
-                    agv_state={
-                        'speed': config.agv_speed,
-                        'distance': tf.norm(agv_positions[beam_idx] - 
-                                        scene.transmitters['bs'].position)
-                    }
-                )
-
-            # Apply optimal beams
-            optimal_beams = beam_manager.get_current_beams()
-            for beam_idx, beam in enumerate(optimal_beams):
-                scene.transmitters['bs'].array.steering_angle = beam
-
-            # Generate channel data
-            current_channel = generate_channel_data(scene, config, beam_manager)
-            channel_data_history.append(current_channel)
-
-            # Update causal analysis data
+            # Update causal analysis data with path information
             for agv_idx, beam in enumerate(optimal_beams):
+                agv_id = f'agv_{agv_idx+1}'
+                agv_status = path_manager.get_current_status(agv_id)
+                
                 beam_manager.update_causal_data(
                     beam_direction=beam,
                     channel_metrics={
@@ -736,10 +726,26 @@ def main():
                     },
                     agv_state={
                         'speed': config.agv_speed,
+                        'position': agv_status['position'],
+                        'trajectory': agv_status.get('trajectory', None),
                         'distance': tf.norm(agv_positions[agv_idx] - 
                                         scene.transmitters['bs'].position)
                     }
                 )
+
+            # Store path data for this iteration
+            current_channel['path_data'] = {
+                'agv_positions': agv_positions,
+                'agv_trajectories': {
+                    f'agv_{i+1}': path_manager.get_current_status(f'agv_{i+1}')['trajectory']
+                    for i in range(config.num_agvs)
+                }
+            }
+
+            # Log iteration metrics
+            logger.info(f"Iteration {iteration+1} completed:")
+            logger.info(f"- Average SNR: {current_channel['average_snr']:.2f} dB")
+            logger.info(f"- Blocked paths: {sum(los_blocked)}/{len(los_blocked)}")
 
         # Perform causal analysis
         logger.info("Performing causal analysis...")
@@ -751,6 +757,15 @@ def main():
             'effect_size': causal_effect.value if causal_effect else None,
             'confidence_intervals': causal_effect.confidence_intervals if causal_effect else None,
             'beam_history': beam_manager.beam_history
+        }
+
+        # Add path management data to final results
+        final_channel_data['path_management'] = {
+            'final_positions': {
+                agv_id: path_manager.get_current_status(agv_id)
+                for agv_id in [f'agv_{i+1}' for i in range(config.num_agvs)]
+            },
+            'trajectory_history': path_manager.get_trajectory_history()
         }
 
         # Save final channel data

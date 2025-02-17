@@ -13,8 +13,6 @@ class SmartFactoryConfig:
         self.num_subcarriers = 128 #Number of OFDM subcarriers
         self.subcarrier_spacing = 15e3  # 15 kHz subcarrier spacing (typical for 5G)
         self.scene_type = "indoor"  # Explicit scene type at top level
-        #self.ris_pattern = "iso"
-        #self.ris_polarization = "V"
         # Room dimensions [m]
         self.room_dim = [20.0, 20.0, 5.0]  # Length x Width x Height
         # Frequency configuration
@@ -24,10 +22,14 @@ class SmartFactoryConfig:
         # Enhanced Base station configuration
         self.bs_position = [10.0, 10.0, 4.5]  # Center of room, near ceiling
         self.bs_orientation = [0.0, 0.0, -90.0]  # Facing downward
-        self.bs_array = [16, 4]  # 16x4 UPA
-        self.bs_array_spacing = 0.5 * self.wavelength
-        self.bs_array_pattern = "tr38901"  # Added antenna pattern type
-        self.bs_polarization = "VH"        # Added polarization config
+        self.bs_array = {
+            'num_rows': 16,          # 16x4 UPA for mmWave
+            'num_cols': 4,
+            'vertical_spacing': 0.7,  # Half wavelength spacing
+            'horizontal_spacing': 0.5,
+            'pattern': "tr38901",    # Use 3GPP antenna pattern
+            'polarization': "VH"     # Dual polarization
+        }
 ##############################################################################        
         # Enhanced Material properties
         self.materials = {
@@ -56,13 +58,39 @@ class SmartFactoryConfig:
         self.num_agvs = 2
         self.agv_height = 0.5
         self.agv_speed = 0.83
-        self.agv_array = [1, 1]          # you can Increased to 2x2 array for better reception
-        self.agv_array_spacing = 0.5 * self.wavelength
-        self.rx_array_spacing = 0.5 * self.wavelength
-        self.agv_array_pattern = "tr38901"     # iso bud##Added antenna pattern type
-        self.agv_polarization = "VH"           # Added polarization config
         # Define AGV physical dimensions (size)
         self.agv_dimensions = [1.0, 1.0, 0.5]  # AGV size (L × W × H)
+        # Update AGV array configuration to match BS array structure
+        self.agv_array = {
+            'num_rows': 1,                           # Single row for AGV
+            'num_cols': 1,                           # Single column for AGV
+            'vertical_spacing': 0.5 * self.wavelength,    # Half wavelength spacing
+            'horizontal_spacing': 0.5 * self.wavelength,
+            'pattern': "dipole",                     # Changed to dipole pattern for AGVs
+            'polarization': "cross"                  # Cross polarization for better reception
+        }
+
+        # Add a consolidated array configuration section after both BS and AGV configurations
+        self.array_config = {
+            'bs': {
+                'array_type': 'PlanarArray',
+                'num_rows': self.bs_array['num_rows'],
+                'num_cols': self.bs_array['num_cols'],
+                'vertical_spacing': self.bs_array['vertical_spacing'],
+                'horizontal_spacing': self.bs_array['horizontal_spacing'],
+                'pattern': self.bs_array['pattern'],
+                'polarization': self.bs_array['polarization']
+            },
+            'agv': {
+                'array_type': 'PlanarArray',
+                'num_rows': self.agv_array['num_rows'],
+                'num_cols': self.agv_array['num_cols'],
+                'vertical_spacing': self.agv_array['vertical_spacing'],
+                'horizontal_spacing': self.agv_array['horizontal_spacing'],
+                'pattern': self.agv_array['pattern'],
+                'polarization': self.agv_array['polarization']
+            }
+        }
 
         # Define AGV trajectories (predefined movement paths)
         # AGV 1: Moves back and forth in a straight line (simple path, periodic blockages)
@@ -160,11 +188,22 @@ class SmartFactoryConfig:
     
         # Add beamforming configuration
         self.beamforming = {
-            'num_beams': 32,  # Number of possible beam directions
-            'beam_width': 15, # Beam width in degrees
-            'max_steering_angle': 60, # Maximum steering angle
-            'adaptation_interval': 0.1, # Beam update interval (seconds)
-            'min_snr_threshold': 10.0, # Minimum acceptable SNR (dB)
+            'num_beams': 32,              # Number of possible beam directions
+            'beam_width': 15,             # Beam width in degrees
+            'max_steering_angle': 60,     # Maximum steering angle
+            'adaptation_interval': 0.1,   # Beam update interval (seconds)
+            'min_snr_threshold': 10.0,    # Minimum acceptable SNR (dB)
+            'blockage_detection': True,   # Enable blockage detection
+            'beam_switching': {
+                'enabled': True,
+                'switching_threshold': 5.0,  # dB threshold for beam switching
+                'hysteresis': 2.0,          # Hysteresis to prevent frequent switching
+            },
+            'codebook': {
+                'type': 'DFT',              # DFT-based codebook
+                'size': 64,                 # Number of codebook entries
+                'oversampling': 2           # Oversampling factor
+            }
         }
         
         
