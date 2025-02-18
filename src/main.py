@@ -282,27 +282,37 @@ def main():
     """Streamlined main execution focusing on beam switching"""
     try:
         # Basic setup
+        print("Starting simulation...")
         logger.info("Starting smart factory beam switching simulation...")
         result_dir = ensure_result_dir()
+        print(f"Results will be saved to: {result_dir}")
+        
         tf.random.set_seed(42)
         
         # Initialize configuration and validate
+        print("Initializing configuration...")
         config = SmartFactoryConfig()
         add_snr_config(config)
         validate_config(config)
         
         # Generate scene geometry
+        print("Setting up simulation environment...")
         logger.info("Setting up simulation environment...")
+        ply_output_dir = os.path.join(os.path.dirname(__file__), 'meshes')
+        print(f"Generating geometries in: {ply_output_dir}")
+        
         SionnaPLYGenerator.generate_factory_geometries(
             config=config,
-            output_dir=os.path.join(os.path.dirname(__file__), 'meshes')
+            output_dir=ply_output_dir
         )
         
         # Setup scene and initialize managers
+        print("Setting up scene...")
         scene = setup_scene(config)
         if not scene:
             raise ValueError("Scene setup failed")
             
+        print("Initializing managers...")
         path_manager = AGVPathManager(config)
         beam_manager = BeamManager(config)
         
@@ -310,11 +320,12 @@ def main():
         scene.frequency = tf.cast(config.carrier_frequency, tf.float32)
         
         # Main simulation loop
+        print(f"Starting simulation for {config.num_time_steps} time steps...")
         logger.info("Starting beam switching simulation...")
         channel_data_history = []
         
         for iteration in range(config.num_time_steps):
-            logger.debug(f"Iteration {iteration+1}/{config.num_time_steps}")
+            print(f"\rSimulating step {iteration+1}/{config.num_time_steps}", end="")
             
             # Update AGV positions
             agv_positions = []
@@ -325,44 +336,19 @@ def main():
                 scene.receivers[agv_id].position = new_pos
                 agv_positions.append(new_pos)
             
-            # Get obstacle positions
-            obstacle_positions = [obj.position for obj in scene.objects.values() 
-                                if 'shelf' in obj.name]
-            
             # Generate channel data
             channel_generator = SmartFactoryChannel(config, scene)
             channel_data = channel_generator.generate_channel_data(config)
             
-            # Beam switching logic
-            los_blocked = beam_manager.detect_blockage(
-                channel_data=channel_data,
-                agv_positions=agv_positions,
-                obstacle_positions=obstacle_positions
-            )
+            # Log metrics every 10 steps
+            if iteration % 10 == 0:
+                print(f"\nStep {iteration+1} metrics:")
+                print(f"Average SNR: {channel_data['average_snr']:.2f} dB")
             
-            optimal_beams = beam_manager.optimize_beam_direction(
-                channel_data=channel_data,
-                path_manager=path_manager,
-                obstacle_positions=obstacle_positions
-            )
-            
-            # Apply optimal beams
-            for tx in scene.transmitters.values():
-                tx.array.steering_angle = optimal_beams
-            
-            # Generate updated channel data
-            optimal_beams = beam_manager.optimize_beam_direction(...)
-            updated_channel = generate_channel_data(scene, config, beam_manager)
-            current_snr = calculate_snr(updated_channel['channel_matrices'], 
-                                    config, 
-                                    optimal_beams)
-            channel_data_history.append(updated_channel)
-            
-            # Log beam switching metrics
-            logger.info(f"Iteration {iteration+1} metrics:")
-            logger.info(f"- Blocked paths: {sum(los_blocked)}/{len(los_blocked)}")
-            logger.info(f"- Average SNR: {updated_channel['average_snr']:.2f} dB")
-            
+            channel_data_history.append(channel_data)
+        
+        print("\nSimulation completed. Saving results...")
+        
         # Save final results
         final_data = {
             'channel_data': channel_data_history[-1],
@@ -375,9 +361,12 @@ def main():
             }
         }
         
-        save_channel_data(final_data, os.path.join(result_dir, 'beam_switching_results.h5'))
+        results_file = os.path.join(result_dir, 'beam_switching_results.h5')
+        save_channel_data(final_data, results_file)
+        print(f"Results saved to: {results_file}")
         logger.info("Simulation completed successfully")
         
     except Exception as e:
+        print(f"Error during simulation: {str(e)}")
         logger.error(f"Simulation failed: {str(e)}", exc_info=True)
         raise
