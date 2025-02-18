@@ -58,7 +58,7 @@ class AGVPathManager:
             'agv_1': 0,
             'agv_2': 0
         }
-        self.trajectories = config.agv_trajectories
+        self.trajectories = config.agv_trajectories  # Make sure trajectories use same format
         self.last_known_positions = {
             'agv_1': None,
             'agv_2': None
