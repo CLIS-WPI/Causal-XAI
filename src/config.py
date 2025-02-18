@@ -194,3 +194,19 @@ class SmartFactoryConfig:
                 'fov': 70.0
             }
         }
+    # In config.py, add this method to SmartFactoryConfig class
+    def get_obstacle_list(self):
+        """Convert scene_objects dictionary to list format for collision detection"""
+        obstacles = []
+        
+        # Convert shelves to obstacle format
+        for i in range(self.scene_objects['num_shelves']):
+            obstacle = {
+                'position': self.scene_objects['shelf_positions'][i],
+                'dimensions': self.scene_objects['shelf_dimensions'][i],
+                'type': 'shelf',
+                'material': self.scene_objects['shelf_material']
+            }
+            obstacles.append(obstacle)
+        
+        return obstacles

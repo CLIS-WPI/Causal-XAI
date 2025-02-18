@@ -67,7 +67,28 @@ class AGVPathManager:
             'agv_1': np.zeros(2),
             'agv_2': np.zeros(2)
         }
-        
+        self._validate_scene_objects()
+
+    def _validate_scene_objects(self):
+        """Validate scene objects configuration"""
+        if not hasattr(self.config, 'scene_objects'):
+            logger.warning("No scene_objects found in configuration")
+            self.config.scene_objects = []
+            return
+            
+        if not isinstance(self.config.scene_objects, (list, tuple)):
+            logger.error("scene_objects must be a list or tuple")
+            raise ValueError("Invalid scene_objects configuration")
+            
+        for idx, obj in enumerate(self.config.scene_objects):
+            if not isinstance(obj, dict):
+                logger.error(f"Invalid object format at index {idx}")
+                raise ValueError(f"Object at index {idx} must be a dictionary")
+                
+            if 'position' not in obj or 'dimensions' not in obj:
+                logger.error(f"Missing required keys in object at index {idx}")
+                raise ValueError(f"Object at index {idx} missing required keys")
+                
     def get_next_position(self, agv_id, current_position):
         """Calculate next position based on trajectory and speed with safety checks"""
         # Get proposed next position
@@ -119,22 +140,31 @@ class AGVPathManager:
         
         return new_position
 
-    def check_collision(self, position, obstacles):
+    # check_collision method
+    def check_collision(self, position, scene_objects):
         """Check if proposed position collides with any obstacle"""
+        # Get obstacles in the correct format
+        obstacles = self.config.get_obstacle_list()
+        
         for obstacle in obstacles:
-            # Get obstacle bounds
-            obs_pos = obstacle['position']
-            obs_dim = obstacle['dimensions']
-            
-            # Add safety margin
-            safety_margin = 0.2  # meters
-            
-            # Check if position is within obstacle bounds with safety margin
-            if (position[0] >= obs_pos[0] - (obs_dim[0]/2 + safety_margin) and 
-                position[0] <= obs_pos[0] + (obs_dim[0]/2 + safety_margin) and
-                position[1] >= obs_pos[1] - (obs_dim[1]/2 + safety_margin) and
-                position[1] <= obs_pos[1] + (obs_dim[1]/2 + safety_margin)):
-                return True
+            try:
+                obs_pos = obstacle['position']
+                obs_dim = obstacle['dimensions']
+                
+                # Add safety margin
+                safety_margin = 0.5  # meters
+                
+                # Check if position is within obstacle bounds with safety margin
+                if (position[0] >= obs_pos[0] - (obs_dim[0]/2 + safety_margin) and 
+                    position[0] <= obs_pos[0] + (obs_dim[0]/2 + safety_margin) and
+                    position[1] >= obs_pos[1] - (obs_dim[1]/2 + safety_margin) and
+                    position[1] <= obs_pos[1] + (obs_dim[1]/2 + safety_margin)):
+                    return True
+                    
+            except (KeyError, IndexError, TypeError) as e:
+                logger.error(f"Error processing obstacle {obstacle}: {str(e)}")
+                continue
+                
         return False
 
     def validate_position(self, position):
