@@ -64,66 +64,6 @@ def validate_config(config):
     # Add typical path loss for indoor factory at 28GHz
     config.path_loss_db = 80  # Typical value for indoor factory environment
 
-def generate_channel_data(scene, config, beam_manager=None):
-    """Simplified channel data generation focusing on beam switching"""
-    try:
-        logger.debug("Generating channel data...")
-        
-        # Apply beam configuration
-        if beam_manager is not None:
-            current_beams = beam_manager.get_current_beams()
-            if current_beams is not None:
-                for tx in scene.transmitters.values():
-                    tx.array.steering_angle = current_beams
-        
-        # Compute paths
-        paths = scene.compute_paths(
-            max_depth=4,
-            method="fibonacci",
-            num_samples=2000,
-            los=True,
-            reflection=True,
-            diffraction=True,
-            scattering=True
-        )
-        
-        if paths is None:
-            raise ValueError("Path computation failed")
-        
-        # Get channel impulse responses
-        a, tau = paths.cir()
-        
-        # Convert to OFDM channel
-        frequencies = subcarrier_frequencies(
-            num_subcarriers=config.num_subcarriers,
-            subcarrier_spacing=config.subcarrier_spacing
-        )
-        
-        h_freq = cir_to_ofdm_channel(
-            frequencies=frequencies,
-            a=tf.cast(a, tf.complex64),
-            tau=tf.cast(tau, tf.float32),
-            normalize=True
-        )
-        
-        # Calculate SNR
-        snr = calculate_snr(h_freq, config)
-        
-        return {
-            'channel_matrices': h_freq,
-            'path_delays': tau,
-            'los_conditions': paths.LOS,
-            'average_snr': tf.reduce_mean(snr),
-            'beam_metrics': {
-                'snr_db': snr.numpy(),
-                'avg_power': float(tf.reduce_mean(tf.abs(h_freq)**2))
-            }
-        }
-        
-    except Exception as e:
-        logger.error(f"Channel data generation failed: {str(e)}")
-        raise
-
 def save_channel_data(channel_data, filepath):
     """
     Save channel data to H5 file with enhanced organization and error handling
