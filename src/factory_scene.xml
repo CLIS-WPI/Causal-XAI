@@ -16,14 +16,13 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
         <integer name="max_depth" value="6"/>
     </integrator>
 
-    <!-- Camera settings based on cameras config -->
+    <!-- Updated Camera settings for better view of the entire scene -->
     <sensor type="perspective" id="Camera-Top">
         <string name="fov_axis" value="x"/>
         <float name="fov" value="70.0"/>
         <transform name="to_world">
-            <!-- Updated camera position to match correct BS position -->
-            <lookat origin="10.0 0.5 30.0" 
-                    target="10.0 0.5 0.0" 
+            <lookat origin="10.0 10.0 25.0" 
+                    target="10.0 10.0 0.0" 
                     up="0.0 1.0 0.0"/>
         </transform>
         <sampler type="independent">
@@ -35,42 +34,39 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
         </film>
     </sensor>
 
-    <!-- Updated lighting based on render_config -->
+    <!-- Lighting unchanged -->
     <emitter type="constant" id="World">
         <rgb name="radiance" value="0.1 0.1 0.1"/>
     </emitter>
 
-    <!-- Updated Material definitions with ITU standard properties -->
+    <!-- Materials unchanged -->
     <bsdf type="twosided" id="itu_concrete">
         <bsdf type="diffuse">
-            <!-- Updated concrete reflectance values based on ITU standards -->
             <rgb name="reflectance" value="0.603815 0.603815 0.588347"/>
         </bsdf>
     </bsdf>
 
     <bsdf type="twosided" id="itu_metal">
         <bsdf type="diffuse">
-            <!-- Updated metal reflectance values based on ITU standards -->
             <rgb name="reflectance" value="0.087140 0.087140 0.087140"/>
         </bsdf>
     </bsdf>
 
-    <!-- Static Scene Elements -->
+    <!-- Static Scene Elements - Unchanged -->
     <shape type="ply" id="floor">
         <string name="filename" value="meshes/floor.ply"/>
         <ref name="bsdf" id="itu_concrete"/>
     </shape>
 
-    <!-- Added ceiling -->
     <shape type="ply" id="ceiling">
         <string name="filename" value="meshes/ceiling.ply"/>
         <ref name="bsdf" id="itu_concrete"/>
         <transform name="to_world">
-            <translate value="0 0 5"/> <!-- Positioned at height 5m -->
+            <translate value="0 0 5"/>
         </transform>
     </shape>
 
-    <!-- Walls with verified material properties -->
+    <!-- Walls unchanged -->
     <shape type="ply" id="wall_xp">
         <string name="filename" value="meshes/wall_xp.ply"/>
         <ref name="bsdf" id="itu_concrete"/>
@@ -91,11 +87,12 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
         <ref name="bsdf" id="itu_concrete"/>
     </shape>
 
-    <!-- Shelves with positions from config -->
+    <!-- Updated Shelf Positions to match visualization -->
     <shape type="ply" id="shelf_0">
         <string name="filename" value="meshes/shelf_0.ply"/>
         <transform name="to_world">
             <translate value="4.0 4.0 0.0"/>
+            <scale value="4.0 1.0 4.0"/>
         </transform>
         <ref name="bsdf" id="itu_metal"/>
     </shape>
@@ -104,6 +101,7 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
         <string name="filename" value="meshes/shelf_1.ply"/>
         <transform name="to_world">
             <translate value="12.0 4.0 0.0"/>
+            <scale value="2.0 1.0 4.0"/>
         </transform>
         <ref name="bsdf" id="itu_metal"/>
     </shape>
@@ -112,6 +110,7 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
         <string name="filename" value="meshes/shelf_2.ply"/>
         <transform name="to_world">
             <translate value="4.0 10.0 0.0"/>
+            <scale value="1.0 2.0 5.0"/>
         </transform>
         <ref name="bsdf" id="itu_metal"/>
     </shape>
@@ -120,6 +119,7 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
         <string name="filename" value="meshes/shelf_3.ply"/>
         <transform name="to_world">
             <translate value="14.0 12.0 0.0"/>
+            <scale value="1.0 2.0 5.0"/>
         </transform>
         <ref name="bsdf" id="itu_metal"/>
     </shape>
@@ -128,27 +128,32 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
         <string name="filename" value="meshes/shelf_4.ply"/>
         <transform name="to_world">
             <translate value="8.0 16.0 0.0"/>
+            <scale value="4.0 1.0 5.0"/>
         </transform>
         <ref name="bsdf" id="itu_metal"/>
     </shape>
 
-
-    <!-- AGV Robots with actual positions from config -->
+    <!-- AGV Robots -->
     <shape type="ply" id="agv_robot_0">
         <string name="filename" value="meshes/agv_robot_0.ply"/>
+        <transform name="to_world">
+            <translate value="2.0 2.0 0.5"/>
+        </transform>
         <ref name="bsdf" id="itu_metal"/>
     </shape>
 
     <shape type="ply" id="agv_robot_1">
         <string name="filename" value="meshes/agv_robot_1.ply"/>
+        <transform name="to_world">
+            <translate value="17.0 18.0 0.5"/>
+        </transform>
         <ref name="bsdf" id="itu_metal"/>
     </shape>
 
-    <!-- Base Station with corrected position -->
+    <!-- Base Station -->
     <shape type="ply" id="base_station">
         <string name="filename" value="meshes/base_station.ply"/>
         <transform name="to_world">
-            <!-- Updated to match original specification [10, 10.0, 4.5] -->
             <translate value="10.0 10.0 4.5"/>
         </transform>
         <ref name="bsdf" id="itu_metal"/>
