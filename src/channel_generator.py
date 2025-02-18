@@ -32,6 +32,10 @@ class SmartFactoryChannel:
             tf.random.set_seed(config.seed if hasattr(config, 'seed') else 42)
             logger.debug(f"Random seed set to: {config.seed if hasattr(config, 'seed') else 42}")
 
+            # Initialize indoor factory parameters first
+            self._setup_indoor_factory_params()
+            logger.debug("Indoor factory parameters initialized")
+            
             # Initialize position tracking
             self.positions_history = [[] for _ in range(config.num_agvs)]
             self.agv_positions = self._generate_initial_agv_positions()
@@ -50,29 +54,31 @@ class SmartFactoryChannel:
             # Verify scene configuration
             self.verify_scene_configuration()
             logger.debug("Scene configuration verified successfully")
+            
+            # Initialize managers
             self.path_manager = AGVPathManager(config)
             self.beam_manager = BeamManager(config)
             
         except Exception as e:
             logger.error(f"Channel initialization failed: {str(e)}")
             raise RuntimeError(f"Channel initialization failed: {str(e)}") from e
-    
+
     def _setup_indoor_factory_params(self):
         """Setup indoor factory specific parameters"""
         try:
             # Indoor factory mmWave parameters
             self.inf_params = {
-                'los_k_factor': 10.0,  # Rician K-factor for LOS
-                'nlos_sigma': 4.0,     # Rayleigh sigma for NLOS
-                'path_loss_exp': 2.0,  # Path loss exponent
-                'shadow_std': 4.0,     # Shadow fading std dev (dB)
-                'penetration_loss': 20.0, # Material penetration loss (dB)
-                'reflection_coeff': 0.6   # Reflection coefficient
+                'los_k_factor': 10.0,      # Rician K-factor for LOS
+                'nlos_sigma': 4.0,         # Rayleigh sigma for NLOS
+                'path_loss_exp': 2.0,      # Path loss exponent
+                'shadow_std': 4.0,         # Shadow fading std dev (dB)
+                'penetration_loss': 20.0,  # Material penetration loss (dB)
+                'reflection_coeff': 0.6     # Reflection coefficient
             }
             logger.debug(f"Indoor factory parameters initialized: {self.inf_params}")
         except Exception as e:
             logger.error(f"Error setting up indoor factory parameters: {str(e)}")
-        raise
+            raise
 
     def calculate_path_loss(self, distance, frequency):
         """Calculate path loss with enhanced indoor factory model"""
@@ -192,27 +198,40 @@ class SmartFactoryChannel:
             logger.debug(f"- SNR (dB): {float(tf.reduce_mean(snr_db)):.2f} dB")
             
             # Clip SNR to realistic range for indoor factory
-            max_snr_db =  10.0  # Increased maximum expected SNR
+            max_snr_db =  30.0  # Increased maximum expected SNR
             min_snr_db = -10.0  # Lowered minimum usable SNR
             snr_db_clipped = tf.clip_by_value(snr_db, min_snr_db, max_snr_db)
+            logger.debug(f"SNR clipping bounds:")
+            logger.debug(f"- Max SNR: {max_snr_db} dB (limited by practical factory conditions)")
+            logger.debug(f"- Min SNR: {min_snr_db} dB (minimum for reliable communication)")
             average_snr = float(tf.reduce_mean(snr_db_clipped))
             
             logger.debug(f"Final SNR after clipping:")
             logger.debug(f"- Average SNR: {average_snr:.2f} dB")
             
             return {
-                'average_snr': average_snr,
-                'beam_metrics': {
-                    'snr_db': snr_db_clipped.numpy(),
-                    'avg_power': float(tf.reduce_mean(signal_power)),
-                    'tx_power_dbm': tx_power_dbm,
-                    'antenna_gains': {
-                        'tx_gain_db': tx_antenna_gain_db,
-                        'rx_gain_db': rx_antenna_gain_db
-                    },
-                    'noise_power': float(total_noise_power)
-                }
+            'average_snr': average_snr,
+            'beam_metrics': {
+                'snr_db': snr_db_clipped.numpy(),
+                'raw_snr_db': snr_db.numpy(),  # Before clipping
+                'clipping_stats': {
+                    'max_snr_db': max_snr_db,
+                    'min_snr_db': min_snr_db,
+                    'clipped_samples': tf.reduce_sum(
+                        tf.cast(tf.logical_or(
+                            snr_db > max_snr_db, 
+                            snr_db < min_snr_db), 
+                        tf.int32)).numpy()
+                },
+                'avg_power': float(tf.reduce_mean(signal_power)),
+                'tx_power_dbm': tx_power_dbm,
+                'antenna_gains': {
+                    'tx_gain_db': tx_antenna_gain_db,
+                    'rx_gain_db': rx_antenna_gain_db
+                },
+                'noise_power': float(total_noise_power)
             }
+        }
             
         except Exception as e:
             logger.error(f"Error calculating SNR: {str(e)}")
