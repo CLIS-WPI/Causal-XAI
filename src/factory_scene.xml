@@ -87,7 +87,7 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
         <ref name="bsdf" id="itu_concrete"/>
     </shape>
 
-    <!-- Updated Shelf Positions to match visualization -->
+    <!-- Shelf 0: (4, 4, 0), (4, 1, 4) -->
     <shape type="ply" id="shelf_0">
         <string name="filename" value="meshes/shelf_0.ply"/>
         <transform name="to_world">
@@ -97,6 +97,7 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
         <ref name="bsdf" id="itu_metal"/>
     </shape>
 
+    <!-- Shelf 1: (12, 4, 0), (2, 1, 4) -->
     <shape type="ply" id="shelf_1">
         <string name="filename" value="meshes/shelf_1.ply"/>
         <transform name="to_world">
@@ -106,6 +107,7 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
         <ref name="bsdf" id="itu_metal"/>
     </shape>
 
+    <!-- Shelf 2: (4, 10, 0), (1, 2, 5) -->
     <shape type="ply" id="shelf_2">
         <string name="filename" value="meshes/shelf_2.ply"/>
         <transform name="to_world">
@@ -115,6 +117,7 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
         <ref name="bsdf" id="itu_metal"/>
     </shape>
 
+    <!-- Shelf 3: (14, 12, 0), (1, 2, 5) -->
     <shape type="ply" id="shelf_3">
         <string name="filename" value="meshes/shelf_3.ply"/>
         <transform name="to_world">
@@ -124,6 +127,7 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
         <ref name="bsdf" id="itu_metal"/>
     </shape>
 
+    <!-- Shelf 4: (8, 16, 0), (4, 1, 5) -->
     <shape type="ply" id="shelf_4">
         <string name="filename" value="meshes/shelf_4.ply"/>
         <transform name="to_world">
