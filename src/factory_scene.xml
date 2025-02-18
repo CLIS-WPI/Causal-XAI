@@ -183,10 +183,10 @@
 
     <!-- Then update the base station shape to use this material -->
     <shape type="ply" id="base_station">
-        <string name="filename" value="meshes/base_station.ply"/>
+    <string name="filename" value="meshes/base_station.ply"/>
         <transform name="to_world">
             <translate value="10.0 10.0 4.5"/>
         </transform>
-        <ref name="bsdf" id="modem_material"/>  <!-- Use the defined modem material -->
+        <ref name="bsdf" id="itu_metal"/>
     </shape>
 </scene>
