@@ -55,13 +55,14 @@ class AGVPathManager:
         """Initialize AGV path manager with configuration"""
         self.config = config
         self.current_waypoint_indices = {
-            str(i): 0 for i in range(config.num_agvs)  # Use string keys '0', '1', etc.
+            str(i): 0 for i in range(config.num_agvs)
         }
-        # Convert trajectories to use string keys
-        self.trajectories = {}
-        for i in range(config.num_agvs):
-            agv_id = str(i)
-            self.trajectories[agv_id] = config.agv_trajectories[f'agv_{i}']  # Assuming config uses 'agv_0', 'agv_1' format
+        
+        # Convert trajectories to use numeric keys
+        self.trajectories = {
+            '0': config.agv_trajectories['agv_1'],
+            '1': config.agv_trajectories['agv_2']
+        }
         
         self.last_known_positions = {
             str(i): None for i in range(config.num_agvs)
