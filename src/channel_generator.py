@@ -282,11 +282,14 @@ class SmartFactoryChannel:
             
             # Calculate SNR
             # Physical constants and system parameters
+            # Updated SNR calculation parameters for indoor factory scenario
+            tx_power_dbm = 23  # Typical mmWave BS transmit power (23 dBm)
+            tx_power_watts = 10 ** ((tx_power_dbm - 30) / 10)  # Convert dBm to Watts
             k_boltzmann = 1.380649e-23
-            temperature = 290
+            temperature = 290  # Room temperature in Kelvin
             bandwidth = config.subcarrier_spacing * config.num_subcarriers
-            noise_figure_db = 10
-            implementation_loss_db = 3
+            noise_figure_db = 7  # More realistic noise figure for mmWave receivers
+            implementation_loss_db = 5  # Implementation loss including various factors
             
             # Calculate noise power
             thermal_noise = k_boltzmann * temperature * bandwidth
@@ -294,14 +297,14 @@ class SmartFactoryChannel:
             implementation_loss_linear = 10 ** (implementation_loss_db / 10)
             total_noise_power = thermal_noise * noise_figure_linear * implementation_loss_linear
             
-            # Calculate signal power and SNR
-            signal_power = tf.reduce_mean(tf.abs(h_freq)**2, axis=-1)
+            # Signal power calculation with transmit power
+            signal_power = tf.reduce_mean(tf.abs(h_freq)**2, axis=-1) * tx_power_watts
             snr_linear = signal_power / total_noise_power
             snr_db = 10 * tf.math.log(snr_linear) / tf.math.log(10.0)
             
             # Clip SNR to realistic range
-            max_snr_db = 40.0
-            min_snr_db = -20.0
+            max_snr_db = 30.0  # Maximum expected SNR
+            min_snr_db = -10.0  # Minimum usable SNR
             snr_db_clipped = tf.clip_by_value(snr_db, min_snr_db, max_snr_db)
             average_snr = float(tf.reduce_mean(snr_db_clipped))
             
