@@ -99,12 +99,6 @@
         </bsdf>
     </bsdf>
 
-    <bsdf type="twosided" id="modem_material">
-        <bsdf type="diffuse">
-            <rgb name="reflectance" value="0.2 0.4 0.8"/> <!-- Blue-ish color -->
-        </bsdf>
-    </bsdf>
-
     <!-- Static Scene Elements -->
     <shape type="ply" id="floor">
         <string name="filename" value="meshes/floor.ply"/>
@@ -193,6 +187,6 @@
         <transform name="to_world">
             <translate value="10.0 10.0 4.5"/>
         </transform>
-        <ref name="bsdf" id="modem_material"/>
+        <ref name="bsdf" id="itu_modem"/>  <!-- Use the existing modem material -->
     </shape>
 </scene>  <!-- This closing tag was missing -->
