@@ -55,17 +55,19 @@ class AGVPathManager:
         """Initialize AGV path manager with configuration"""
         self.config = config
         self.current_waypoint_indices = {
-            '0': 0,  # Changed from 'agv_1' to '0'
-            '1': 0   # Changed from 'agv_2' to '1'
+            str(i): 0 for i in range(config.num_agvs)  # Use string keys '0', '1', etc.
         }
-        self.trajectories = config.agv_trajectories
+        # Convert trajectories to use string keys
+        self.trajectories = {}
+        for i in range(config.num_agvs):
+            agv_id = str(i)
+            self.trajectories[agv_id] = config.agv_trajectories[f'agv_{i}']  # Assuming config uses 'agv_0', 'agv_1' format
+        
         self.last_known_positions = {
-            '0': None,  # Changed from 'agv_1' to '0'
-            '1': None   # Changed from 'agv_2' to '1'
+            str(i): None for i in range(config.num_agvs)
         }
         self.current_velocities = {
-            '0': np.zeros(2),  # Changed from 'agv_1' to '0'
-            '1': np.zeros(2)   # Changed from 'agv_2' to '1'
+            str(i): np.zeros(2) for i in range(config.num_agvs)
         }
         self.scene_objects = None
         self._validate_scene_objects()
@@ -126,35 +128,43 @@ class AGVPathManager:
 
     def _calculate_next_position(self, agv_id, current_position):
         """Calculate the next position based on trajectory"""
-        trajectory = self.trajectories[agv_id]
-        current_idx = self.current_waypoint_indices[agv_id]
-        target = trajectory[current_idx]
-        
-        # Convert current position to 2D for path calculation
-        current_2d = current_position[:2]
-        
-        # Calculate direction vector
-        direction = np.array(target) - current_2d
-        distance = np.linalg.norm(direction)
-        
-        # If close to waypoint, move to next waypoint
-        if distance < 0.1:  # threshold
-            self.current_waypoint_indices[f'agv_{agv_id}'] = \
-                (current_idx + 1) % len(trajectory)
-            return current_position
-        
-        # Normalize direction and apply speed
-        direction = direction / distance
-        step = direction * self.config.agv_speed * self.config.agv_movement['update_interval']
-        
-        # Create new position (keeping height constant)
-        new_position = np.array([
-            current_2d[0] + step[0],
-            current_2d[1] + step[1],
-            self.config.agv_height
-        ])
-        
-        return new_position
+        try:
+            trajectory = self.trajectories[agv_id]  # agv_id should already be a string
+            current_idx = self.current_waypoint_indices[agv_id]
+            target = trajectory[current_idx]
+            
+            # Convert current position to 2D for path calculation
+            current_2d = current_position[:2]
+            
+            # Calculate direction vector
+            direction = np.array(target) - current_2d
+            distance = np.linalg.norm(direction)
+            
+            # If close to waypoint, move to next waypoint
+            if distance < 0.1:  # threshold
+                self.current_waypoint_indices[agv_id] = \
+                    (current_idx + 1) % len(trajectory)
+                return current_position
+            
+            # Normalize direction and apply speed
+            direction = direction / distance
+            step = direction * self.config.agv_speed * self.config.agv_movement['update_interval']
+            
+            # Create new position (keeping height constant)
+            new_position = np.array([
+                current_2d[0] + step[0],
+                current_2d[1] + step[1],
+                self.config.agv_height
+            ])
+            
+            return new_position
+            
+        except KeyError as e:
+            logger.error(f"No trajectory found for AGV {agv_id}")
+            raise KeyError(f"No trajectory found for AGV {agv_id}") from e
+        except Exception as e:
+            logger.error(f"Error calculating next position for AGV {agv_id}: {str(e)}")
+            raise
 
     # check_collision method
     def check_collision(self, position, scene_objects):
