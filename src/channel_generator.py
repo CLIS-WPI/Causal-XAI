@@ -94,9 +94,9 @@ class SmartFactoryChannel:
                 logger.debug(f"Converted path_losses to tensor with shape: {path_losses.shape}")
             
             # System parameters for indoor factory scenario
-            tx_power_dbm = 46  # Transmit power in dBm for mmWave indoor BS
-            tx_antenna_gain_db = 30  # BS antenna array gain
-            rx_antenna_gain_db = 15   # AGV antenna gain
+            tx_power_dbm = 49  # Transmit power in dBm for mmWave indoor BS
+            tx_antenna_gain_db = 35  # BS antenna array gain
+            rx_antenna_gain_db = 20   # AGV antenna gain
             
             logger.debug(f"Initial parameters:")
             logger.debug(f"- TX power: {tx_power_dbm} dBm")
@@ -117,8 +117,8 @@ class SmartFactoryChannel:
             k_boltzmann = 1.380649e-23
             temperature = 290  # Room temperature in Kelvin
             bandwidth = config.subcarrier_spacing * config.num_subcarriers
-            noise_figure_db = 4  # Reduced for better performance
-            implementation_loss_db = 2  # Reduced for better performance
+            noise_figure_db = 34  # Reduced for better performance
+            implementation_loss_db = 1  # Reduced for better performance
             
             logger.debug(f"Noise parameters:")
             logger.debug(f"- Bandwidth: {bandwidth/1e6:.2f} MHz")
