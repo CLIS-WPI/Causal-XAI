@@ -117,7 +117,7 @@ class SmartFactoryChannel:
             k_boltzmann = 1.380649e-23
             temperature = 290  # Room temperature in Kelvin
             bandwidth = config.subcarrier_spacing * config.num_subcarriers
-            noise_figure_db = 34  # Reduced for better performance
+            noise_figure_db = 6  # Reduced for better performance
             implementation_loss_db = 1  # Reduced for better performance
             
             logger.debug(f"Noise parameters:")
@@ -159,8 +159,8 @@ class SmartFactoryChannel:
             logger.debug(f"- SNR (dB): {float(tf.reduce_mean(snr_db)):.2f} dB")
             
             # Clip SNR to realistic range for indoor factory
-            max_snr_db = 40.0  # Increased maximum expected SNR
-            min_snr_db = -20.0  # Lowered minimum usable SNR
+            max_snr_db = -10.0  # Increased maximum expected SNR
+            min_snr_db = 30  # Lowered minimum usable SNR
             snr_db_clipped = tf.clip_by_value(snr_db, min_snr_db, max_snr_db)
             average_snr = float(tf.reduce_mean(snr_db_clipped))
             
