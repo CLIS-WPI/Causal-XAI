@@ -12,7 +12,7 @@
         <integer name="max_depth" value="6"/>
     </integrator>
 
-    <!-- Updated Camera settings for better view of the entire scene -->
+    <!-- Multiple Camera Views -->
     <sensor type="perspective" id="Camera-Top">
         <string name="fov_axis" value="x"/>
         <float name="fov" value="70.0"/>
@@ -20,6 +20,57 @@
             <lookat origin="10.0 10.0 25.0" 
                     target="10.0 10.0 0.0" 
                     up="0.0 1.0 0.0"/>
+        </transform>
+        <sampler type="independent">
+            <integer name="sample_count" value="64"/>
+        </sampler>
+        <film type="hdrfilm">
+            <integer name="width" value="$resx"/>
+            <integer name="height" value="$resy"/>
+        </film>
+    </sensor>
+
+    <sensor type="perspective" id="Camera-Front">
+        <string name="fov_axis" value="x"/>
+        <float name="fov" value="70.0"/>
+        <transform name="to_world">
+            <lookat origin="-5.0 10.0 2.5" 
+                    target="10.0 10.0 2.5" 
+                    up="0.0 0.0 1.0"/>
+        </transform>
+        <sampler type="independent">
+            <integer name="sample_count" value="64"/>
+        </sampler>
+        <film type="hdrfilm">
+            <integer name="width" value="$resx"/>
+            <integer name="height" value="$resy"/>
+        </film>
+    </sensor>
+
+    <sensor type="perspective" id="Camera-Corner">
+        <string name="fov_axis" value="x"/>
+        <float name="fov" value="70.0"/>
+        <transform name="to_world">
+            <lookat origin="-5.0 -5.0 15.0" 
+                    target="10.0 10.0 0.0" 
+                    up="0.0 0.0 1.0"/>
+        </transform>
+        <sampler type="independent">
+            <integer name="sample_count" value="64"/>
+        </sampler>
+        <film type="hdrfilm">
+            <integer name="width" value="$resx"/>
+            <integer name="height" value="$resy"/>
+        </film>
+    </sensor>
+
+    <sensor type="perspective" id="Camera-Side">
+        <string name="fov_axis" value="x"/>
+        <float name="fov" value="70.0"/>
+        <transform name="to_world">
+            <lookat origin="10.0 -5.0 2.5" 
+                    target="10.0 10.0 2.5" 
+                    up="0.0 0.0 1.0"/>
         </transform>
         <sampler type="independent">
             <integer name="sample_count" value="64"/>
@@ -123,13 +174,19 @@
         <ref name="bsdf" id="itu_metal"/>
     </shape>
 
-    <!-- Base Station -->
+    <!-- Add this material definition -->
+    <bsdf type="twosided" id="itu_modem">
+        <bsdf type="diffuse">
+            <!-- Blue-gray metallic color -->
+            <rgb name="reflectance" value="0.2 0.3 0.4"/>
+        </bsdf>
+    </bsdf>
+
+    <!-- Base Station (Modern Modem Style) -->
     <shape type="ply" id="base_station">
         <string name="filename" value="meshes/base_station.ply"/>
         <transform name="to_world">
             <translate value="10.0 10.0 4.5"/>
         </transform>
-        <ref name="bsdf" id="itu_metal"/>
+        <ref name="bsdf" id="itu_modem"/>  <!-- Using new material -->
     </shape>
-
-</scene>

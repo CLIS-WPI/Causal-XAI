@@ -381,44 +381,100 @@ class SionnaPLYGenerator:
     @staticmethod
     def _generate_modem_ply(filename, dims, position):
         """
-        Generate modem PLY with all six faces (box geometry)
+        Generate modem PLY with modern design features
         """
         try:
-            width, depth, height = dims
+            # Base dimensions for modem body
+            base_width = 0.3   # 30cm width
+            base_depth = 0.15  # 15cm depth
+            base_height = 0.05 # 5cm height
+            
+            # Antenna dimensions
+            ant_width = 0.02   # 2cm width
+            ant_depth = 0.02   # 2cm depth
+            ant_height = 0.15  # 15cm height
+            
             x, y, z = position
 
-            # Define vertices for a box representing the modem
-            vertices = [
-                # Front face vertices (y constant)
-                (x,         y,         z,         0, 0),  # 0 bottom-left
-                (x+width,   y,         z,         1, 0),  # 1 bottom-right
-                (x+width,   y,         z+height,  1, 1),  # 2 top-right
-                (x,         y,         z+height,  0, 1),  # 3 top-left
-                
-                # Back face vertices (y+depth)
-                (x,         y+depth,   z,         0, 0),  # 4 bottom-left
-                (x+width,   y+depth,   z,         1, 0),  # 5 bottom-right
-                (x+width,   y+depth,   z+height,  1, 1),  # 6 top-right
-                (x,         y+depth,   z+height,  0, 1),  # 7 top-left
-            ]
-            
-            faces = [
+            # Define vertices for modem body
+            body_vertices = [
                 # Front face
-                [0, 1, 2], [0, 2, 3],
+                (x, y, z),
+                (x+base_width, y, z),
+                (x+base_width, y, z+base_height),
+                (x, y, z+base_height),
+                
                 # Back face
-                [5, 4, 7], [5, 7, 6],
-                # Top face
-                [3, 2, 6], [3, 6, 7],
-                # Bottom face
-                [4, 5, 1], [4, 1, 0],
-                # Left face
-                [4, 0, 3], [4, 3, 7],
-                # Right face
-                [1, 5, 6], [1, 6, 2]
+                (x, y+base_depth, z),
+                (x+base_width, y+base_depth, z),
+                (x+base_width, y+base_depth, z+base_height),
+                (x, y+base_depth, z+base_height),
             ]
-            
+
+            # Define vertices for first antenna
+            ant1_offset = base_width * 0.25  # 25% from left
+            ant1_vertices = [
+                # Front face
+                (x+ant1_offset, y+base_depth/2-ant_depth/2, z+base_height),
+                (x+ant1_offset+ant_width, y+base_depth/2-ant_depth/2, z+base_height),
+                (x+ant1_offset+ant_width, y+base_depth/2-ant_depth/2, z+base_height+ant_height),
+                (x+ant1_offset, y+base_depth/2-ant_depth/2, z+base_height+ant_height),
+                
+                # Back face
+                (x+ant1_offset, y+base_depth/2+ant_depth/2, z+base_height),
+                (x+ant1_offset+ant_width, y+base_depth/2+ant_depth/2, z+base_height),
+                (x+ant1_offset+ant_width, y+base_depth/2+ant_depth/2, z+base_height+ant_height),
+                (x+ant1_offset, y+base_depth/2+ant_depth/2, z+base_height+ant_height),
+            ]
+
+            # Define vertices for second antenna
+            ant2_offset = base_width * 0.75  # 75% from left
+            ant2_vertices = [
+                # Front face
+                (x+ant2_offset, y+base_depth/2-ant_depth/2, z+base_height),
+                (x+ant2_offset+ant_width, y+base_depth/2-ant_depth/2, z+base_height),
+                (x+ant2_offset+ant_width, y+base_depth/2-ant_depth/2, z+base_height+ant_height),
+                (x+ant2_offset, y+base_depth/2-ant_depth/2, z+base_height+ant_height),
+                
+                # Back face
+                (x+ant2_offset, y+base_depth/2+ant_depth/2, z+base_height),
+                (x+ant2_offset+ant_width, y+base_depth/2+ant_depth/2, z+base_height),
+                (x+ant2_offset+ant_width, y+base_depth/2+ant_depth/2, z+base_height+ant_height),
+                (x+ant2_offset, y+base_depth/2+ant_depth/2, z+base_height+ant_height),
+            ]
+
+            # Combine all vertices
+            vertices = body_vertices + ant1_vertices + ant2_vertices
+
+            # Define faces for body and antennas
+            faces = [
+                # Body faces (0-7 vertices)
+                [0, 1, 2], [0, 2, 3],  # Front
+                [5, 4, 7], [5, 7, 6],  # Back
+                [3, 2, 6], [3, 6, 7],  # Top
+                [4, 5, 1], [4, 1, 0],  # Bottom
+                [4, 0, 3], [4, 3, 7],  # Left
+                [1, 5, 6], [1, 6, 2],  # Right
+                
+                # Antenna 1 faces (8-15 vertices)
+                [8, 9, 10], [8, 10, 11],   # Front
+                [13, 12, 15], [13, 15, 14], # Back
+                [11, 10, 14], [11, 14, 15], # Top
+                [12, 13, 9], [12, 9, 8],   # Bottom
+                [12, 8, 11], [12, 11, 15], # Left
+                [9, 13, 14], [9, 14, 10],  # Right
+                
+                # Antenna 2 faces (16-23 vertices)
+                [16, 17, 18], [16, 18, 19],  # Front
+                [21, 20, 23], [21, 23, 22],  # Back
+                [19, 18, 22], [19, 22, 23],  # Top
+                [20, 21, 17], [20, 17, 16],  # Bottom
+                [20, 16, 19], [20, 19, 23],  # Left
+                [17, 21, 22], [17, 22, 18]   # Right
+            ]
+
             SionnaPLYGenerator._save_binary_ply(filename, vertices, faces)
-            
+                
         except Exception as e:
             logger.error(f"Error generating modem PLY {filename}: {str(e)}")
             raise
