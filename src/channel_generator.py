@@ -75,7 +75,7 @@ class SmartFactoryChannel:
         
         return path_loss_db + shadow_fading
     
-    def calculate_snr(self, h_freq, config, path_losses):
+    def calculate_snr(self, h_freq, path_losses=None):
         """
         Calculate SNR for the channel with proper parameter handling and detailed logging
         
@@ -109,16 +109,16 @@ class SmartFactoryChannel:
             rx_gain = tf.pow(10.0, rx_antenna_gain_db / 10.0)
             
             logger.debug(f"Linear scale conversions:")
-            logger.debug(f"- TX power: {float(tx_power):.2e} W")  # Fixed variable name
-            logger.debug(f"- TX gain: {float(tx_gain):.2f}")      # Fixed variable name
-            logger.debug(f"- RX gain: {float(rx_gain):.2f}")      # Fixed variable name
+            logger.debug(f"- TX power: {float(tx_power):.2e} W")
+            logger.debug(f"- TX gain: {float(tx_gain):.2f}")
+            logger.debug(f"- RX gain: {float(rx_gain):.2f}")
             
             # Noise calculation parameters
             k_boltzmann = 1.380649e-23
             temperature = 290  # Room temperature in Kelvin
             bandwidth = config.subcarrier_spacing * config.num_subcarriers
-            noise_figure_db = 5  # Reduced from 7 to 5 dB for better performance
-            implementation_loss_db = 2  # Reduced from 3 to 2 dB
+            noise_figure_db = 5  # Reduced for better performance
+            implementation_loss_db = 2  # Reduced for better performance
             
             logger.debug(f"Noise parameters:")
             logger.debug(f"- Bandwidth: {bandwidth/1e6:.2f} MHz")
@@ -140,7 +140,7 @@ class SmartFactoryChannel:
             logger.debug(f"Channel power: {float(tf.reduce_mean(channel_power)):.2e}")
             
             # Calculate signal power with antenna gains and path losses
-            signal_power = channel_power * tx_power * tx_gain * rx_gain  # Fixed variable names
+            signal_power = channel_power * tx_power * tx_gain * rx_gain
             
             # Apply path losses if provided
             if path_losses is not None:
