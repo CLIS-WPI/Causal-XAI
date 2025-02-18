@@ -362,13 +362,15 @@ class SmartFactoryChannel:
                 subcarrier_spacing=config.subcarrier_spacing
             )
             
-            # Process channel in batches
-            batch_size = 128  # Adjust based on memory constraints
+            # Process channel data in batches
             h_freq_list = []
-            
+            batch_size = 128  # Adjust batch size based on memory constraints
+
             for i in range(0, len(a), batch_size):
                 batch_a = a[i:i+batch_size]
                 batch_tau = tau[i:i+batch_size]
+                
+                logger.debug(f"Processing batch {i//batch_size + 1}, shape: {batch_a.shape}")
                 
                 batch_h_freq = cir_to_ofdm_channel(
                     frequencies=frequencies,
@@ -378,38 +380,58 @@ class SmartFactoryChannel:
                 )
                 h_freq_list.append(batch_h_freq)
             
+            # Combine batches
             h_freq = tf.concat(h_freq_list, axis=0) if len(h_freq_list) > 1 else h_freq_list[0]
+            logger.debug(f"Combined h_freq shape: {h_freq.shape}")
             
-            # Calculate and apply path loss for each receiver
-            path_losses = []
-            for rx_idx, rx in enumerate(self.scene.receivers.values()):
-                tx_position = list(self.scene.transmitters.values())[0].position
-                distance = tf.norm(rx.position - tx_position)
-                path_loss = self.calculate_path_loss(distance, config.carrier_frequency)
-                path_losses.append(path_loss)
-                
-                # Apply path loss to channel matrices
-                path_loss_linear = tf.cast(tf.pow(10.0, -path_loss/20.0), tf.complex64)
-                h_freq = h_freq * path_loss_linear
-                
-            # Convert path_losses list to tensor before passing to calculate_snr
+            # Calculate path losses for all receivers at once
+            tx_position = list(self.scene.transmitters.values())[0].position
+            rx_positions = tf.stack([rx.position for rx in self.scene.receivers.values()])
+            distances = tf.norm(rx_positions - tx_position, axis=-1)
+            
+            # Calculate path losses using vectorized operations
+            path_losses = tf.map_fn(
+                lambda x: self.calculate_path_loss(x, config.carrier_frequency),
+                distances,
+                dtype=tf.float32
+            )
+            
+            logger.debug(f"Calculated path losses: {path_losses}")
+            
+            # Convert path losses to linear scale and reshape for broadcasting
+            path_losses_linear = tf.pow(10.0, -path_losses/20.0)
+            path_losses_linear = tf.cast(path_losses_linear, tf.complex64)
+            
+            # Reshape path losses for proper broadcasting
+            path_losses_shape = tf.ones_like(tf.shape(h_freq))
+            path_losses_shape = tf.tensor_scatter_nd_update(
+                path_losses_shape,
+                [[1]], # Update the receiver dimension
+                [tf.shape(path_losses)[0]]
+            )
+            path_losses_linear = tf.reshape(path_losses_linear, path_losses_shape)
+            
+            # Apply path losses to channel matrices using broadcasting
+            h_freq = h_freq * path_losses_linear
+            logger.debug(f"Applied path losses, new h_freq shape: {h_freq.shape}")
+            
+            # Convert path_losses to tensor for SNR calculation
             path_losses_tensor = tf.convert_to_tensor(path_losses, dtype=tf.float32)
             logger.debug(f"Path losses tensor shape: {path_losses_tensor.shape}")
             
-            
-            # Replace the old SNR calculation with the new function call
+            # Calculate SNR metrics
             snr_metrics = self.calculate_snr(h_freq, config, path_losses_tensor)
             
-            # Enhanced channel data dictionary
+            # Create channel data dictionary with enhanced error checking
             channel_data = {
                 'channel_matrices': h_freq,
                 'path_delays': tau,
                 'los_conditions': los_conditions,
                 'agv_positions': tf.stack([rx.position for rx in self.scene.receivers.values()]),
                 'num_paths': tf.size(paths.LOS),
-                'path_losses': tf.convert_to_tensor(path_losses),
-                'reflection_paths': paths.reflection_paths if hasattr(paths, 'reflection_paths') else None,
-                'diffraction_paths': paths.diffraction_paths if hasattr(paths, 'diffraction_paths') else None,
+                'path_losses': path_losses_tensor,
+                'reflection_paths': getattr(paths, 'reflection_paths', None),
+                'diffraction_paths': getattr(paths, 'diffraction_paths', None),
                 'average_snr': snr_metrics['average_snr'],
                 'beam_metrics': snr_metrics['beam_metrics']
             }
@@ -420,9 +442,15 @@ class SmartFactoryChannel:
             
             logger.debug("Channel data generation completed successfully")
             return channel_data
-            
+
         except Exception as e:
-            logger.error(f"Error generating channel data: {str(e)}")
+            logger.error(f"Error in channel data generation:")
+            logger.error(f"Error message: {str(e)}")
+            logger.error(f"Shapes - a: {a.shape}, tau: {tau.shape}")
+            if 'h_freq' in locals():
+                logger.error(f"h_freq shape: {h_freq.shape}")
+            if 'path_losses' in locals():
+                logger.error(f"path_losses shape: {path_losses.shape}")
             raise
 
     def calculate_doppler_shift(self):
