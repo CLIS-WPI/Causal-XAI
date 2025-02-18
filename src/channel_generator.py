@@ -75,7 +75,7 @@ class SmartFactoryChannel:
         
         return path_loss_db + shadow_fading
     
-    def calculate_snr(self, h_freq, path_losses=None):
+    def calculate_snr(self, h_freq, config, path_losses=None):
         """
         Calculate SNR for the channel with proper parameter handling and detailed logging
         
