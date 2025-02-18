@@ -98,7 +98,6 @@ def setup_scene(config: SmartFactoryConfig):
             )
 
             # Assign a PlanarArray to each AGV's receiver
-            # In setup_scene function, change:
             rx_array = PlanarArray(
                 num_rows=config.agv_array['num_rows'],
                 num_cols=config.agv_array['num_cols'],
@@ -109,14 +108,23 @@ def setup_scene(config: SmartFactoryConfig):
             )
             rx.array = rx_array
 
-            # Add to scene
+            # Add AGV to the scene
             scene.add(rx)
             _debug_object_state(rx, f"AGV_{i}")
 
-            # Let the scene know which array to use for receivers
-            # Typically, we set scene.rx_array from the first AGV's array
+            # First AGV sets receiver array
             if i == 0:
                 agv_array_for_scene = rx_array
+
+        # Log final AGV positions
+        logger.info("\n=== Final AGV Positions in Scene ===")
+        for rx in scene.receivers.values():
+            logger.info(f"Receiver {rx.name} at {rx.position.numpy()}")
+
+        # Log all scene objects
+        logger.info("\n=== Scene Objects ===")
+        logger.info(f"Scene objects: {scene.objects.keys()}")
+
 
         # If we created at least one AGV, set scene.rx_array from the first one
         if agv_array_for_scene is not None:
