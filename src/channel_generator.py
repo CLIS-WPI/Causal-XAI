@@ -258,6 +258,7 @@ class SmartFactoryChannel:
                 normalize=True
             )
             
+            
             # Calculate and apply path loss for each receiver
             path_losses = []
             for rx_idx, rx in enumerate(self.scene.receivers.values()):
