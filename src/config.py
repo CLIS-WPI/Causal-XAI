@@ -57,8 +57,8 @@ class SmartFactoryConfig:
 
         # AGV Configuration optimized for beam switching demonstration
         self.num_agvs = 2
-        self.agv_height = 0.5
-        self.agv_speed = 0.5  # Reduced for better observation
+        self.agv_height = 2.5
+        self.agv_speed = 8.0  # Reduced for better observation
         self.agv_dimensions = [1.0, 1.0, 0.5]
         self.agv_orientations = [
             [0.0, 0.0, 0.0],  # Initial orientation for AGV 0

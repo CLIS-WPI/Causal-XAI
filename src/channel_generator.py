@@ -71,8 +71,8 @@ class SmartFactoryChannel:
                 'los_k_factor': 15.0,      # Rician K-factor for LOS
                 'nlos_sigma': 4.0,         # Rayleigh sigma for NLOS
                 'path_loss_exp': 1.8,      # Path loss exponent
-                'shadow_std': 4.0,         # Shadow fading std dev (dB)
-                'penetration_loss': 15.0,  # Material penetration loss (dB)
+                'shadow_std': 3.0,         # Shadow fading std dev (dB)
+                'penetration_loss': 10.0,  # Material penetration loss (dB)
                 'reflection_coeff': 0.8     # Reflection coefficient
             }
             logger.debug(f"Indoor factory parameters initialized: {self.inf_params}")
@@ -132,9 +132,9 @@ class SmartFactoryChannel:
                 logger.debug(f"Converted path_losses to tensor with shape: {path_losses.shape}")
             
             # System parameters for indoor factory scenario
-            tx_power_dbm = 60  # Transmit power in dBm for mmWave indoor BS
-            tx_antenna_gain_db = 35  # BS antenna array gain
-            rx_antenna_gain_db = 20   # AGV antenna gain
+            tx_power_dbm = 65  # Transmit power in dBm for mmWave indoor BS
+            tx_antenna_gain_db = 40  # BS antenna array gain
+            rx_antenna_gain_db = 25   # AGV antenna gain
             min_snr_threshold = 10.0  # Minimum usable SNR in dB
             
             logger.debug(f"Initial parameters:")
