@@ -67,7 +67,24 @@ class AGVPathManager:
             'agv_1': np.zeros(2),
             'agv_2': np.zeros(2)
         }
+        self.scene_objects = None  # Will be set in _validate_scene_objects
         self._validate_scene_objects()
+
+    def _convert_scene_objects(self):
+        """Convert config scene_objects dictionary to list format"""
+        scene_objects_list = []
+        
+        # Convert shelves to list format
+        for i in range(self.config.scene_objects['num_shelves']):
+            shelf = {
+                'position': self.config.scene_objects['shelf_positions'][i],
+                'dimensions': self.config.scene_objects['shelf_dimensions'][i],
+                'type': 'shelf',
+                'material': self.config.scene_objects['shelf_material']
+            }
+            scene_objects_list.append(shelf)
+        
+        return scene_objects_list
 
     def _validate_scene_objects(self):
         """Validate scene objects configuration"""
@@ -75,20 +92,19 @@ class AGVPathManager:
             logger.warning("No scene_objects found in configuration")
             self.config.scene_objects = []
             return
-            
-        if not isinstance(self.config.scene_objects, (list, tuple)):
-            logger.error("scene_objects must be a list or tuple")
+        
+        # Convert dictionary format to list format
+        if isinstance(self.config.scene_objects, dict):
+            self.scene_objects = self._convert_scene_objects()
+        else:
+            logger.error("scene_objects must be a dictionary with proper structure")
             raise ValueError("Invalid scene_objects configuration")
-            
-        for idx, obj in enumerate(self.config.scene_objects):
-            if not isinstance(obj, dict):
-                logger.error(f"Invalid object format at index {idx}")
-                raise ValueError(f"Object at index {idx} must be a dictionary")
-                
-            if 'position' not in obj or 'dimensions' not in obj:
-                logger.error(f"Missing required keys in object at index {idx}")
-                raise ValueError(f"Object at index {idx} missing required keys")
-                
+        
+        # Validate converted list
+        if not isinstance(self.scene_objects, list):
+            logger.error("Converted scene_objects must be a list")
+            raise ValueError("Invalid scene_objects conversion")
+        
     def get_next_position(self, agv_id, current_position):
         """Calculate next position based on trajectory and speed with safety checks"""
         # Get proposed next position
