@@ -55,19 +55,19 @@ class AGVPathManager:
         """Initialize AGV path manager with configuration"""
         self.config = config
         self.current_waypoint_indices = {
-            'agv_1': 0,
-            'agv_2': 0
+            '0': 0,  # Changed from 'agv_1' to '0'
+            '1': 0   # Changed from 'agv_2' to '1'
         }
-        self.trajectories = config.agv_trajectories  # Make sure trajectories use same format
+        self.trajectories = config.agv_trajectories
         self.last_known_positions = {
-            'agv_1': None,
-            'agv_2': None
+            '0': None,  # Changed from 'agv_1' to '0'
+            '1': None   # Changed from 'agv_2' to '1'
         }
         self.current_velocities = {
-            'agv_1': np.zeros(2),
-            'agv_2': np.zeros(2)
+            '0': np.zeros(2),  # Changed from 'agv_1' to '0'
+            '1': np.zeros(2)   # Changed from 'agv_2' to '1'
         }
-        self.scene_objects = None  # Will be set in _validate_scene_objects
+        self.scene_objects = None
         self._validate_scene_objects()
 
     def _convert_scene_objects(self):
@@ -202,20 +202,20 @@ class AGVPathManager:
 
     def update_agv_status(self, agv_id, new_position):
         """Update AGV status including position and velocity"""
-        if self.last_known_positions[f'agv_{agv_id}'] is not None:
+        if self.last_known_positions[agv_id] is not None:  # Remove f'agv_{agv_id}'
             # Calculate velocity
-            old_pos = self.last_known_positions[f'agv_{agv_id}']
+            old_pos = self.last_known_positions[agv_id]
             velocity = (np.array(new_position) - np.array(old_pos)) / \
                     self.config.agv_movement['update_interval']
-            self.current_velocities[f'agv_{agv_id}'] = velocity[:2]  # Store 2D velocity
+            self.current_velocities[agv_id] = velocity[:2]  # Store 2D velocity
             
             # Check for excessive speed
             if np.linalg.norm(velocity[:2]) > self.config.agv_speed * 1.1:  # 10% tolerance
                 logger.warning(f"AGV {agv_id} exceeding speed limit")
                 self.emergency_stop(agv_id)
         
-        self.last_known_positions[f'agv_{agv_id}'] = new_position
-
+        self.last_known_positions[agv_id] = new_position
+            
     def emergency_stop(self, agv_id):
         """Emergency stop procedure"""
         logger.warning(f"Emergency stop initiated for AGV {agv_id}")
