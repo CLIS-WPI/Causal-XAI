@@ -188,4 +188,5 @@
             <translate value="10.0 10.0 4.5"/>
         </transform>
         <ref name="bsdf" id="modem_material"/>  <!-- Use the defined modem material -->
-</scene>  <!-- This closing tag was missing -->
+    </shape>
+</scene>
