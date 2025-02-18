@@ -132,7 +132,7 @@ class SmartFactoryChannel:
                 logger.debug(f"Converted path_losses to tensor with shape: {path_losses.shape}")
             
             # System parameters for indoor factory scenario
-            tx_power_dbm = 49  # Transmit power in dBm for mmWave indoor BS
+            tx_power_dbm = 60  # Transmit power in dBm for mmWave indoor BS
             tx_antenna_gain_db = 35  # BS antenna array gain
             rx_antenna_gain_db = 20   # AGV antenna gain
             min_snr_threshold = 10.0  # Minimum usable SNR in dB
