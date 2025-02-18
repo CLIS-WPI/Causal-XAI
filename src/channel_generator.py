@@ -74,7 +74,7 @@ class SmartFactoryChannel:
     
     def calculate_snr(self, h_freq, config, path_losses):
         """
-        Calculate SNR for the channel with proper parameter handling
+        Calculate SNR for the channel with proper parameter handling and detailed logging
         
         Args:
             h_freq: Channel frequency response
@@ -90,10 +90,20 @@ class SmartFactoryChannel:
             tx_antenna_gain_db = 15  # BS antenna array gain
             rx_antenna_gain_db = 5   # AGV antenna gain
             
+            logger.debug(f"Initial parameters:")
+            logger.debug(f"- TX power: {tx_power_dbm} dBm")
+            logger.debug(f"- TX antenna gain: {tx_antenna_gain_db} dB")
+            logger.debug(f"- RX antenna gain: {rx_antenna_gain_db} dB")
+            
             # Convert powers from dB to linear scale
             tx_power_watts = 10 ** ((tx_power_dbm - 30) / 10)
             tx_gain_linear = 10 ** (tx_antenna_gain_db / 10)
             rx_gain_linear = 10 ** (rx_antenna_gain_db / 10)
+            
+            logger.debug(f"Linear scale conversions:")
+            logger.debug(f"- TX power: {tx_power_watts:.2e} W")
+            logger.debug(f"- TX gain: {tx_gain_linear:.2f}")
+            logger.debug(f"- RX gain: {rx_gain_linear:.2f}")
             
             # Noise calculation parameters
             k_boltzmann = 1.380649e-23
@@ -102,25 +112,52 @@ class SmartFactoryChannel:
             noise_figure_db = 7  # Typical for mmWave receivers
             implementation_loss_db = 3
             
+            logger.debug(f"Noise parameters:")
+            logger.debug(f"- Bandwidth: {bandwidth/1e6:.2f} MHz")
+            logger.debug(f"- Noise figure: {noise_figure_db} dB")
+            logger.debug(f"- Implementation loss: {implementation_loss_db} dB")
+            
             # Calculate noise power
             thermal_noise = k_boltzmann * temperature * bandwidth
             noise_figure_linear = 10 ** (noise_figure_db / 10)
             implementation_loss_linear = 10 ** (implementation_loss_db / 10)
             total_noise_power = thermal_noise * noise_figure_linear * implementation_loss_linear
             
-            # Calculate signal power with antenna gains
-            signal_power = (tf.reduce_mean(tf.abs(h_freq)**2, axis=-1) * 
-                        tx_power_watts * tx_gain_linear * rx_gain_linear)
+            logger.debug(f"Noise power calculations:")
+            logger.debug(f"- Thermal noise: {thermal_noise:.2e} W")
+            logger.debug(f"- Total noise power: {total_noise_power:.2e} W")
+            
+            # Calculate channel power
+            channel_power = tf.reduce_mean(tf.abs(h_freq)**2, axis=-1)
+            logger.debug(f"Channel power: {float(tf.reduce_mean(channel_power)):.2e}")
+            
+            # Calculate signal power with antenna gains and path losses
+            signal_power = channel_power * tx_power_watts * tx_gain_linear * rx_gain_linear
+            
+            # Apply path losses if provided
+            if path_losses is not None:
+                path_loss_linear = 10 ** (-path_losses / 10)
+                signal_power = signal_power * path_loss_linear
+                logger.debug(f"Path loss applied: {float(tf.reduce_mean(path_loss_linear)):.2e}")
+            
+            logger.debug(f"Signal power after gains: {float(tf.reduce_mean(signal_power)):.2e} W")
             
             # SNR calculation
             snr_linear = signal_power / total_noise_power
             snr_db = 10 * tf.math.log(snr_linear) / tf.math.log(10.0)
             
+            logger.debug(f"SNR calculations:")
+            logger.debug(f"- Linear SNR: {float(tf.reduce_mean(snr_linear)):.2e}")
+            logger.debug(f"- SNR (dB): {float(tf.reduce_mean(snr_db)):.2f} dB")
+            
             # Clip SNR to realistic range for indoor factory
-            max_snr_db = 30.0  # Maximum expected SNR
-            min_snr_db = 0.0   # Minimum usable SNR
+            max_snr_db = 40.0  # Increased maximum expected SNR
+            min_snr_db = -20.0  # Lowered minimum usable SNR
             snr_db_clipped = tf.clip_by_value(snr_db, min_snr_db, max_snr_db)
             average_snr = float(tf.reduce_mean(snr_db_clipped))
+            
+            logger.debug(f"Final SNR after clipping:")
+            logger.debug(f"- Average SNR: {average_snr:.2f} dB")
             
             return {
                 'average_snr': average_snr,
@@ -131,12 +168,15 @@ class SmartFactoryChannel:
                     'antenna_gains': {
                         'tx_gain_db': tx_antenna_gain_db,
                         'rx_gain_db': rx_antenna_gain_db
-                    }
+                    },
+                    'noise_power': float(total_noise_power)
                 }
             }
             
         except Exception as e:
             logger.error(f"Error calculating SNR: {str(e)}")
+            logger.error(f"Channel shape: {h_freq.shape}")
+            logger.error(f"Path losses shape: {path_losses.shape if path_losses is not None else None}")
             raise
 
     def verify_scene_configuration(self):
