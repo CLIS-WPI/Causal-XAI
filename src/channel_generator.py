@@ -85,6 +85,11 @@ class SmartFactoryChannel:
             dict: Dictionary containing SNR metrics including average_snr and detailed beam metrics
         """
         try:
+            # Ensure path_losses is a tensor
+            if not isinstance(path_losses, tf.Tensor):
+                path_losses = tf.convert_to_tensor(path_losses, dtype=tf.float32)
+                logger.debug(f"Converted path_losses to tensor with shape: {path_losses.shape}")
+            
             # System parameters for indoor factory scenario
             tx_power_dbm = 33  # Transmit power in dBm for mmWave indoor BS
             tx_antenna_gain_db = 15  # BS antenna array gain
@@ -137,8 +142,8 @@ class SmartFactoryChannel:
             # Apply path losses if provided
             if path_losses is not None:
                 path_loss_linear = 10 ** (-path_losses / 10)
-                signal_power = signal_power * path_loss_linear
-                logger.debug(f"Path loss applied: {float(tf.reduce_mean(path_loss_linear)):.2e}")
+                signal_power = signal_power * tf.cast(path_loss_linear, tf.float32)
+                logger.debug(f"Applied path losses. New signal power mean: {float(tf.reduce_mean(signal_power)):.2e} W")
             
             logger.debug(f"Signal power after gains: {float(tf.reduce_mean(signal_power)):.2e} W")
             
@@ -386,9 +391,14 @@ class SmartFactoryChannel:
                 # Apply path loss to channel matrices
                 path_loss_linear = tf.cast(tf.pow(10.0, -path_loss/20.0), tf.complex64)
                 h_freq = h_freq * path_loss_linear
+                
+            # Convert path_losses list to tensor before passing to calculate_snr
+            path_losses_tensor = tf.convert_to_tensor(path_losses, dtype=tf.float32)
+            logger.debug(f"Path losses tensor shape: {path_losses_tensor.shape}")
+            
             
             # Replace the old SNR calculation with the new function call
-            snr_metrics = self.calculate_snr(h_freq, config, path_losses)
+            snr_metrics = self.calculate_snr(h_freq, config, path_losses_tensor)
             
             # Enhanced channel data dictionary
             channel_data = {
