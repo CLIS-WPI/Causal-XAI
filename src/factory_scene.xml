@@ -1,9 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- factory_scene.xml
-This XML scene file references the generated PLY files for a 20×20×5
-smart factory with five metal shelves, AGV robots, base station, and concrete structures.
-Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
--->
+<!-- factory_scene.xml -->
 <scene version="2.1.0">
     
     <!-- Improved rendering settings for better quality -->
@@ -34,12 +30,12 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
         </film>
     </sensor>
 
-    <!-- Lighting unchanged -->
+    <!-- Lighting -->
     <emitter type="constant" id="World">
         <rgb name="radiance" value="0.1 0.1 0.1"/>
     </emitter>
 
-    <!-- Materials unchanged -->
+    <!-- Materials -->
     <bsdf type="twosided" id="itu_concrete">
         <bsdf type="diffuse">
             <rgb name="reflectance" value="0.603815 0.603815 0.588347"/>
@@ -52,7 +48,7 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
         </bsdf>
     </bsdf>
 
-    <!-- Static Scene Elements - Unchanged -->
+    <!-- Static Scene Elements -->
     <shape type="ply" id="floor">
         <string name="filename" value="meshes/floor.ply"/>
         <ref name="bsdf" id="itu_concrete"/>
@@ -61,12 +57,9 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
     <shape type="ply" id="ceiling">
         <string name="filename" value="meshes/ceiling.ply"/>
         <ref name="bsdf" id="itu_concrete"/>
-        <transform name="to_world">
-            <translate value="0 0 5"/>
-        </transform>
     </shape>
 
-    <!-- Walls unchanged -->
+    <!-- Walls -->
     <shape type="ply" id="wall_xp">
         <string name="filename" value="meshes/wall_xp.ply"/>
         <ref name="bsdf" id="itu_concrete"/>
@@ -87,53 +80,29 @@ Use `Scene(env_filename="factory_scene.xml")` in Sionna for loading.
         <ref name="bsdf" id="itu_concrete"/>
     </shape>
 
-    <!-- Shelf 0: (4, 4, 0), (4, 1, 4) -->
+    <!-- Shelves without scale transforms -->
     <shape type="ply" id="shelf_0">
         <string name="filename" value="meshes/shelf_0.ply"/>
-        <transform name="to_world">
-            <translate value="4.0 4.0 0.0"/>
-            <scale value="4.0 1.0 4.0"/>
-        </transform>
         <ref name="bsdf" id="itu_metal"/>
     </shape>
 
-    <!-- Shelf 1: (12, 4, 0), (2, 1, 4) -->
     <shape type="ply" id="shelf_1">
         <string name="filename" value="meshes/shelf_1.ply"/>
-        <transform name="to_world">
-            <translate value="12.0 4.0 0.0"/>
-            <scale value="2.0 1.0 4.0"/>
-        </transform>
         <ref name="bsdf" id="itu_metal"/>
     </shape>
 
-    <!-- Shelf 2: (4, 10, 0), (1, 2, 5) -->
     <shape type="ply" id="shelf_2">
         <string name="filename" value="meshes/shelf_2.ply"/>
-        <transform name="to_world">
-            <translate value="4.0 10.0 0.0"/>
-            <scale value="1.0 2.0 5.0"/>
-        </transform>
         <ref name="bsdf" id="itu_metal"/>
     </shape>
 
-    <!-- Shelf 3: (14, 12, 0), (1, 2, 5) -->
     <shape type="ply" id="shelf_3">
         <string name="filename" value="meshes/shelf_3.ply"/>
-        <transform name="to_world">
-            <translate value="14.0 12.0 0.0"/>
-            <scale value="1.0 2.0 5.0"/>
-        </transform>
         <ref name="bsdf" id="itu_metal"/>
     </shape>
 
-    <!-- Shelf 4: (8, 16, 0), (4, 1, 5) -->
     <shape type="ply" id="shelf_4">
         <string name="filename" value="meshes/shelf_4.ply"/>
-        <transform name="to_world">
-            <translate value="8.0 16.0 0.0"/>
-            <scale value="4.0 1.0 5.0"/>
-        </transform>
         <ref name="bsdf" id="itu_metal"/>
     </shape>
 

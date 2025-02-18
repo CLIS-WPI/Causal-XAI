@@ -240,8 +240,8 @@ class SionnaPLYGenerator:
             material_type: Material type for the shelf (optional)
         """
         try:
-            width, depth, height = 1.0, 1.0, 1.0  # Unit cube
-            x, y, z = 0, 0, 0  # At origin
+            width, depth, height = dims
+            x, y, z = position
 
             # Define vertices for a box (8 vertices)
             vertices = [
