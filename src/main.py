@@ -144,7 +144,6 @@ def save_channel_data(channel_data, filepath):
         logger.error(f"Error saving channel data to {filepath}: {str(e)}")
         raise
 
-
 def main():
     """Streamlined main execution focusing on beam switching"""
     try:

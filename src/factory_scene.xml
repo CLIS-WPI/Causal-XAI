@@ -187,6 +187,5 @@
         <transform name="to_world">
             <translate value="10.0 10.0 4.5"/>
         </transform>
-        <ref name="bsdf" id="itu_modem"/>  <!-- Use the existing modem material -->
-    </shape>
+        <ref name="bsdf" id="modem_material"/>  <!-- Use the defined modem material -->
 </scene>  <!-- This closing tag was missing -->
