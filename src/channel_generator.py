@@ -240,7 +240,7 @@ class SmartFactoryChannel:
 
             # Get channel impulse responses
             a, tau = paths.cir()
-    
+
             # Ensure los_conditions is a tensor
             los_conditions = tf.convert_to_tensor(paths.LOS, dtype=tf.int32)
             
@@ -250,25 +250,29 @@ class SmartFactoryChannel:
                 subcarrier_spacing=config.subcarrier_spacing
             )
             
-            # Convert to OFDM channel
-            h_freq = cir_to_ofdm_channel(
-                frequencies=frequencies,
-                a=tf.cast(a, tf.complex64),
-                tau=tf.cast(tau, tf.float32),
-                normalize=True
-            )
+            # Process channel in batches
+            batch_size = 128  # Adjust based on memory constraints
+            h_freq_list = []
             
+            for i in range(0, len(a), batch_size):
+                batch_a = a[i:i+batch_size]
+                batch_tau = tau[i:i+batch_size]
+                
+                batch_h_freq = cir_to_ofdm_channel(
+                    frequencies=frequencies,
+                    a=tf.cast(batch_a, tf.complex64),
+                    tau=tf.cast(batch_tau, tf.float32),
+                    normalize=True
+                )
+                h_freq_list.append(batch_h_freq)
+            
+            h_freq = tf.concat(h_freq_list, axis=0) if len(h_freq_list) > 1 else h_freq_list[0]
             
             # Calculate and apply path loss for each receiver
             path_losses = []
             for rx_idx, rx in enumerate(self.scene.receivers.values()):
-                # Get transmitter position (assuming single transmitter)
                 tx_position = list(self.scene.transmitters.values())[0].position
-                
-                # Calculate distance
                 distance = tf.norm(rx.position - tx_position)
-                
-                # Calculate path loss using carrier frequency from config
                 path_loss = self.calculate_path_loss(distance, config.carrier_frequency)
                 path_losses.append(path_loss)
                 
@@ -276,19 +280,49 @@ class SmartFactoryChannel:
                 path_loss_linear = tf.cast(tf.pow(10.0, -path_loss/20.0), tf.complex64)
                 h_freq = h_freq * path_loss_linear
             
+            # Calculate SNR
+            # Physical constants and system parameters
+            k_boltzmann = 1.380649e-23
+            temperature = 290
+            bandwidth = config.subcarrier_spacing * config.num_subcarriers
+            noise_figure_db = 10
+            implementation_loss_db = 3
+            
+            # Calculate noise power
+            thermal_noise = k_boltzmann * temperature * bandwidth
+            noise_figure_linear = 10 ** (noise_figure_db / 10)
+            implementation_loss_linear = 10 ** (implementation_loss_db / 10)
+            total_noise_power = thermal_noise * noise_figure_linear * implementation_loss_linear
+            
+            # Calculate signal power and SNR
+            signal_power = tf.reduce_mean(tf.abs(h_freq)**2, axis=-1)
+            snr_linear = signal_power / total_noise_power
+            snr_db = 10 * tf.math.log(snr_linear) / tf.math.log(10.0)
+            
+            # Clip SNR to realistic range
+            max_snr_db = 40.0
+            min_snr_db = -20.0
+            snr_db_clipped = tf.clip_by_value(snr_db, min_snr_db, max_snr_db)
+            average_snr = float(tf.reduce_mean(snr_db_clipped))
+            
             # Enhanced channel data dictionary
             channel_data = {
                 'channel_matrices': h_freq,
                 'path_delays': tau,
-                'los_conditions': los_conditions,  # Now guaranteed to be a tensor
+                'los_conditions': los_conditions,
                 'agv_positions': tf.stack([rx.position for rx in self.scene.receivers.values()]),
                 'num_paths': tf.size(paths.LOS),
                 'path_losses': tf.convert_to_tensor(path_losses),
                 'reflection_paths': paths.reflection_paths if hasattr(paths, 'reflection_paths') else None,
-                'diffraction_paths': paths.diffraction_paths if hasattr(paths, 'diffraction_paths') else None
+                'diffraction_paths': paths.diffraction_paths if hasattr(paths, 'diffraction_paths') else None,
+                'average_snr': average_snr,
+                'beam_metrics': {
+                    'snr_db': snr_db_clipped.numpy(),
+                    'avg_power': float(tf.reduce_mean(signal_power))
+                }
             }
             
-            # Add beam switching analysis with parameters from config
+            # Add beam switching analysis
             beam_analysis = self.analyze_beam_switching(channel_data)
             channel_data.update(beam_analysis)
             
