@@ -145,7 +145,7 @@ class SmartFactoryConfig:
 
         # Enhanced ray tracing configuration for better beam switching
         self.ray_tracing = {
-            'max_depth': 6,  # Reduced for faster computation
+            'max_depth': 4,  # Reduced for faster computation
             'method': "fibonacci",
             'num_samples': 22000,
             'diffraction': True,
