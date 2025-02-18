@@ -89,7 +89,7 @@ class AGVPathManager:
 
     def _calculate_next_position(self, agv_id, current_position):
         """Calculate the next position based on trajectory"""
-        trajectory = self.trajectories[f'agv_{agv_id}']
+        trajectory = self.trajectories[agv_id]
         current_idx = self.current_waypoint_indices[f'agv_{agv_id}']
         target = trajectory[current_idx]
         

@@ -324,15 +324,16 @@ def main():
         logger.info("Starting beam switching simulation...")
         channel_data_history = []
         
+        # In main.py, change this part in the main simulation loop:
         for iteration in range(config.num_time_steps):
             print(f"\rSimulating step {iteration+1}/{config.num_time_steps}", end="")
             
             # Update AGV positions
             agv_positions = []
             for i in range(config.num_agvs):
-                agv_id = f'agv_{i+1}'
+                agv_id = f'agv_{i+1}'  # This is correct
                 current_pos = scene.receivers[agv_id].position
-                new_pos = path_manager.get_next_position(agv_id, current_pos)
+                new_pos = path_manager.get_next_position(agv_id, current_pos)  # The agv_id is being double-prefixed here
                 scene.receivers[agv_id].position = new_pos
                 agv_positions.append(new_pos)
             

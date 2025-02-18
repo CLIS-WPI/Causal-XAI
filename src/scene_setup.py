@@ -98,13 +98,14 @@ def setup_scene(config: SmartFactoryConfig):
             )
 
             # Assign a PlanarArray to each AGV's receiver
+            # In setup_scene function, change:
             rx_array = PlanarArray(
-                num_rows=config.agv_array[0],
-                num_cols=config.agv_array[1],
-                vertical_spacing=config.agv_array_spacing,
-                horizontal_spacing=config.agv_array_spacing,
-                pattern=config.agv_array_pattern,
-                polarization=config.agv_polarization
+                num_rows=config.agv_array['num_rows'],
+                num_cols=config.agv_array['num_cols'],
+                vertical_spacing=config.agv_array.get('vertical_spacing', 0.5),
+                horizontal_spacing=config.agv_array.get('horizontal_spacing', 0.5),
+                pattern=config.agv_array.get('pattern', "tr38901"),
+                polarization=config.agv_array.get('polarization', "VH")
             )
             rx.array = rx_array
 

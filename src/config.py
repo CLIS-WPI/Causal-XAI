@@ -60,7 +60,10 @@ class SmartFactoryConfig:
         self.agv_height = 0.5
         self.agv_speed = 0.5  # Reduced for better observation
         self.agv_dimensions = [1.0, 1.0, 0.5]
-        
+        self.agv_orientations = [
+            [0.0, 0.0, 0.0],  # Initial orientation for AGV 0
+            [0.0, 0.0, 0.0]   # Initial orientation for AGV 1
+        ]
         # Simplified AGV array configuration
         self.agv_array = {
             'num_rows': 1,
@@ -68,7 +71,9 @@ class SmartFactoryConfig:
             'vertical_spacing': 0.5 * self.wavelength,
             'horizontal_spacing': 0.5 * self.wavelength,
             'pattern': "dipole",
-            'polarization': "cross"
+            'polarization': "cross",
+            'pattern': "tr38901",      # Antenna pattern
+            'polarization': "VH"       # Type of polarization
         }
 
         # Optimized AGV trajectories for beam switching demonstration
