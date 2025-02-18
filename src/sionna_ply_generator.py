@@ -241,7 +241,7 @@ class SionnaPLYGenerator:
         """
         try:
             width, depth, height = dims
-            x, y, z = position
+            x, y, z = 0, 0, 0  # Changed from position to origin
 
             # Define vertices for a box (8 vertices)
             vertices = [
