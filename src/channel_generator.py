@@ -68,12 +68,12 @@ class SmartFactoryChannel:
         try:
             # Indoor factory mmWave parameters
             self.inf_params = {
-                'los_k_factor': 10.0,      # Rician K-factor for LOS
+                'los_k_factor': 15.0,      # Rician K-factor for LOS
                 'nlos_sigma': 4.0,         # Rayleigh sigma for NLOS
-                'path_loss_exp': 2.0,      # Path loss exponent
+                'path_loss_exp': 1.8,      # Path loss exponent
                 'shadow_std': 4.0,         # Shadow fading std dev (dB)
-                'penetration_loss': 20.0,  # Material penetration loss (dB)
-                'reflection_coeff': 0.6     # Reflection coefficient
+                'penetration_loss': 15.0,  # Material penetration loss (dB)
+                'reflection_coeff': 0.8     # Reflection coefficient
             }
             logger.debug(f"Indoor factory parameters initialized: {self.inf_params}")
         except Exception as e:
