@@ -265,7 +265,7 @@ class SmartFactoryChannel:
                 path_losses.append(path_loss)
                 
                 # Apply path loss to channel matrices
-                path_loss_linear = tf.pow(10.0, -path_loss/20.0)
+                path_loss_linear = tf.cast(tf.pow(10.0, -path_loss/20.0), tf.complex64)
                 h_freq = h_freq * path_loss_linear
             
             # Enhanced channel data dictionary
