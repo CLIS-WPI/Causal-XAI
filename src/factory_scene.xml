@@ -99,9 +99,9 @@
         </bsdf>
     </bsdf>
 
-    <bsdf type="twosided" id="itu_modem">
+    <bsdf type="twosided" id="modem_material">
         <bsdf type="diffuse">
-            <rgb name="reflectance" value="0.2 0.3 0.4"/>
+            <rgb name="reflectance" value="0.2 0.4 0.8"/> <!-- Blue-ish color -->
         </bsdf>
     </bsdf>
 
@@ -195,3 +195,4 @@
         </transform>
         <ref name="bsdf" id="modem_material"/>
     </shape>
+</scene>  <!-- This closing tag was missing -->
