@@ -86,7 +86,7 @@
         <rgb name="radiance" value="0.1 0.1 0.1"/>
     </emitter>
 
-    <!-- Materials -->
+    <!-- Materials - All BSDF definitions grouped together -->
     <bsdf type="twosided" id="itu_concrete">
         <bsdf type="diffuse">
             <rgb name="reflectance" value="0.603815 0.603815 0.588347"/>
@@ -96,6 +96,12 @@
     <bsdf type="twosided" id="itu_metal">
         <bsdf type="diffuse">
             <rgb name="reflectance" value="0.087140 0.087140 0.087140"/>
+        </bsdf>
+    </bsdf>
+
+    <bsdf type="twosided" id="itu_modem">
+        <bsdf type="diffuse">
+            <rgb name="reflectance" value="0.2 0.3 0.4"/>
         </bsdf>
     </bsdf>
 
@@ -174,19 +180,13 @@
         <ref name="bsdf" id="itu_metal"/>
     </shape>
 
-    <!-- Add this material definition -->
-    <bsdf type="twosided" id="itu_modem">
-        <bsdf type="diffuse">
-            <!-- Blue-gray metallic color -->
-            <rgb name="reflectance" value="0.2 0.3 0.4"/>
-        </bsdf>
-    </bsdf>
-
     <!-- Base Station (Modern Modem Style) -->
     <shape type="ply" id="base_station">
         <string name="filename" value="meshes/base_station.ply"/>
         <transform name="to_world">
             <translate value="10.0 10.0 4.5"/>
         </transform>
-        <ref name="bsdf" id="itu_modem"/>  <!-- Using new material -->
+        <ref name="bsdf" id="itu_modem"/>
     </shape>
+
+</scene>
