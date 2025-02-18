@@ -177,7 +177,8 @@
     <!-- Add this before the shapes section -->
     <bsdf type="twosided" id="modem_material">
         <bsdf type="diffuse">
-            <rgb name="reflectance" value="0.2 0.4 0.8"/> <!-- Blue-ish color -->
+            <!-- Change these RGB values to modify the color (values between 0 and 1) -->
+            <rgb name="reflectance" value="0.2 0.4 0.8"/> <!-- Currently blue-ish -->
         </bsdf>
     </bsdf>
 
