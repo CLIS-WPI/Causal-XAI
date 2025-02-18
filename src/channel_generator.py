@@ -58,19 +58,22 @@ class SmartFactoryChannel:
             raise RuntimeError(f"Channel initialization failed: {str(e)}") from e
     
     def calculate_path_loss(self, distance, frequency):
-            """
-            Calculate free space path loss for mmWave communications
-            
-            Args:
-                distance: Distance between transmitter and receiver
-                frequency: Carrier frequency
-                
-            Returns:
-                path_loss_db: Path loss in dB
-            """
-            wavelength = SPEED_OF_LIGHT / frequency
-            path_loss_db = 20 * np.log10(4 * np.pi * distance / wavelength)
-            return path_loss_db
+        """Calculate path loss with indoor factory model"""
+        # Indoor factory model parameters
+        n = 2.0  # Path loss exponent
+        shadow_fading_std = 4.0  # Shadow fading standard deviation in dB
+        
+        # Calculate basic path loss
+        wavelength = SPEED_OF_LIGHT / frequency
+        path_loss_db = 20 * tf.math.log(4 * np.pi * distance / wavelength) / tf.math.log(10.0)
+        
+        # Add distance-dependent loss
+        path_loss_db += 10 * n * tf.math.log(distance) / tf.math.log(10.0)
+        
+        # Add random shadow fading
+        shadow_fading = tf.random.normal([], mean=0.0, stddev=shadow_fading_std)
+        
+        return path_loss_db + shadow_fading
     
     def calculate_snr(self, h_freq, config, path_losses):
         """
@@ -91,9 +94,9 @@ class SmartFactoryChannel:
                 logger.debug(f"Converted path_losses to tensor with shape: {path_losses.shape}")
             
             # System parameters for indoor factory scenario
-            tx_power_dbm = 33  # Transmit power in dBm for mmWave indoor BS
-            tx_antenna_gain_db = 15  # BS antenna array gain
-            rx_antenna_gain_db = 5   # AGV antenna gain
+            tx_power_dbm = 43  # Transmit power in dBm for mmWave indoor BS
+            tx_antenna_gain_db = 25  # BS antenna array gain
+            rx_antenna_gain_db = 10   # AGV antenna gain
             
             logger.debug(f"Initial parameters:")
             logger.debug(f"- TX power: {tx_power_dbm} dBm")
@@ -101,21 +104,21 @@ class SmartFactoryChannel:
             logger.debug(f"- RX antenna gain: {rx_antenna_gain_db} dB")
             
             # Convert powers from dB to linear scale
-            tx_power_watts = 10 ** ((tx_power_dbm - 30) / 10)
-            tx_gain_linear = 10 ** (tx_antenna_gain_db / 10)
-            rx_gain_linear = 10 ** (rx_antenna_gain_db / 10)
+            tx_power = tf.pow(10.0, (tx_power_dbm - 30) / 10.0)  # Convert dBm to W
+            tx_gain = tf.pow(10.0, tx_antenna_gain_db / 10.0)
+            rx_gain = tf.pow(10.0, rx_antenna_gain_db / 10.0)
             
             logger.debug(f"Linear scale conversions:")
-            logger.debug(f"- TX power: {tx_power_watts:.2e} W")
-            logger.debug(f"- TX gain: {tx_gain_linear:.2f}")
-            logger.debug(f"- RX gain: {rx_gain_linear:.2f}")
+            logger.debug(f"- TX power: {float(tx_power):.2e} W")  # Fixed variable name
+            logger.debug(f"- TX gain: {float(tx_gain):.2f}")      # Fixed variable name
+            logger.debug(f"- RX gain: {float(rx_gain):.2f}")      # Fixed variable name
             
             # Noise calculation parameters
             k_boltzmann = 1.380649e-23
             temperature = 290  # Room temperature in Kelvin
             bandwidth = config.subcarrier_spacing * config.num_subcarriers
-            noise_figure_db = 7  # Typical for mmWave receivers
-            implementation_loss_db = 3
+            noise_figure_db = 5  # Reduced from 7 to 5 dB for better performance
+            implementation_loss_db = 2  # Reduced from 3 to 2 dB
             
             logger.debug(f"Noise parameters:")
             logger.debug(f"- Bandwidth: {bandwidth/1e6:.2f} MHz")
@@ -124,8 +127,8 @@ class SmartFactoryChannel:
             
             # Calculate noise power
             thermal_noise = k_boltzmann * temperature * bandwidth
-            noise_figure_linear = 10 ** (noise_figure_db / 10)
-            implementation_loss_linear = 10 ** (implementation_loss_db / 10)
+            noise_figure_linear = tf.pow(10.0, noise_figure_db / 10.0)
+            implementation_loss_linear = tf.pow(10.0, implementation_loss_db / 10.0)
             total_noise_power = thermal_noise * noise_figure_linear * implementation_loss_linear
             
             logger.debug(f"Noise power calculations:")
@@ -137,11 +140,11 @@ class SmartFactoryChannel:
             logger.debug(f"Channel power: {float(tf.reduce_mean(channel_power)):.2e}")
             
             # Calculate signal power with antenna gains and path losses
-            signal_power = channel_power * tx_power_watts * tx_gain_linear * rx_gain_linear
+            signal_power = channel_power * tx_power * tx_gain * rx_gain  # Fixed variable names
             
             # Apply path losses if provided
             if path_losses is not None:
-                path_loss_linear = 10 ** (-path_losses / 10)
+                path_loss_linear = tf.pow(10.0, -path_losses / 10.0)
                 signal_power = signal_power * tf.cast(path_loss_linear, tf.float32)
                 logger.debug(f"Applied path losses. New signal power mean: {float(tf.reduce_mean(signal_power)):.2e} W")
             
@@ -182,6 +185,11 @@ class SmartFactoryChannel:
             logger.error(f"Error calculating SNR: {str(e)}")
             logger.error(f"Channel shape: {h_freq.shape}")
             logger.error(f"Path losses shape: {path_losses.shape if path_losses is not None else None}")
+            logger.error(f"Debug values:")
+            logger.error(f"- TX power: {tx_power_dbm} dBm")
+            logger.error(f"- Channel power: {float(tf.reduce_mean(channel_power)) if 'channel_power' in locals() else 'N/A'}")
+            logger.error(f"- Signal power: {float(tf.reduce_mean(signal_power)) if 'signal_power' in locals() else 'N/A'}")
+            logger.error(f"- Noise power: {total_noise_power if 'total_noise_power' in locals() else 'N/A'}")
             raise
 
     def verify_scene_configuration(self):
