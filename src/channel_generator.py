@@ -194,6 +194,10 @@ class SmartFactoryChannel:
             h_freq = channel_data['channel_matrices']
             los_conditions = channel_data['los_conditions']
             
+            # Convert los_conditions to tensor if it's not already
+            if not isinstance(los_conditions, tf.Tensor):
+                los_conditions = tf.convert_to_tensor(los_conditions, dtype=tf.int32)
+            
             # Calculate SNR for each beam
             noise_power = 1e-13  # Typical thermal noise power
             signal_power = tf.reduce_mean(tf.abs(h_freq)**2, axis=-1)
@@ -206,7 +210,7 @@ class SmartFactoryChannel:
             return {
                 'snr_db': snr_db.numpy(),
                 'beam_switches_needed': beam_switches_needed.numpy(),
-                'los_conditions': los_conditions.numpy()
+                'los_conditions': los_conditions.numpy()  # Now los_conditions is guaranteed to be a tensor
             }
         except Exception as e:
             logger.error(f"Error in beam switching analysis: {str(e)}")
@@ -236,6 +240,9 @@ class SmartFactoryChannel:
 
             # Get channel impulse responses
             a, tau = paths.cir()
+    
+            # Ensure los_conditions is a tensor
+            los_conditions = tf.convert_to_tensor(paths.LOS, dtype=tf.int32)
             
             # Calculate frequencies
             frequencies = subcarrier_frequencies(
@@ -272,7 +279,7 @@ class SmartFactoryChannel:
             channel_data = {
                 'channel_matrices': h_freq,
                 'path_delays': tau,
-                'los_conditions': paths.LOS,
+                'los_conditions': los_conditions,  # Now guaranteed to be a tensor
                 'agv_positions': tf.stack([rx.position for rx in self.scene.receivers.values()]),
                 'num_paths': tf.size(paths.LOS),
                 'path_losses': tf.convert_to_tensor(path_losses),
