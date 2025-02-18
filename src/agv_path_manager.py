@@ -170,7 +170,6 @@ class AGVPathManager:
     # check_collision method
     def check_collision(self, position, scene_objects):
         """Check if proposed position collides with any obstacle"""
-        # Get obstacles in the correct format
         obstacles = self.config.get_obstacle_list()
         
         for obstacle in obstacles:
@@ -178,7 +177,7 @@ class AGVPathManager:
                 obs_pos = obstacle['position']
                 obs_dim = obstacle['dimensions']
                 
-                # Add safety margin
+                # Safety margin already implemented
                 safety_margin = 0.5  # meters
                 
                 # Check if position is within obstacle bounds with safety margin
@@ -187,11 +186,9 @@ class AGVPathManager:
                     position[1] >= obs_pos[1] - (obs_dim[1]/2 + safety_margin) and
                     position[1] <= obs_pos[1] + (obs_dim[1]/2 + safety_margin)):
                     return True
-                    
             except (KeyError, IndexError, TypeError) as e:
                 logger.error(f"Error processing obstacle {obstacle}: {str(e)}")
                 continue
-                
         return False
 
     def validate_position(self, position):

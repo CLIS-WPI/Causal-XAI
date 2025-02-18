@@ -22,11 +22,15 @@ class BeamManager:
         try:
             azimuth_angles = np.linspace(-60, 60, self.num_beams_azimuth)
             elevation_angles = np.linspace(-30, 30, self.num_beams_elevation)
-            
+            # Add beam width constraint
+            BEAM_WIDTH = 15.0  # degrees
+            self.beam_codebook = []
             self.beam_codebook = []
             for el in elevation_angles:
                 for az in azimuth_angles:
-                    self.beam_codebook.append([az, el])
+                    # Check if beam width constraint is satisfied
+                    if abs(az - self.current_beam[0]) >= BEAM_WIDTH if self.current_beam is not None else True:
+                        self.beam_codebook.append([az, el])
             
             self.beam_codebook = tf.convert_to_tensor(self.beam_codebook, dtype=tf.float32)
             logger.info(f"Beam codebook initialized with {len(self.beam_codebook)} beam directions")
@@ -39,7 +43,15 @@ class BeamManager:
         return self.current_beam
     
     def should_switch_beam(self, current_snr, proposed_snr):
+        """Determine if beam switching is needed based on SNR"""
+        MIN_SNR_THRESHOLD = 10.0  # dB
         SNR_IMPROVEMENT_THRESHOLD = 2.0  # dB
+        
+        # Check if current SNR is below minimum threshold
+        if current_snr < MIN_SNR_THRESHOLD:
+            return True
+        
+        # Check if proposed beam offers significant improvement
         return (proposed_snr - current_snr) > SNR_IMPROVEMENT_THRESHOLD
 
     def get_beam_history(self):
@@ -136,7 +148,6 @@ class BeamManager:
             return -float('inf')
     
     def optimize_beam_direction(self, channel_data, path_manager, obstacle_positions):
-        """Optimized beam direction calculation"""
         try:
             # Get current AGV positions
             agv_positions = []
@@ -144,27 +155,26 @@ class BeamManager:
                 agv_status = path_manager.get_current_status(agv_id)
                 if agv_status['position'] is not None:
                     agv_positions.append(agv_status['position'])
-                else:
-                    logger.warning(f"No position data for {agv_id}")
-                    return self.current_beam
             
             # Detect blockages
             blocked = self.detect_blockage(channel_data, agv_positions, obstacle_positions)
             
-            # Calculate optimal beams
+            # Enhanced beam selection logic
             optimal_beams = []
             for i, agv_pos in enumerate(agv_positions):
-                if blocked[i]:
+                current_snr = channel_data.get('snr', 0) if channel_data else 0
+                
+                if blocked[i] or current_snr < 10.0:  # Check SNR threshold
+                    # Find best reflection path
                     best_beam = self._find_reflection_path(
                         agv_pos, obstacle_positions, channel_data)
-                    logger.debug(f"AGV {i+1} blocked - using reflection path")
+                    logger.debug(f"AGV {i+1} needs alternative path - SNR: {current_snr}")
                 else:
                     best_beam = self._calculate_direct_beam(agv_pos)
-                    logger.debug(f"AGV {i+1} unblocked - using direct path")
+                    logger.debug(f"AGV {i+1} using direct path - SNR: {current_snr}")
                 
                 optimal_beams.append(best_beam)
             
-            # Update current beam configuration
             self.current_beam = tf.stack(optimal_beams)
             self.beam_history.append(self.current_beam)
             
@@ -222,6 +232,10 @@ class BeamManager:
             azimuth_deg = tf.where(azimuth_deg < 0, azimuth_deg + 360, azimuth_deg)
             elevation_deg = tf.clip_by_value(elevation_deg, -30, 30)  # Limited elevation range
             
+            MAX_STEERING_ANGLE = 60.0  # degrees
+            azimuth_deg = tf.clip_by_value(azimuth_deg, -MAX_STEERING_ANGLE, MAX_STEERING_ANGLE)
+            elevation_deg = tf.clip_by_value(elevation_deg, -30, 30)
+
             return tf.stack([azimuth_deg, elevation_deg])
             
         except Exception as e:
