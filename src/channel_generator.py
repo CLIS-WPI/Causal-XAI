@@ -57,23 +57,55 @@ class SmartFactoryChannel:
             logger.error(f"Channel initialization failed: {str(e)}")
             raise RuntimeError(f"Channel initialization failed: {str(e)}") from e
     
+    def _setup_indoor_factory_params(self):
+        """Setup indoor factory specific parameters"""
+        try:
+            # Indoor factory mmWave parameters
+            self.inf_params = {
+                'los_k_factor': 10.0,  # Rician K-factor for LOS
+                'nlos_sigma': 4.0,     # Rayleigh sigma for NLOS
+                'path_loss_exp': 2.0,  # Path loss exponent
+                'shadow_std': 4.0,     # Shadow fading std dev (dB)
+                'penetration_loss': 20.0, # Material penetration loss (dB)
+                'reflection_coeff': 0.6   # Reflection coefficient
+            }
+            logger.debug(f"Indoor factory parameters initialized: {self.inf_params}")
+        except Exception as e:
+            logger.error(f"Error setting up indoor factory parameters: {str(e)}")
+        raise
+
     def calculate_path_loss(self, distance, frequency):
-        """Calculate path loss with indoor factory model"""
-        # Indoor factory model parameters
-        n = 2.0  # Path loss exponent
-        shadow_fading_std = 4.0  # Shadow fading standard deviation in dB
-        
-        # Calculate basic path loss
-        wavelength = SPEED_OF_LIGHT / frequency
-        path_loss_db = 20 * tf.math.log(4 * np.pi * distance / wavelength) / tf.math.log(10.0)
-        
-        # Add distance-dependent loss
-        path_loss_db += 10 * n * tf.math.log(distance) / tf.math.log(10.0)
-        
-        # Add random shadow fading
-        shadow_fading = tf.random.normal([], mean=0.0, stddev=shadow_fading_std)
-        
-        return path_loss_db + shadow_fading
+        """Calculate path loss with enhanced indoor factory model"""
+        try:
+            # Basic free space path loss
+            wavelength = SPEED_OF_LIGHT / frequency
+            basic_loss = 20 * tf.math.log(4 * np.pi * distance / wavelength) / tf.math.log(10.0)
+            
+            # Add distance-dependent loss
+            n = self.inf_params['path_loss_exp']
+            dist_loss = 10 * n * tf.math.log(distance) / tf.math.log(10.0)
+            
+            # Add shadow fading
+            shadow_std = self.inf_params['shadow_std']
+            shadow_fading = tf.random.normal([], mean=0.0, stddev=shadow_std)
+            
+            # Add penetration loss for obstacles
+            penetration = self.inf_params['penetration_loss']
+            
+            # Calculate total path loss
+            total_loss = basic_loss + dist_loss + shadow_fading + penetration
+            
+            logger.debug(f"Path loss components:")
+            logger.debug(f"- Basic loss: {float(basic_loss):.2f} dB")
+            logger.debug(f"- Distance loss: {float(dist_loss):.2f} dB")
+            logger.debug(f"- Shadow fading: {float(shadow_fading):.2f} dB")
+            logger.debug(f"- Total loss: {float(total_loss):.2f} dB")
+            
+            return total_loss
+            
+        except Exception as e:
+            logger.error(f"Error calculating path loss: {str(e)}")
+            raise
     
     def calculate_snr(self, h_freq, config, path_losses=None):
         """
@@ -97,6 +129,7 @@ class SmartFactoryChannel:
             tx_power_dbm = 49  # Transmit power in dBm for mmWave indoor BS
             tx_antenna_gain_db = 35  # BS antenna array gain
             rx_antenna_gain_db = 20   # AGV antenna gain
+            min_snr_threshold = 10.0  # Minimum usable SNR in dB
             
             logger.debug(f"Initial parameters:")
             logger.debug(f"- TX power: {tx_power_dbm} dBm")
@@ -586,14 +619,49 @@ class SmartFactoryChannel:
 
     def apply_fading(self, channel, los_condition):
         """Apply appropriate fading model based on LOS condition"""
-        if los_condition:
-            # Rician fading for LOS
-            k_factor = self.config.channel_params['rician_k_factor'] 
-            return self._apply_rician_fading(channel, k_factor)
-        else:
-            # Rayleigh fading for NLOS
-            sigma = self.config.channel_params['rayleigh_sigma']
-            return self._apply_rayleigh_fading(channel, sigma)
+        try:
+            if los_condition:
+                # Rician fading for LOS
+                k_factor = self.inf_params['los_k_factor']
+                return self._apply_rician_fading(channel, k_factor)
+            else:
+                # Rayleigh fading for NLOS
+                sigma = self.inf_params['nlos_sigma']
+                return self._apply_rayleigh_fading(channel, sigma)
+        except Exception as e:
+            logger.error(f"Error applying fading: {str(e)}")
+            raise
+
+    def _apply_rician_fading(self, channel, k_factor):
+        """Apply Rician fading to channel"""
+        try:
+            # Convert K-factor to linear scale
+            k_linear = tf.pow(10.0, k_factor/10.0)
+            
+            # Generate complex Gaussian components
+            shape = tf.shape(channel)
+            real = tf.random.normal(shape, mean=0.0, stddev=1.0)
+            imag = tf.random.normal(shape, mean=0.0, stddev=1.0)
+            
+            # Combine for Rician fading
+            los_component = tf.sqrt(k_linear/(k_linear + 1))
+            nlos_component = tf.sqrt(1/(k_linear + 1)) * tf.complex(real, imag)
+            
+            return channel * (los_component + nlos_component)
+        except Exception as e:
+            logger.error(f"Error in Rician fading: {str(e)}")
+            raise
+
+    def _apply_rayleigh_fading(self, channel, sigma):
+        """Apply Rayleigh fading to channel"""
+        try:
+            shape = tf.shape(channel)
+            real = tf.random.normal(shape, mean=0.0, stddev=sigma)
+            imag = tf.random.normal(shape, mean=0.0, stddev=sigma)
+            return channel * tf.complex(real, imag)
+        except Exception as e:
+            logger.error(f"Error in Rayleigh fading: {str(e)}")
+            raise
     
     def calculate_beam_performance(self):
         """Track beam performance metrics"""
