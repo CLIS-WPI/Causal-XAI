@@ -57,6 +57,21 @@ class SmartFactoryChannel:
             logger.error(f"Channel initialization failed: {str(e)}")
             raise RuntimeError(f"Channel initialization failed: {str(e)}") from e
     
+    def calculate_path_loss(self, distance, frequency):
+            """
+            Calculate free space path loss for mmWave communications
+            
+            Args:
+                distance: Distance between transmitter and receiver
+                frequency: Carrier frequency
+                
+            Returns:
+                path_loss_db: Path loss in dB
+            """
+            wavelength = SPEED_OF_LIGHT / frequency
+            path_loss_db = 20 * np.log10(4 * np.pi * distance / wavelength)
+            return path_loss_db
+    
     def verify_scene_configuration(self):
         """Verify scene configuration before channel generation"""
         if self.scene is None:
@@ -202,17 +217,17 @@ class SmartFactoryChannel:
         try:
             logger.debug("=== Generating channel data ===")
             
-            # Optimize ray tracing parameters for beam switching scenario
+            # Compute paths using parameters from config
             paths = self.scene.compute_paths(
-                max_depth=4,  # Reduced for faster computation
-                method="fibonacci",
-                num_samples=2000,  # Increased for better accuracy
-                los=True,
-                reflection=True,
-                diffraction=True,
-                scattering=True,
-                scat_keep_prob=1.0,
-                edge_diffraction=True
+                max_depth=config.ray_tracing['max_depth'],
+                method=config.ray_tracing['method'],
+                num_samples=config.ray_tracing['num_samples'],
+                los=config.ray_tracing['los'],
+                reflection=config.ray_tracing['reflection'],
+                diffraction=config.ray_tracing['diffraction'],
+                scattering=config.ray_tracing['scattering'],
+                scat_keep_prob=config.ray_tracing['scat_keep_prob'],
+                edge_diffraction=config.ray_tracing['edge_diffraction']
             )
             
             if paths is None:
@@ -236,6 +251,23 @@ class SmartFactoryChannel:
                 normalize=True
             )
             
+            # Calculate and apply path loss for each receiver
+            path_losses = []
+            for rx_idx, rx in enumerate(self.scene.receivers.values()):
+                # Get transmitter position (assuming single transmitter)
+                tx_position = list(self.scene.transmitters.values())[0].position
+                
+                # Calculate distance
+                distance = tf.norm(rx.position - tx_position)
+                
+                # Calculate path loss using carrier frequency from config
+                path_loss = self.calculate_path_loss(distance, config.carrier_frequency)
+                path_losses.append(path_loss)
+                
+                # Apply path loss to channel matrices
+                path_loss_linear = tf.pow(10.0, -path_loss/20.0)
+                h_freq = h_freq * path_loss_linear
+            
             # Enhanced channel data dictionary
             channel_data = {
                 'channel_matrices': h_freq,
@@ -243,11 +275,12 @@ class SmartFactoryChannel:
                 'los_conditions': paths.LOS,
                 'agv_positions': tf.stack([rx.position for rx in self.scene.receivers.values()]),
                 'num_paths': tf.size(paths.LOS),
+                'path_losses': tf.convert_to_tensor(path_losses),
                 'reflection_paths': paths.reflection_paths if hasattr(paths, 'reflection_paths') else None,
                 'diffraction_paths': paths.diffraction_paths if hasattr(paths, 'diffraction_paths') else None
             }
             
-            # Add beam switching analysis
+            # Add beam switching analysis with parameters from config
             beam_analysis = self.analyze_beam_switching(channel_data)
             channel_data.update(beam_analysis)
             

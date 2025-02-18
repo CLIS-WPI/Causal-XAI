@@ -38,6 +38,10 @@ class BeamManager:
         """Return the current beam configuration"""
         return self.current_beam
     
+    def should_switch_beam(self, current_snr, proposed_snr):
+        SNR_IMPROVEMENT_THRESHOLD = 2.0  # dB
+        return (proposed_snr - current_snr) > SNR_IMPROVEMENT_THRESHOLD
+
     def get_beam_history(self):
         """Return the history of beam configurations"""
         try:

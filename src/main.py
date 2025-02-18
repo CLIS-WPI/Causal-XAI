@@ -288,6 +288,7 @@ def main():
         
         # Initialize configuration and validate
         config = SmartFactoryConfig()
+        add_snr_config(config)
         validate_config(config)
         
         # Generate scene geometry
@@ -350,7 +351,11 @@ def main():
                 tx.array.steering_angle = optimal_beams
             
             # Generate updated channel data
+            optimal_beams = beam_manager.optimize_beam_direction(...)
             updated_channel = generate_channel_data(scene, config, beam_manager)
+            current_snr = calculate_snr(updated_channel['channel_matrices'], 
+                                    config, 
+                                    optimal_beams)
             channel_data_history.append(updated_channel)
             
             # Log beam switching metrics
