@@ -90,7 +90,7 @@ class AGVPathManager:
     def _calculate_next_position(self, agv_id, current_position):
         """Calculate the next position based on trajectory"""
         trajectory = self.trajectories[agv_id]
-        current_idx = self.current_waypoint_indices[f'agv_{agv_id}']
+        current_idx = self.current_waypoint_indices[agv_id]
         target = trajectory[current_idx]
         
         # Convert current position to 2D for path calculation
@@ -189,15 +189,15 @@ class AGVPathManager:
     def reset(self):
         """Reset AGV path manager to initial state"""
         self.current_waypoint_indices = {
-            'agv_1': 0,
-            'agv_2': 0
+            '1': 0,
+            '2': 0
         }
         self.last_known_positions = {
-            'agv_1': None,
-            'agv_2': None
+            '1': None,
+            '2': None
         }
         self.current_velocities = {
-            'agv_1': np.zeros(2),
-            'agv_2': np.zeros(2)
+            '1': np.zeros(2),
+            '2': np.zeros(2)
         }
         logger.info("AGV path manager reset to initial state")

@@ -331,10 +331,10 @@ def main():
             # Update AGV positions
             agv_positions = []
             for i in range(config.num_agvs):
-                agv_id = f'agv_{i+1}'  # This is correct
-                current_pos = scene.receivers[agv_id].position
-                new_pos = path_manager.get_next_position(agv_id, current_pos)  # The agv_id is being double-prefixed here
-                scene.receivers[agv_id].position = new_pos
+                agv_id = str(i+1)  # Just use the number
+                current_pos = scene.receivers[f'agv_{i+1}'].position  # Use full ID for scene access
+                new_pos = path_manager.get_next_position(agv_id, current_pos)  # Pass just the number
+                scene.receivers[f'agv_{i+1}'].position = new_pos
                 agv_positions.append(new_pos)
             
             # Generate channel data
