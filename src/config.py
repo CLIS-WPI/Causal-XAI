@@ -29,10 +29,10 @@ class SmartFactoryConfig:
         self.bs_array = {
             'num_rows': 16,          
             'num_cols': 4,
-            'vertical_spacing': 0.5 * self.wavelength,
-            'horizontal_spacing': 0.5 * self.wavelength,
-            'pattern': "tr38901",
-            'polarization': "VH"
+            'vertical_spacing': 0.7,    # Vertical spacing between elements
+            'horizontal_spacing': 0.5,   # Horizontal spacing between elements
+            'pattern': "tr38901",       # Antenna pattern
+            'polarization': "VH"        # Type of polarization
         }
 
         # Enhanced Material properties for better reflection modeling

@@ -56,16 +56,17 @@ def setup_scene(config: SmartFactoryConfig):
         )
 
         # Create a PlanarArray for the base station
-        bs_array = PlanarArray(
-            num_rows=config.bs_array[0],
-            num_cols=config.bs_array[1],
-            vertical_spacing=config.bs_array_spacing,
-            horizontal_spacing=config.bs_array_spacing,
-            pattern=config.bs_array_pattern,
-            polarization=config.bs_polarization
+        # In setup_scene function, change:
+        array = PlanarArray(
+            num_rows=config.bs_array['num_rows'],      # Use dictionary access
+            num_cols=config.bs_array['num_cols'],      # Use dictionary access
+            vertical_spacing=config.bs_array.get('vertical_spacing', 0.7),
+            horizontal_spacing=config.bs_array.get('horizontal_spacing', 0.5),
+            pattern=config.bs_array.get('pattern', "tr38901"),
+            polarization=config.bs_array.get('polarization', "VH")
         )
         # Attach array to the transmitter
-        bs.array = bs_array
+        bs.array = array
 
         # Add BS to scene
         scene.add(bs)
@@ -73,7 +74,7 @@ def setup_scene(config: SmartFactoryConfig):
 
         # **Important**: For older Sionna, we must set scene.tx_array so it knows
         # which array to use for the transmitter.
-        scene.tx_array = bs_array
+        scene.tx_array = array
 
         # --- Add AGVs (Receivers) ---
         logger.debug("\n=== AGV Configurations ===")
