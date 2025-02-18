@@ -424,7 +424,7 @@ class SmartFactoryChannel:
             
             # Process channel data in batches
             h_freq_list = []
-            batch_size = 64  # Adjust batch size based on memory constraints
+            batch_size = 32  # Adjust batch size based on memory constraints
 
             for i in range(0, len(a), batch_size):
                 batch_a = a[i:i+batch_size]
