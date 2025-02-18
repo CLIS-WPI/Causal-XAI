@@ -344,8 +344,9 @@ def main():
             # Log metrics every 10 steps
             if iteration % 10 == 0:
                 print(f"\nStep {iteration+1} metrics:")
-                # Calculate average SNR from beam metrics if available
-                if 'beam_metrics' in channel_data and 'snr_db' in channel_data['beam_metrics']:
+                if 'average_snr' in channel_data:
+                    print(f"Average SNR: {channel_data['average_snr']:.2f} dB")
+                elif 'beam_metrics' in channel_data and 'snr_db' in channel_data['beam_metrics']:
                     avg_snr = np.mean(channel_data['beam_metrics']['snr_db'])
                     print(f"Average SNR: {avg_snr:.2f} dB")
                 else:
