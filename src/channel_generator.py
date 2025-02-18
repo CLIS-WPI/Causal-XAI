@@ -72,6 +72,73 @@ class SmartFactoryChannel:
             path_loss_db = 20 * np.log10(4 * np.pi * distance / wavelength)
             return path_loss_db
     
+    def calculate_snr(self, h_freq, config, path_losses):
+        """
+        Calculate SNR for the channel with proper parameter handling
+        
+        Args:
+            h_freq: Channel frequency response
+            config: Configuration object containing system parameters
+            path_losses: Path losses for each receiver
+            
+        Returns:
+            dict: Dictionary containing SNR metrics including average_snr and detailed beam metrics
+        """
+        try:
+            # System parameters for indoor factory scenario
+            tx_power_dbm = 33  # Transmit power in dBm for mmWave indoor BS
+            tx_antenna_gain_db = 15  # BS antenna array gain
+            rx_antenna_gain_db = 5   # AGV antenna gain
+            
+            # Convert powers from dB to linear scale
+            tx_power_watts = 10 ** ((tx_power_dbm - 30) / 10)
+            tx_gain_linear = 10 ** (tx_antenna_gain_db / 10)
+            rx_gain_linear = 10 ** (rx_antenna_gain_db / 10)
+            
+            # Noise calculation parameters
+            k_boltzmann = 1.380649e-23
+            temperature = 290  # Room temperature in Kelvin
+            bandwidth = config.subcarrier_spacing * config.num_subcarriers
+            noise_figure_db = 7  # Typical for mmWave receivers
+            implementation_loss_db = 3
+            
+            # Calculate noise power
+            thermal_noise = k_boltzmann * temperature * bandwidth
+            noise_figure_linear = 10 ** (noise_figure_db / 10)
+            implementation_loss_linear = 10 ** (implementation_loss_db / 10)
+            total_noise_power = thermal_noise * noise_figure_linear * implementation_loss_linear
+            
+            # Calculate signal power with antenna gains
+            signal_power = (tf.reduce_mean(tf.abs(h_freq)**2, axis=-1) * 
+                        tx_power_watts * tx_gain_linear * rx_gain_linear)
+            
+            # SNR calculation
+            snr_linear = signal_power / total_noise_power
+            snr_db = 10 * tf.math.log(snr_linear) / tf.math.log(10.0)
+            
+            # Clip SNR to realistic range for indoor factory
+            max_snr_db = 30.0  # Maximum expected SNR
+            min_snr_db = 0.0   # Minimum usable SNR
+            snr_db_clipped = tf.clip_by_value(snr_db, min_snr_db, max_snr_db)
+            average_snr = float(tf.reduce_mean(snr_db_clipped))
+            
+            return {
+                'average_snr': average_snr,
+                'beam_metrics': {
+                    'snr_db': snr_db_clipped.numpy(),
+                    'avg_power': float(tf.reduce_mean(signal_power)),
+                    'tx_power_dbm': tx_power_dbm,
+                    'antenna_gains': {
+                        'tx_gain_db': tx_antenna_gain_db,
+                        'rx_gain_db': rx_antenna_gain_db
+                    }
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calculating SNR: {str(e)}")
+            raise
+
     def verify_scene_configuration(self):
         """Verify scene configuration before channel generation"""
         if self.scene is None:
@@ -280,33 +347,8 @@ class SmartFactoryChannel:
                 path_loss_linear = tf.cast(tf.pow(10.0, -path_loss/20.0), tf.complex64)
                 h_freq = h_freq * path_loss_linear
             
-            # Calculate SNR
-            # Physical constants and system parameters
-            # Updated SNR calculation parameters for indoor factory scenario
-            tx_power_dbm = 23  # Typical mmWave BS transmit power (23 dBm)
-            tx_power_watts = 10 ** ((tx_power_dbm - 30) / 10)  # Convert dBm to Watts
-            k_boltzmann = 1.380649e-23
-            temperature = 290  # Room temperature in Kelvin
-            bandwidth = config.subcarrier_spacing * config.num_subcarriers
-            noise_figure_db = 7  # More realistic noise figure for mmWave receivers
-            implementation_loss_db = 5  # Implementation loss including various factors
-            
-            # Calculate noise power
-            thermal_noise = k_boltzmann * temperature * bandwidth
-            noise_figure_linear = 10 ** (noise_figure_db / 10)
-            implementation_loss_linear = 10 ** (implementation_loss_db / 10)
-            total_noise_power = thermal_noise * noise_figure_linear * implementation_loss_linear
-            
-            # Signal power calculation with transmit power
-            signal_power = tf.reduce_mean(tf.abs(h_freq)**2, axis=-1) * tx_power_watts
-            snr_linear = signal_power / total_noise_power
-            snr_db = 10 * tf.math.log(snr_linear) / tf.math.log(10.0)
-            
-            # Clip SNR to realistic range
-            max_snr_db = 30.0  # Maximum expected SNR
-            min_snr_db = -10.0  # Minimum usable SNR
-            snr_db_clipped = tf.clip_by_value(snr_db, min_snr_db, max_snr_db)
-            average_snr = float(tf.reduce_mean(snr_db_clipped))
+            # Replace the old SNR calculation with the new function call
+            snr_metrics = self.calculate_snr(h_freq, config, path_losses)
             
             # Enhanced channel data dictionary
             channel_data = {
@@ -318,11 +360,8 @@ class SmartFactoryChannel:
                 'path_losses': tf.convert_to_tensor(path_losses),
                 'reflection_paths': paths.reflection_paths if hasattr(paths, 'reflection_paths') else None,
                 'diffraction_paths': paths.diffraction_paths if hasattr(paths, 'diffraction_paths') else None,
-                'average_snr': average_snr,
-                'beam_metrics': {
-                    'snr_db': snr_db_clipped.numpy(),
-                    'avg_power': float(tf.reduce_mean(signal_power))
-                }
+                'average_snr': snr_metrics['average_snr'],
+                'beam_metrics': snr_metrics['beam_metrics']
             }
             
             # Add beam switching analysis

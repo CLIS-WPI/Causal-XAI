@@ -60,68 +60,6 @@ def validate_config(config):
     if config.carrier_frequency <= 0:
         raise ValueError("carrier_frequency must be positive")
 
-def calculate_snr(h_freq, config):
-    """
-    Calculate realistic SNR for mmWave systems accounting for thermal noise and hardware impairments
-    
-    Parameters:
-        h_freq: Channel frequency response
-        config: Configuration object containing system parameters
-    """
-    # Physical constants
-    k_boltzmann = 1.380649e-23  # Boltzmann constant [J/K]
-    temperature = 290           # Room temperature [K]
-    
-    # System parameters for 28GHz
-    bandwidth = config.subcarrier_spacing * config.num_subcarriers  # Total bandwidth
-    noise_figure_db = 10        # Typical mmWave receiver noise figure [dB]
-    implementation_loss_db = 3  # Implementation loss [dB]
-    
-    # Calculate thermal noise power
-    thermal_noise = k_boltzmann * temperature * bandwidth
-    
-    # Convert noise figure from dB to linear
-    noise_figure_linear = 10 ** (noise_figure_db / 10)
-    
-    # Convert implementation loss from dB to linear
-    implementation_loss_linear = 10 ** (implementation_loss_db / 10)
-    
-    # Total noise power including noise figure and implementation loss
-    total_noise_power = thermal_noise * noise_figure_linear * implementation_loss_linear
-    
-    # Calculate average signal power across all antennas and subcarriers
-    # Assuming h_freq shape: [batch, num_rx, num_rx_ant, num_tx, num_tx_ant, num_streams, num_subcarriers]
-    signal_power = tf.reduce_mean(tf.abs(h_freq)**2, axis=[-1])  # Average over subcarriers
-    
-    # Apply path loss and shadowing if provided in channel model
-    if hasattr(config, 'path_loss_db'):
-        path_loss_linear = 10 ** (-config.path_loss_db / 10)
-        signal_power = signal_power * path_loss_linear
-    
-    # Calculate SNR
-    snr_linear = signal_power / total_noise_power
-    
-    # Convert to dB with realistic bounds for mmWave systems
-    snr_db = 10 * tf.math.log(snr_linear) / tf.math.log(10.0)
-    
-    # Apply realistic bounds for indoor mmWave systems
-    max_snr_db = 40.0  # Maximum realistic SNR for indoor mmWave
-    min_snr_db = -20.0 # Minimum detectable SNR
-    
-    # Clip SNR to realistic range
-    snr_db_clipped = tf.clip_by_value(snr_db, min_snr_db, max_snr_db)
-    
-    # Calculate statistics for logging
-    avg_snr = tf.reduce_mean(snr_db_clipped)
-    max_snr = tf.reduce_max(snr_db_clipped)
-    min_snr = tf.reduce_min(snr_db_clipped)
-    
-    logger.info(f"SNR Statistics:")
-    logger.info(f"- Average SNR: {avg_snr:.2f} dB")
-    logger.info(f"- Maximum SNR: {max_snr:.2f} dB")
-    logger.info(f"- Minimum SNR: {min_snr:.2f} dB")
-    
-    return snr_db_clipped
 
 # Add necessary configuration parameters to SmartFactoryConfig
 def add_snr_config(config):
