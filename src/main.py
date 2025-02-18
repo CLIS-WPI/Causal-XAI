@@ -370,3 +370,6 @@ def main():
         print(f"Error during simulation: {str(e)}")
         logger.error(f"Simulation failed: {str(e)}", exc_info=True)
         raise
+
+if __name__ == "__main__":
+    main()

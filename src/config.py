@@ -91,6 +91,32 @@ class SmartFactoryConfig:
             [17.0, 18.0, self.agv_height]
         ]
 
+        # static scene configuration
+        self.static_scene = {
+            'material': 'concrete',  # Default material for walls
+            'wall_thickness': 0.2,   # Wall thickness in meters
+            'floor_material': 'concrete',
+            'ceiling_material': 'concrete',
+            'wall_height': 5.0,      # Height of walls in meters
+            'reflectivity': 0.603815 # Concrete reflectivity at 28GHz
+        }
+        
+        # Add PLY configuration if not already present
+        self.ply_config = {
+            'output_dir': 'meshes',
+            'verify_files': True,
+            'material_properties': {
+                'concrete': {
+                    'reflectivity': 0.603815,
+                    'roughness': 0.1
+                },
+                'metal': {
+                    'reflectivity': 0.087140,
+                    'roughness': 0.05
+                }
+            }
+        }
+
         # Optimized obstacle configuration for beam switching
         self.scene_objects = {
             'num_shelves': 5,

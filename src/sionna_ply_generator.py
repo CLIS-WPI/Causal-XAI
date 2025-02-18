@@ -73,13 +73,16 @@ class SionnaPLYGenerator:
 
             # Generate shelves using config
             shelf_positions = config.scene_objects['shelf_positions']
-            shelf_dims = config.scene_objects['shelf_dimensions'][i]
+            shelf_dimensions = config.scene_objects['shelf_dimensions']
 
             for i, pos in enumerate(shelf_positions):
                 output_file = os.path.join(output_dir, f'shelf_{i}.ply')
+                # Get the shelf dimensions for this shelf
+                shelf_dims = shelf_dimensions[i] if isinstance(shelf_dimensions, list) else shelf_dimensions
+                
                 SionnaPLYGenerator._generate_shelf_ply(
                     filename=output_file,
-                    dims=shelf_dims,  # Updated to use correct size
+                    dims=shelf_dims,  # Now using the correct dimensions for each shelf
                     position=pos,
                     material_type=config.scene_objects['shelf_material']
                 )
