@@ -94,7 +94,10 @@ class BeamManager:
                     if abs(az - self.current_beam[0]) >= BEAM_WIDTH if self.current_beam is not None else True:
                         self.beam_codebook.append([az, el])
             
-            self.beam_codebook = tf.convert_to_tensor(self.beam_codebook, dtype=tf.float32)
+            self.beam_codebook = tf.convert_to_tensor([
+                [angle_az, angle_el] for angle_az in np.linspace(-60, 60, 8)
+                for angle_el in np.linspace(-30, 30, 8)
+            ], dtype=tf.float32)
             logger.info(f"Beam codebook initialized with {len(self.beam_codebook)} beam directions")
             
         except Exception as e:
@@ -382,12 +385,20 @@ class BeamManager:
             if 'beam_metrics' not in channel_data:
                 return self.current_beam if self.current_beam is not None else tf.zeros([2])
                 
-            # Extract SNR information
+            # Extract SNR information and reshape it properly
             snr_data = channel_data['beam_metrics'].get('snr_db', 0)
             
-            # Get best beam from codebook based on SNR
-            best_beam_idx = tf.argmax(snr_data) if isinstance(snr_data, (tf.Tensor, np.ndarray)) else 0
-            predicted_beam = self.beam_codebook[best_beam_idx]
+            # Ensure snr_data is the right shape
+            if isinstance(snr_data, (tf.Tensor, np.ndarray)):
+                # Reshape to 2D if needed
+                snr_data = tf.reshape(snr_data, [-1, 2])
+                
+                # Get best beam index
+                best_beam_idx = tf.argmax(tf.reduce_mean(snr_data, axis=-1))
+                predicted_beam = self.beam_codebook[best_beam_idx]
+            else:
+                # Default beam if SNR data is not in expected format
+                predicted_beam = tf.zeros([2])
             
             logger.debug(f"Predicted optimal beam: {predicted_beam}")
             return predicted_beam
@@ -395,7 +406,7 @@ class BeamManager:
         except Exception as e:
             logger.error(f"Error in beam prediction: {str(e)}")
             return self.current_beam if self.current_beam is not None else tf.zeros([2])
-
+    
     def _refine_beam(self, predicted_beam, channel_data):
         """
         Refines the predicted beam direction based on channel conditions
