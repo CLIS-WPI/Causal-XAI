@@ -32,8 +32,7 @@ class SmartFactoryChannel:
             self.config = config
             sionna.config.xla_compat = True
             tf.random.set_seed(config.seed if hasattr(config, 'seed') else 42)
-            logger.debug(f"Random seed set to: {config.seed if hasattr(config, 'seed') else 42}")
-
+            
             # Initialize indoor factory parameters first
             self._setup_indoor_factory_params()
             logger.debug("Indoor factory parameters initialized")
@@ -62,18 +61,18 @@ class SmartFactoryChannel:
             self.beam_manager = BeamManager(config)
             
             self.performance_metrics = {
-            'ber_history': [],
-            'snr_history': [],
-            'packet_stats': {
-                'total': 0,
-                'successful': 0
+                'ber_history': [],
+                'snr_history': [],
+                'packet_stats': {
+                    'total': 0,
+                    'successful': 0
                 }
-                }   
+            }   
             
         except Exception as e:
             logger.error(f"Channel initialization failed: {str(e)}")
-        raise RuntimeError(f"Channel initialization failed: {str(e)}") from e
-
+            raise RuntimeError(f"Channel initialization failed: {str(e)}") from e
+        
     def calculate_ber(self, signal_data):
         """
         Calculate Bit Error Rate (BER) from signal data
