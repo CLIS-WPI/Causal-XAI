@@ -41,20 +41,22 @@ class BeamManager:
             self.current_switch_start = None
     def has_switch_occurred(self):
         """
-        Checks if a beam switch has occurred by comparing the current beam
-        configuration with the previous one in the beam history.
-        
+        Check if a beam switch has occurred by comparing current and previous beam configurations
         Returns:
-            bool: True if a beam switch occurred, False otherwise
+            bool: True if a switch occurred, False otherwise
         """
         if len(self.beam_history) < 2:
             return False
-            
-        # Convert tensors to numpy arrays for comparison
-        current = tf.cast(self.current_beam, tf.float32).numpy()
-        previous = tf.cast(self.beam_history[-2], tf.float32).numpy()
         
-        # Compare current and previous beam configurations
+        current = self.current_beam
+        previous = self.beam_history[-2]
+        
+        # Convert tensors to numpy for comparison
+        if isinstance(current, tf.Tensor):
+            current = current.numpy()
+        if isinstance(previous, tf.Tensor):
+            previous = previous.numpy()
+            
         return not np.array_equal(current, previous)
 
     def update_packet_stats(self, success, during_switch=False):    
@@ -122,7 +124,41 @@ class BeamManager:
         except Exception as e:
             logger.error(f"Error getting beam history: {str(e)}")
             return []
+    def update_beam(self, new_beam):
+        """
+        Update the current beam and track it in history
         
+        Args:
+            new_beam: New beam configuration to be set
+            
+        Returns:
+            None
+        """
+        try:
+            # Store old beam for logging
+            old_beam = self.current_beam
+            
+            # Convert new_beam to tensor if it isn't already
+            if not isinstance(new_beam, tf.Tensor):
+                new_beam = tf.convert_to_tensor(new_beam, dtype=tf.float32)
+                
+            # Add current beam to history before updating
+            if self.current_beam is not None:
+                self.beam_history.append(self.current_beam)
+                
+            # Update current beam
+            self.current_beam = new_beam
+            
+            # Log the beam switch if it occurred
+            if old_beam is not None and not tf.reduce_all(tf.equal(old_beam, new_beam)):
+                self.log_beam_switch(old_beam, new_beam)
+                
+            logger.debug(f"Beam updated - Old: {old_beam}, New: {new_beam}")
+            
+        except Exception as e:
+            logger.error(f"Error updating beam: {str(e)}")
+            raise RuntimeError(f"Failed to update beam: {str(e)}")
+            
     def detect_blockage(self, channel_data, agv_positions, obstacle_positions):
         """Enhanced blockage detection with SNR threshold"""
         try:
