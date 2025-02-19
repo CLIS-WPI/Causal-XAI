@@ -1,4 +1,5 @@
 import h5py
+import numpy as np
 def save_performance_metrics(metrics, filepath):
     with h5py.File(filepath, 'a') as f:
         perf_group = f.create_group('performance_metrics')
@@ -10,6 +11,16 @@ def save_performance_metrics(metrics, filepath):
                 switch['timestamp'],
                 switch['duration']
             ]))
+            
+        # Save packet statistics with zero division protection
+        packet_group = perf_group.create_group('packet_stats')
+        total_packets = metrics['packet_stats']['total']
+        if total_packets > 0:
+            packet_group.attrs['success_rate'] = metrics['packet_stats']['successful'] / total_packets
+            packet_group.attrs['switch_failure_rate'] = metrics['packet_stats']['failed_during_switch'] / total_packets
+        else:
+            packet_group.attrs['success_rate'] = 0.0
+            packet_group.attrs['switch_failure_rate'] = 0.0
             
         # Save BER history
         ber_group = perf_group.create_group('ber_history')

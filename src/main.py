@@ -303,7 +303,23 @@ def main():
         # Main simulation loop:
         for iteration in range(config.num_time_steps):
             print(f"\rSimulating step {iteration+1}/{config.num_time_steps}", end="")
-            
+
+            # Update packet statistics based on SNR
+            performance_metrics['packet_stats']['total'] += 1
+            if 'beam_metrics' in channel_data and 'snr_db' in channel_data['beam_metrics']:
+                current_snr = np.mean(channel_data['beam_metrics']['snr_db'])
+                if current_snr > config.beamforming['min_snr_threshold']:
+                    performance_metrics['packet_stats']['successful'] += 1
+                elif beam_manager.has_switch_occurred():
+                    performance_metrics['packet_stats']['failed_during_switch'] += 1
+                    
+            # Update SNR history
+            if 'beam_metrics' in channel_data and 'snr_db' in channel_data['beam_metrics']:
+                performance_metrics['snr_history'].append({
+                    'timestamp': iteration,
+                    'value': float(np.mean(channel_data['beam_metrics']['snr_db']))
+                })
+
             # Update AGV positions
             agv_positions = []
             for i in range(config.num_agvs):
