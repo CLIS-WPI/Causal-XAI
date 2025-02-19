@@ -78,30 +78,23 @@ class BeamManager:
             'packet_success_rate': self.packet_stats['successful'] / max(1, self.packet_stats['total']),
             'switch_failure_rate': self.packet_stats['failed_during_switch'] / max(1, self.packet_stats['total']),
             'snr_history': self.snr_history
-        }        
+        }   
+        
     def _initialize_beam_codebook(self):
-        """Initialize DFT-based beam codebook for 16x4 array"""
-        try:
-            azimuth_angles = np.linspace(-60, 60, self.num_beams_azimuth)
-            elevation_angles = np.linspace(-30, 30, self.num_beams_elevation)
-            # Add beam width constraint
-            BEAM_WIDTH = 15.0  # degrees
-            self.beam_codebook = []
-            self.beam_codebook = []
+        """Initialize beam codebook with proper bounds checking"""
+        # Create beam directions for 16x4 array
+        azimuth_angles = np.linspace(-60, 60, self.num_beams_azimuth)
+        elevation_angles = np.linspace(-30, 30, self.num_beams_elevation)
+        
+        # Generate codebook
+        self.beam_codebook = []
+        for az in azimuth_angles:
             for el in elevation_angles:
-                for az in azimuth_angles:
-                    # Check if beam width constraint is satisfied
-                    if abs(az - self.current_beam[0]) >= BEAM_WIDTH if self.current_beam is not None else True:
-                        self.beam_codebook.append([az, el])
-            
-            self.beam_codebook = tf.convert_to_tensor([
-                [angle_az, angle_el] for angle_az in np.linspace(-60, 60, 8)
-                for angle_el in np.linspace(-30, 30, 8)
-            ], dtype=tf.float32)
-            logger.info(f"Beam codebook initialized with {len(self.beam_codebook)} beam directions")
-            
-        except Exception as e:
-            logger.error(f"Error initializing beam codebook: {str(e)}")
+                self.beam_codebook.append([az, el])
+        
+        # Convert to tensor
+        self.beam_codebook = tf.convert_to_tensor(self.beam_codebook, dtype=tf.float32)
+        logger.info(f"Beam codebook initialized with {len(self.beam_codebook)} beam directions")
     
     def get_current_beams(self):
         """Return the current beam configuration"""
@@ -371,36 +364,29 @@ class BeamManager:
         return combined_beam
     
     def _predict_optimal_beam(self, channel_data):
-        """
-        Predicts optimal beam direction based on channel data
-        
-        Args:
-            channel_data: Dictionary containing channel state information
-            
-        Returns:
-            tf.Tensor: Predicted optimal beam direction
-        """
+        """Predict optimal beam with proper bounds checking"""
         try:
-            # Get current channel conditions
             if 'beam_metrics' not in channel_data:
                 return self.current_beam if self.current_beam is not None else tf.zeros([2])
                 
-            # Extract SNR information and reshape it properly
+            # Extract and reshape SNR data
             snr_data = channel_data['beam_metrics'].get('snr_db', 0)
-            
-            # Ensure snr_data is the right shape
             if isinstance(snr_data, (tf.Tensor, np.ndarray)):
-                # Reshape to 2D if needed
-                snr_data = tf.reshape(snr_data, [-1, 2])
+                # Ensure SNR data matches codebook size
+                snr_data = tf.reshape(snr_data, [-1])
+                num_beams = len(self.beam_codebook)
+                snr_data = snr_data[:num_beams]  # Clip to valid range
                 
-                # Get best beam index
-                best_beam_idx = tf.argmax(tf.reduce_mean(snr_data, axis=-1))
-                predicted_beam = self.beam_codebook[best_beam_idx]
+                # Get best beam index with bounds checking
+                best_beam_idx = tf.clip_by_value(
+                    tf.argmax(snr_data), 
+                    0, 
+                    num_beams - 1
+                )
+                predicted_beam = tf.gather(self.beam_codebook, best_beam_idx)
             else:
-                # Default beam if SNR data is not in expected format
                 predicted_beam = tf.zeros([2])
-            
-            logger.debug(f"Predicted optimal beam: {predicted_beam}")
+                
             return predicted_beam
             
         except Exception as e:
