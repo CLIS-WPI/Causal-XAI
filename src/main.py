@@ -1,5 +1,6 @@
 ##main.py
 import tensorflow as tf
+import sys
 from config import SmartFactoryConfig
 from scene_setup import setup_scene, verify_los_paths
 import os
