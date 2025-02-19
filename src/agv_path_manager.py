@@ -240,10 +240,12 @@ class AGVPathManager:
 
     def get_current_status(self, agv_id):
         """Get current status of specified AGV"""
+        # If agv_id is a number, convert to proper format
+        agv_key = f'agv_{agv_id}' if not str(agv_id).startswith('agv_') else agv_id
         return {
-            'position': self.last_known_positions[f'agv_{agv_id}'],
-            'velocity': self.current_velocities[f'agv_{agv_id}'],
-            'waypoint_index': self.current_waypoint_indices[f'agv_{agv_id}']
+            'position': self.last_known_positions[agv_key],
+            'velocity': self.current_velocities[agv_key],
+            'waypoint_index': self.current_waypoint_indices[agv_key]
         }
 
     def reset(self):

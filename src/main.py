@@ -398,7 +398,7 @@ def main():
             'beam_history': beam_manager.get_beam_history(),
             'path_data': {
                 'final_positions': {
-                    f'agv_{i}': path_manager.get_current_status(f'agv_{i}')
+                    f'agv_{i}': path_manager.get_current_status(i)
                     for i in range(config.num_agvs)
                 }
             },
