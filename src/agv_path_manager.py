@@ -54,22 +54,28 @@ class AGVPathManager:
     def __init__(self, config):
         """Initialize AGV path manager with configuration"""
         self.config = config
+        
+        # Use consistent 'agv_X' format for all dictionaries
         self.current_waypoint_indices = {
-            str(i): 0 for i in range(config.num_agvs)
+            f'agv_{i}': 0 for i in range(config.num_agvs)
         }
         
-        # Convert trajectories to use numeric keys
+        # Convert trajectories to use consistent 'agv_X' format
         self.trajectories = {
-            '0': config.agv_trajectories['agv_1'],
-            '1': config.agv_trajectories['agv_2']
+            f'agv_{i}': config.agv_trajectories[f'agv_{i+1}'] 
+            for i in range(config.num_agvs)
         }
         
+        # Use same format for position tracking
         self.last_known_positions = {
-            str(i): None for i in range(config.num_agvs)
+            f'agv_{i}': None for i in range(config.num_agvs)
         }
+        
+        # Use same format for velocity tracking
         self.current_velocities = {
-            str(i): np.zeros(2) for i in range(config.num_agvs)
+            f'agv_{i}': np.zeros(2) for i in range(config.num_agvs)
         }
+        
         self.scene_objects = None
         self._validate_scene_objects()
 
