@@ -51,22 +51,36 @@ def setup_logging():
         }
 
         def format(self, record):
-            # Add colors if the level has a color defined
+            # Store the original values
+            original_levelname = record.levelname
+            original_msg = record.msg
+
+            # Apply color only to the message
             if record.levelname in self.COLORS:
-                record.levelname = f"{self.COLORS[record.levelname]}{record.levelname}{self.COLORS['RESET']}"
                 record.msg = f"{self.COLORS[record.levelname]}{record.msg}{self.COLORS['RESET']}"
-            return super().format(record)
+
+            # Format the record
+            formatted_record = super().format(record)
+
+            # Restore the original values
+            record.levelname = original_levelname
+            record.msg = original_msg
+
+            return formatted_record
 
     # Create logger
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
+
+    # Clear any existing handlers
+    logger.handlers = []
 
     # Create formatters
     console_formatter = ColorFormatter('%(levelname)s: %(message)s')
     file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
     # Console handler (with colors)
-    console_handler = logging.StreamHandler()
+    console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(console_formatter)
     console_handler.setLevel(logging.DEBUG)
     logger.addHandler(console_handler)
@@ -79,16 +93,6 @@ def setup_logging():
 
     return logger
 
-# Logging setup
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('smart_factory.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
 
 def ensure_result_dir():
     """Create result directory if it doesn't exist"""
