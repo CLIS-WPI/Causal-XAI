@@ -1,4 +1,4 @@
-#main.py
+##main.py
 import tensorflow as tf
 from config import SmartFactoryConfig
 from scene_setup import setup_scene, verify_los_paths
