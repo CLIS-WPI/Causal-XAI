@@ -303,6 +303,19 @@ def main():
         # Main simulation loop:
         for iteration in range(config.num_time_steps):
             print(f"\rSimulating step {iteration+1}/{config.num_time_steps}", end="")
+            
+            # Update AGV positions
+            agv_positions = []
+            for i in range(config.num_agvs):
+                agv_id = f'agv_{i}'  # Use consistent format
+                current_pos = scene.receivers[f'agv_{i}'].position
+                new_pos = path_manager.get_next_position(agv_id, current_pos)
+                scene.receivers[f'agv_{i}'].position = new_pos
+                agv_positions.append(new_pos)
+            
+            # Generate channel data
+            channel_generator = SmartFactoryChannel(config, scene)
+            channel_data = generate_channel(channel_generator, config)
 
             # Update packet statistics based on SNR
             performance_metrics['packet_stats']['total'] += 1
@@ -319,19 +332,6 @@ def main():
                     'timestamp': iteration,
                     'value': float(np.mean(channel_data['beam_metrics']['snr_db']))
                 })
-
-            # Update AGV positions
-            agv_positions = []
-            for i in range(config.num_agvs):
-                agv_id = f'agv_{i}'  # Use consistent format
-                current_pos = scene.receivers[f'agv_{i}'].position
-                new_pos = path_manager.get_next_position(agv_id, current_pos)
-                scene.receivers[f'agv_{i}'].position = new_pos
-                agv_positions.append(new_pos)
-            
-            # Generate channel data
-            channel_generator = SmartFactoryChannel(config, scene)
-            channel_data = generate_channel(channel_generator, config)
 
             # Get optimal beam direction based on channel conditions
             optimal_beam = beam_manager.optimize_beam_direction(
