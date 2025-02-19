@@ -1,4 +1,5 @@
 #channel_generator.py#
+import time
 import tensorflow as tf
 import numpy as np
 import sionna
@@ -11,6 +12,7 @@ import logging
 from sionna.channel.utils import subcarrier_frequencies
 from beam_manager import BeamManager
 from agv_path_manager import AGVPathManager
+from scipy.special import erfc
 # Initialize logger
 logger = logging.getLogger(__name__)
 
@@ -59,10 +61,67 @@ class SmartFactoryChannel:
             self.path_manager = AGVPathManager(config)
             self.beam_manager = BeamManager(config)
             
+            self.performance_metrics = {
+            'ber_history': [],
+            'snr_history': [],
+            'packet_stats': {
+                'total': 0,
+                'successful': 0
+                }
+                }   
+            
         except Exception as e:
             logger.error(f"Channel initialization failed: {str(e)}")
-            raise RuntimeError(f"Channel initialization failed: {str(e)}") from e
+        raise RuntimeError(f"Channel initialization failed: {str(e)}") from e
 
+    def calculate_ber(self, signal_data):
+        """
+        Calculate Bit Error Rate (BER) from signal data
+        """
+        try:
+            # Calculate SNR from channel data
+            if 'beam_metrics' in signal_data and 'snr_db' in signal_data['beam_metrics']:
+                snr_db = np.mean(signal_data['beam_metrics']['snr_db'])
+                # Convert SNR from dB to linear scale
+                snr_linear = 10**(snr_db/10)
+                # Theoretical BER calculation for QPSK modulation
+                ber = 0.5 * erfc(np.sqrt(snr_linear))
+            else:
+                ber = 1.0  # Worst case if SNR data is not available
+            
+            # Store BER history
+            self.performance_metrics['ber_history'].append({
+                'timestamp': time.time(),
+                'value': float(ber)
+            })
+            
+            return ber
+            
+        except Exception as e:
+            logger.error(f"Error calculating BER: {str(e)}")
+            return 1.0  # Return worst case BER on error
+    
+    def track_performance_metrics(self, signal_data):
+        """
+        Track all performance metrics including BER, PSR, and SNR
+        """
+        metrics = {
+            'packet_success_rate': self.calculate_psr(),
+            'ber_during_switch': self.calculate_ber(signal_data),
+            'snr_variations': self.performance_metrics['snr_history']
+        }
+        
+        return metrics
+    
+    def calculate_psr(self):
+        """
+        Calculate Packet Success Rate
+        """
+        if self.performance_metrics['packet_stats']['total'] == 0:
+            return 0.0
+        return (self.performance_metrics['packet_stats']['successful'] / 
+                self.performance_metrics['packet_stats']['total'])
+    
     def _setup_indoor_factory_params(self):
         """Setup indoor factory specific parameters"""
         try:

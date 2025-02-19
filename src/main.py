@@ -81,7 +81,7 @@ def save_channel_data(channel_data, filepath):
     """
     try:
         with h5py.File(filepath, 'w') as f:
-            # Create main groups for better organization
+            # Create main groups
             csi_group = f.create_group('csi_data')
             mobility_group = f.create_group('mobility_data')
             beam_group = f.create_group('beam_data')
@@ -107,23 +107,41 @@ def save_channel_data(channel_data, filepath):
             if 'los_conditions' in channel_data:
                 beam_group.create_dataset('los_conditions', 
                     data=tf.cast(channel_data['los_conditions'], tf.int32).numpy())
+                    
+            # Handle beam metrics with type checking and conversion
             if 'beam_metrics' in channel_data:
+                metrics_group = beam_group.create_group('beam_metrics')
                 for metric_name, metric_value in channel_data['beam_metrics'].items():
-                    beam_group.create_dataset(f'beam_metrics/{metric_name}', 
-                        data=np.array(metric_value))
+                    try:
+                        # Convert dict to JSON string if necessary
+                        if isinstance(metric_value, dict):
+                            metrics_group.attrs[metric_name] = str(metric_value)
+                        # Convert numpy array or tensor
+                        elif isinstance(metric_value, (np.ndarray, tf.Tensor)):
+                            metrics_group.create_dataset(metric_name, data=np.array(metric_value))
+                        # Convert basic numeric types
+                        elif isinstance(metric_value, (int, float, bool)):
+                            metrics_group.attrs[metric_name] = metric_value
+                        # Convert lists to numpy arrays
+                        elif isinstance(metric_value, list):
+                            metrics_group.create_dataset(metric_name, data=np.array(metric_value))
+                        else:
+                            logger.warning(f"Skipping unsupported metric type: {metric_name} ({type(metric_value)})")
+                    except Exception as e:
+                        logger.warning(f"Could not save metric {metric_name}: {str(e)}")
             
-            # Save beam adaptation data if available
+            # Save beam adaptation data
             if 'beam_adaptation' in channel_data:
-                beam_adapt_group = beam_group.create_group('adaptation')
+                adapt_group = beam_group.create_group('adaptation')
                 for key, value in channel_data['beam_adaptation'].items():
                     if value is not None:
                         if isinstance(value, dict):
-                            sub_group = beam_adapt_group.create_group(key)
-                            for sub_key, sub_value in value.items():
-                                if sub_value is not None:
-                                    sub_group.create_dataset(sub_key, data=np.array(sub_value))
+                            # Convert dict to string representation
+                            adapt_group.attrs[key] = str(value)
+                        elif isinstance(value, (np.ndarray, list)):
+                            adapt_group.create_dataset(key, data=np.array(value))
                         else:
-                            beam_adapt_group.create_dataset(key, data=np.array(value))
+                            adapt_group.attrs[key] = value
                             
             # Save temporal data
             if 'temporal_data' in channel_data:
@@ -131,7 +149,7 @@ def save_channel_data(channel_data, filepath):
                     if isinstance(value, (np.ndarray, tf.Tensor)):
                         temporal_group.create_dataset(key, data=np.array(value))
                     else:
-                        temporal_group.attrs[key] = value
+                        temporal_group.attrs[key] = str(value) if isinstance(value, dict) else value
                         
             # Add metadata
             f.attrs['creation_time'] = str(datetime.now())
@@ -139,10 +157,14 @@ def save_channel_data(channel_data, filepath):
             if 'channel_matrices' in channel_data:
                 f.attrs['matrix_shape'] = str(channel_data['channel_matrices'].shape)
             
-            # Add beam switching specific metadata
+            # Add beam switching metadata
             if 'beam_metrics' in channel_data:
-                f.attrs['avg_snr'] = float(np.mean(channel_data['beam_metrics'].get('snr_db', [0])))
-                f.attrs['num_beam_switches'] = len(channel_data.get('beam_adaptation', {}).get('beam_history', []))
+                if 'snr_db' in channel_data['beam_metrics']:
+                    snr_values = channel_data['beam_metrics']['snr_db']
+                    if isinstance(snr_values, (np.ndarray, list)):
+                        f.attrs['avg_snr'] = float(np.mean(snr_values))
+                if 'beam_history' in channel_data.get('beam_adaptation', {}):
+                    f.attrs['num_beam_switches'] = len(channel_data['beam_adaptation']['beam_history'])
             
             logger.info(f"Channel data successfully saved to: {filepath}")
             logger.debug(f"Saved data groups: {list(f.keys())}")
@@ -157,7 +179,10 @@ def main():
         # Basic setup
         print("Starting simulation...")
         logger.info("Starting smart factory beam switching simulation...")
-        result_dir = ensure_result_dir()
+        
+        # Create results directory
+        result_dir = os.path.join(os.getcwd(), 'results')
+        os.makedirs(result_dir, exist_ok=True)
         print(f"Results will be saved to: {result_dir}")
         
         tf.random.set_seed(42)
@@ -165,7 +190,6 @@ def main():
         # Initialize configuration and validate
         print("Initializing configuration...")
         config = SmartFactoryConfig()
-
         validate_config(config)
         
         # Generate scene geometry
@@ -197,15 +221,36 @@ def main():
         logger.info("Starting beam switching simulation...")
         channel_data_history = []
         
-        # main simulation loop:
+        # Create dataset file
+        dataset_file = os.path.join(result_dir, 'channel_dataset.h5')
+        
+        # Initialize performance tracking
+        performance_metrics = {
+            'beam_switches': [],
+            'packet_stats': [],
+            'ber_history': [],
+            'snr_history': []
+        }
+
+        # Add these lines:
+        switch_timing_metrics = {
+            'switch_start_time': None,
+            'switch_durations': [],
+            'packet_success_count': 0,
+            'total_packets': 0,
+            'ber_during_switch': [],
+            'snr_during_switch': []
+        }
+
+        # Main simulation loop:
         for iteration in range(config.num_time_steps):
             print(f"\rSimulating step {iteration+1}/{config.num_time_steps}", end="")
             
             # Update AGV positions
             agv_positions = []
             for i in range(config.num_agvs):
-                agv_id = str(i)  # Just use the index as ID
-                current_pos = scene.receivers[f'agv_{i}'].position  # Keep 'agv_' prefix only for scene receivers
+                agv_id = str(i)
+                current_pos = scene.receivers[f'agv_{i}'].position
                 new_pos = path_manager.get_next_position(agv_id, current_pos)
                 scene.receivers[f'agv_{i}'].position = new_pos
                 agv_positions.append(new_pos)
@@ -213,6 +258,45 @@ def main():
             # Generate channel data
             channel_generator = SmartFactoryChannel(config, scene)
             channel_data = generate_channel(channel_generator, config)
+
+            # Add these lines:
+            # Track beam switching metrics
+            if beam_manager.has_switch_occurred():
+                switch_timing_metrics['switch_start_time'] = time.time()
+                
+                # Calculate BER during switch (if available)
+                if hasattr(channel_generator, 'calculate_ber'):
+                    current_ber = channel_generator.calculate_ber(channel_data)
+                    switch_timing_metrics['ber_during_switch'].append(current_ber)
+                
+                # Track SNR during switch
+                if 'beam_metrics' in channel_data and 'snr_db' in channel_data['beam_metrics']:
+                    switch_timing_metrics['snr_during_switch'].append(
+                        np.mean(channel_data['beam_metrics']['snr_db'])
+                    )
+                
+                # Calculate switch duration if switch completed
+                if switch_timing_metrics['switch_start_time'] is not None:
+                    switch_duration = time.time() - switch_timing_metrics['switch_start_time']
+                    switch_timing_metrics['switch_durations'].append(switch_duration)
+                    switch_timing_metrics['switch_start_time'] = None
+
+            # Track packet success rate
+            switch_timing_metrics['total_packets'] += 1
+            if 'beam_metrics' in channel_data and 'snr_db' in channel_data['beam_metrics']:
+                if np.mean(channel_data['beam_metrics']['snr_db']) > config.beamforming['min_snr_threshold']:
+                    switch_timing_metrics['packet_success_count'] += 1
+            
+            # Add temporal information
+            channel_data['temporal_data'] = {
+                'timestamp': iteration,
+                'agv_positions': agv_positions
+            }
+            
+            # Save intermediate results every N steps
+            if iteration % 10 == 0:
+                intermediate_file = os.path.join(result_dir, f'channel_data_step_{iteration}.h5')
+                save_channel_data(channel_data, intermediate_file)
             
             # Log metrics every 10 steps
             if iteration % 10 == 0:
@@ -222,28 +306,48 @@ def main():
                 elif 'beam_metrics' in channel_data and 'snr_db' in channel_data['beam_metrics']:
                     avg_snr = np.mean(channel_data['beam_metrics']['snr_db'])
                     print(f"Average SNR: {avg_snr:.2f} dB")
-                else:
-                    print("SNR data not available")
             
             channel_data_history.append(channel_data)
         
         print("\nSimulation completed. Saving results...")
         
-        # Save final results
-        final_data = {
+        # Calculate final performance metrics
+        performance_summary = {
+            'beam_switching': {
+                'average_switch_time': np.mean(switch_timing_metrics['switch_durations']) if switch_timing_metrics['switch_durations'] else 0,
+                'total_switches': len(switch_timing_metrics['switch_durations']),
+                'packet_success_rate': (switch_timing_metrics['packet_success_count'] / 
+                                    switch_timing_metrics['total_packets'] if switch_timing_metrics['total_packets'] > 0 else 0),
+                'average_ber_during_switch': np.mean(switch_timing_metrics['ber_during_switch']) if switch_timing_metrics['ber_during_switch'] else 0,
+                'snr_variation_during_switch': np.std(switch_timing_metrics['snr_during_switch']) if switch_timing_metrics['snr_during_switch'] else 0
+            }
+        }
+
+        # Update final_dataset with performance metrics
+        final_dataset.update({
+            'performance_metrics': performance_summary
+        })
+
+        # Prepare final dataset
+        final_dataset = {
+            'performance_metrics': performance_summary,
             'channel_data': channel_data_history[-1],
             'beam_history': beam_manager.get_beam_history(),
             'path_data': {
                 'final_positions': {
                     agv_id: path_manager.get_current_status(agv_id)
-                    for agv_id in [f'agv_{i+1}' for i in range(config.num_agvs)]
+                    for agv_id in [str(i) for i in range(config.num_agvs)]
                 }
+            },
+            'temporal_data': {
+                'total_steps': config.num_time_steps,
+                'simulation_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
         }
         
-        results_file = os.path.join(result_dir, 'beam_switching_results.h5')
-        save_channel_data(final_data, results_file)
-        print(f"Results saved to: {results_file}")
+        # Save final dataset
+        save_channel_data(final_dataset, dataset_file)
+        print(f"Dataset saved to: {dataset_file}")
         logger.info("Simulation completed successfully")
         
     except Exception as e:

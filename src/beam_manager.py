@@ -9,14 +9,54 @@ class BeamManager:
         self.config = config
         self.current_beam = None
         self.beam_history = []
+        self.snr_history = []
+        self.switch_times = []
         self.current_channel_state = None 
         self.channel_state_history = []
-        
+        self.packet_stats = {
+            'total': 0,
+            'successful': 0,
+            'failed_during_switch': 0
+        }
+        self.current_switch_start = None
+
         # Initialize beam codebook for 16x4 array
         self.num_beams_azimuth = 16
         self.num_beams_elevation = 4
         self._initialize_beam_codebook()
-        
+
+    def log_beam_switch(self, old_beam, new_beam):
+        switch_time = time.time()
+        if self.current_switch_start is None:
+            self.current_switch_start = switch_time
+            switch_duration = switch_time - self.current_switch_start
+            self.switch_times.append({
+                'timestamp': switch_time,
+                'duration': switch_duration,
+                'old_beam': old_beam,
+                'new_beam': new_beam
+            })
+            self.current_switch_start = None
+    def update_packet_stats(self, success, during_switch=False):    
+        self.packet_stats['total'] += 1
+        if success:
+            self.packet_stats['successful'] += 1
+        elif during_switch:
+            self.packet_stats['failed_during_switch'] += 1
+            
+    def log_snr(self, snr_value):
+        self.snr_history.append({
+            'timestamp': time.time(),
+            'value': snr_value
+        })
+
+    def get_performance_metrics(self):
+        return {
+            'switch_times': self.switch_times,
+            'packet_success_rate': self.packet_stats['successful'] / max(1, self.packet_stats['total']),
+            'switch_failure_rate': self.packet_stats['failed_during_switch'] / max(1, self.packet_stats['total']),
+            'snr_history': self.snr_history
+        }        
     def _initialize_beam_codebook(self):
         """Initialize DFT-based beam codebook for 16x4 array"""
         try:
