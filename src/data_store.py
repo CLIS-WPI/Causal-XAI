@@ -2,6 +2,10 @@ import h5py
 import numpy as np
 def save_performance_metrics(metrics, filepath):
     with h5py.File(filepath, 'a') as f:
+        # Delete existing group if it exists
+        if 'performance_metrics' in f:
+            del f['performance_metrics']
+            
         perf_group = f.create_group('performance_metrics')
         
         # Save beam switching metrics
@@ -12,7 +16,7 @@ def save_performance_metrics(metrics, filepath):
                 switch['duration']
             ]))
             
-        # Save packet statistics with zero division protection
+        # Create packet_stats group only once
         packet_group = perf_group.create_group('packet_stats')
         total_packets = metrics['packet_stats']['total']
         if total_packets > 0:
@@ -31,8 +35,3 @@ def save_performance_metrics(metrics, filepath):
         snr_group = perf_group.create_group('snr_history')
         snr_data = np.array([[s['timestamp'], s['value']] for s in metrics['snr_history']])
         snr_group.create_dataset('snr_data', data=snr_data)
-        
-        # Save packet statistics
-        packet_group = perf_group.create_group('packet_stats')
-        packet_group.attrs['success_rate'] = metrics['packet_stats']['successful'] / metrics['packet_stats']['total']
-        packet_group.attrs['switch_failure_rate'] = metrics['packet_stats']['failed_during_switch'] / metrics['packet_stats']['total']
