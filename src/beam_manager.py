@@ -257,3 +257,16 @@ class BeamManager:
         except Exception as e:
             logger.error(f"Error converting angles to vector: {str(e)}")
             return tf.constant([1.0, 0.0, 0.0])  # Default direction
+    
+    #add adaptive beamforming
+    def optimize_beam_direction(self, channel_data, path_manager, obstacle_positions):
+        # Add ML-based beam prediction
+        predicted_beam = self._predict_optimal_beam(channel_data)
+        
+        # Add beam refinement
+        refined_beam = self._refine_beam(predicted_beam, channel_data)
+        
+        # Add multi-path combining
+        combined_beam = self._combine_multipath(refined_beam, channel_data)
+        
+        return combined_beam

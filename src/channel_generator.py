@@ -68,12 +68,12 @@ class SmartFactoryChannel:
         try:
             # Indoor factory mmWave parameters
             self.inf_params = {
-                'los_k_factor': 15.0,      # Rician K-factor for LOS
-                'nlos_sigma': 4.0,         # Rayleigh sigma for NLOS
-                'path_loss_exp': 1.8,      # Path loss exponent
-                'shadow_std': 3.0,         # Shadow fading std dev (dB)
-                'penetration_loss': 10.0,  # Material penetration loss (dB)
-                'reflection_coeff': 0.8     # Reflection coefficient
+                'los_k_factor': 17.0,      # Rician K-factor for LOS
+                'nlos_sigma': 3.5,         # Rayleigh sigma for NLOS
+                'path_loss_exp': 1.6,       # Optimize from 1.8
+                'shadow_std': 2.5,          # Further reduce from 3.0 # Shadow fading std dev (dB)
+                'penetration_loss': 8.0,  # Material penetration loss (dB)
+                'reflection_coeff': 0.85     # Reflection coefficient
             }
             logger.debug(f"Indoor factory parameters initialized: {self.inf_params}")
         except Exception as e:
@@ -706,7 +706,19 @@ class SmartFactoryChannel:
         except Exception as e:
             logger.error(f"Error calculating beam performance: {str(e)}")
             raise
-        
+    # In channel_generator.py, add enhanced monitoring
+    def monitor_channel_quality(self, h):
+        metrics = {
+            'snr': self._calculate_snr(h),
+            'condition_number': tf.linalg.cond(h),
+            'rank': tf.rank(h),
+            'eigenvalues': tf.linalg.eigvals(h),
+            'path_diversity': self._calculate_path_diversity(h),
+            'temporal_correlation': self._calculate_temporal_correlation(h),
+            'spatial_correlation': self._calculate_spatial_correlation(h)
+        }
+        return metrics
+    
     def save_csi_dataset(self, filepath, num_samples=None):
         """Save CSI dataset with quality monitoring"""
         import h5py

@@ -58,7 +58,7 @@ class SmartFactoryConfig:
         # AGV Configuration optimized for beam switching demonstration
         self.num_agvs = 2
         self.agv_height = 2.5
-        self.agv_speed = 8.0  # Reduced for better observation
+        self.agv_speed = 4.0  # Reduced for better observation
         self.agv_dimensions = [1.0, 1.0, 0.5]
         self.agv_orientations = [
             [0.0, 0.0, 0.0],  # Initial orientation for AGV 0
@@ -145,16 +145,16 @@ class SmartFactoryConfig:
 
         # Enhanced ray tracing configuration for better beam switching
         self.ray_tracing = {
-            'max_depth': 4,  # Reduced for faster computation
+            'max_depth': 5,  # Increase from 4
             'method': "fibonacci",
-            'num_samples': 10000,
+            'num_samples': 14000,
             'diffraction': True,
             'scattering': True,
             'los': True,
             'reflection': True,
             'ris': False,
             'scene_type': self.scene_type,
-            'scat_keep_prob': 1.0,
+            'scat_keep_prob': 0.7,  # Optimize scattering
             'edge_diffraction': True
         }
 
