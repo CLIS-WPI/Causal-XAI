@@ -1,3 +1,4 @@
+import h5py
 def save_performance_metrics(metrics, filepath):
     with h5py.File(filepath, 'a') as f:
         perf_group = f.create_group('performance_metrics')

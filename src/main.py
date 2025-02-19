@@ -3,6 +3,7 @@ import tensorflow as tf
 from config import SmartFactoryConfig
 from scene_setup import setup_scene, verify_los_paths
 import os
+import time
 import numpy as np
 from datetime import datetime
 import sionna
@@ -19,6 +20,8 @@ from beam_manager import BeamManager
 from channel_generator import SmartFactoryChannel
 from agv_path_manager import AGVPathManager
 from tensorflow import autograph
+from data_store import save_performance_metrics
+
 tf.config.run_functions_eagerly(True)
 # Environment setup
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -229,7 +232,12 @@ def main():
             'beam_switches': [],
             'packet_stats': [],
             'ber_history': [],
-            'snr_history': []
+            'snr_history': [],
+            'packet_stats': {
+                'total': 0,
+                'successful': 0,
+                'failed_during_switch': 0,
+            }
         }
 
         # Add these lines:
@@ -323,12 +331,8 @@ def main():
             }
         }
 
-        # Update final_dataset with performance metrics
-        final_dataset.update({
-            'performance_metrics': performance_summary
-        })
-
         # Prepare final dataset
+        # The final dataset preparation is correct as is:
         final_dataset = {
             'performance_metrics': performance_summary,
             'channel_data': channel_data_history[-1],
@@ -344,7 +348,10 @@ def main():
                 'simulation_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
         }
-        
+
+        # Add this line at the end to save performance metrics separately
+        save_performance_metrics(performance_metrics, os.path.join(result_dir, 'performance_metrics.h5'))
+                
         # Save final dataset
         save_channel_data(final_dataset, dataset_file)
         print(f"Dataset saved to: {dataset_file}")
