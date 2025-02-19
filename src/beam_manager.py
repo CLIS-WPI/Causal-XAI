@@ -2,11 +2,13 @@
 import tensorflow as tf
 import numpy as np
 import logging
+import time
 logger = logging.getLogger(__name__)
 
 class BeamManager:
     def __init__(self, config):
         self.config = config
+        self.last_switch_time = None  # Track when the last switch occurred
         self.current_beam = None
         self.beam_history = []
         self.snr_history = []
@@ -37,6 +39,24 @@ class BeamManager:
                 'new_beam': new_beam
             })
             self.current_switch_start = None
+    def has_switch_occurred(self):
+        """
+        Checks if a beam switch has occurred by comparing the current beam
+        configuration with the previous one in the beam history.
+        
+        Returns:
+            bool: True if a beam switch occurred, False otherwise
+        """
+        if len(self.beam_history) < 2:
+            return False
+            
+        # Convert tensors to numpy arrays for comparison
+        current = tf.cast(self.current_beam, tf.float32).numpy()
+        previous = tf.cast(self.beam_history[-2], tf.float32).numpy()
+        
+        # Compare current and previous beam configurations
+        return not np.array_equal(current, previous)
+
     def update_packet_stats(self, success, during_switch=False):    
         self.packet_stats['total'] += 1
         if success:
