@@ -19,7 +19,7 @@ from beam_manager import BeamManager
 from channel_generator import SmartFactoryChannel
 from agv_path_manager import AGVPathManager
 from tensorflow import autograph
-
+tf.config.run_functions_eagerly(True)
 # Environment setup
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
@@ -31,10 +31,6 @@ tf.config.optimizer.set_jit(True)  # Enable XLA JIT compilation
 # Silence AutoGraph warnings
 tf.autograph.set_verbosity(0)
 
-# Add this decorator to the channel generation function
-@tf.function(experimental_autograph_options=
-    tf.autograph.experimental.Feature.ALL,
-    jit_compile=True)
 def generate_channel(channel_generator, config):
     return channel_generator.generate_channel_data(config)
 

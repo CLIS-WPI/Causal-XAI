@@ -388,16 +388,8 @@ class SmartFactoryChannel:
             logger.error(f"Error in beam switching analysis: {str(e)}")
             raise
     
-    @tf.function(experimental_relax_shapes=True)
     def generate_channel_data(self, config):
         """Generate channel data using ray tracing"""
-        
-        # Initialize tensors with proper TF types
-        a = tf.zeros([0], dtype=tf.complex64)
-        tau = tf.zeros([0], dtype=tf.float32)
-        h_freq = tf.zeros([0], dtype=tf.complex64)
-        path_losses = tf.zeros([0], dtype=tf.float32)
-        
         try:
             logger.debug("=== Generating channel data ===")
             
