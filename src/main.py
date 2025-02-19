@@ -37,6 +37,48 @@ tf.autograph.set_verbosity(0)
 def generate_channel(channel_generator, config):
     return channel_generator.generate_channel_data(config)
 
+def setup_logging():
+    """Configure logging with colors and file output"""
+    # ANSI escape codes for colors
+    class ColorFormatter(logging.Formatter):
+        COLORS = {
+            'WARNING': '\033[33m',    # Yellow
+            'ERROR': '\033[31m',      # Red
+            'CRITICAL': '\033[31m',   # Red
+            'DEBUG': '\033[37m',      # Light Gray
+            'INFO': '\033[0m',        # Default
+            'RESET': '\033[0m'        # Reset
+        }
+
+        def format(self, record):
+            # Add colors if the level has a color defined
+            if record.levelname in self.COLORS:
+                record.levelname = f"{self.COLORS[record.levelname]}{record.levelname}{self.COLORS['RESET']}"
+                record.msg = f"{self.COLORS[record.levelname]}{record.msg}{self.COLORS['RESET']}"
+            return super().format(record)
+
+    # Create logger
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+
+    # Create formatters
+    console_formatter = ColorFormatter('%(levelname)s: %(message)s')
+    file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+
+    # Console handler (with colors)
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(console_formatter)
+    console_handler.setLevel(logging.DEBUG)
+    logger.addHandler(console_handler)
+
+    # File handler
+    file_handler = logging.FileHandler('smart_factory.log')
+    file_handler.setFormatter(file_formatter)
+    file_handler.setLevel(logging.DEBUG)
+    logger.addHandler(file_handler)
+
+    return logger
+
 # Logging setup
 logging.basicConfig(
     level=logging.DEBUG,
@@ -178,28 +220,31 @@ def save_channel_data(channel_data, filepath):
 
 def main():
     """Streamlined main execution focusing on beam switching"""
+    # Setup logging first with colors and file output
+    logger = setup_logging()
+    logger.info("Starting smart factory beam switching simulation...")
+
     try:
-        # Basic setup
+        # Rest of your main function code...
         print("Starting simulation...")
         logger.info("Starting smart factory beam switching simulation...")
         
         # Create results directory
         result_dir = os.path.join(os.getcwd(), 'results')
         os.makedirs(result_dir, exist_ok=True)
-        print(f"Results will be saved to: {result_dir}")
+        logger.info(f"Results will be saved to: {result_dir}")
         
         tf.random.set_seed(42)
         
         # Initialize configuration and validate
-        print("Initializing configuration...")
+        logger.info("Initializing configuration...")
         config = SmartFactoryConfig()
         validate_config(config)
         
         # Generate scene geometry
-        print("Setting up simulation environment...")
         logger.info("Setting up simulation environment...")
         ply_output_dir = os.path.join(os.path.dirname(__file__), 'meshes')
-        print(f"Generating geometries in: {ply_output_dir}")
+        logger.info(f"Generating geometries in: {ply_output_dir}")
         
         SionnaPLYGenerator.generate_factory_geometries(
             config=config,
