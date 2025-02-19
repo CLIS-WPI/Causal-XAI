@@ -434,8 +434,9 @@ class SmartFactoryChannel:
                 start_idx = i * batch_size
                 end_idx = tf.minimum((i + 1) * batch_size, num_samples)
                 
-                batch_a = tf.slice(a, [start_idx], [end_idx - start_idx])
-                batch_tau = tf.slice(tau, [start_idx], [end_idx - start_idx])
+                # Changed tf.slice to tf.gather with tf.range
+                batch_a = tf.gather(a, tf.range(start_idx, end_idx))
+                batch_tau = tf.gather(tau, tf.range(start_idx, end_idx))
                 
                 logger.debug(f"Processing batch {i//batch_size + 1}, shape: {batch_a.shape}")
                 
