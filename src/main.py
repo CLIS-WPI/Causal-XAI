@@ -23,10 +23,20 @@ from tensorflow import autograph
 # Environment setup
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
+# Configure TensorFlow and XLA
 os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices'
-os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
-# Enable XLA compatibility
-sionna.config.xla_compat = True
+tf.config.optimizer.set_jit(True)  # Enable XLA JIT compilation
+
+# Silence AutoGraph warnings
+tf.autograph.set_verbosity(0)
+
+# Add this decorator to the channel generation function
+@tf.function(experimental_autograph_options=
+    tf.autograph.experimental.Feature.ALL,
+    jit_compile=True)
+def generate_channel(channel_generator, config):
+    return channel_generator.generate_channel_data(config)
 
 # Logging setup
 logging.basicConfig(
@@ -144,9 +154,7 @@ def save_channel_data(channel_data, filepath):
     except Exception as e:
         logger.error(f"Error saving channel data to {filepath}: {str(e)}")
         raise
-@tf.function(jit_compile=True)
-def generate_channel(channel_generator, config):
-    return channel_generator.generate_channel_data(config)
+
 def main():
     """Streamlined main execution focusing on beam switching"""
     try:
@@ -208,7 +216,7 @@ def main():
             
             # Generate channel data
             channel_generator = SmartFactoryChannel(config, scene)
-            channel_data = channel_generator.generate_channel_data(config)
+            channel_data = generate_channel(channel_generator, config)
             
             # Log metrics every 10 steps
             if iteration % 10 == 0:

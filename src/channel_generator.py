@@ -388,10 +388,14 @@ class SmartFactoryChannel:
             logger.error(f"Error in beam switching analysis: {str(e)}")
             raise
     
-    @tf.function(jit_compile=True)
+    @tf.function
     def generate_channel_data(self, config):
         """Generate channel data using ray tracing"""
         try:
+            # Initialize a and tau with default values
+            a = None
+            tau = None
+            
             logger.debug("=== Generating channel data ===")
             
             # Compute paths using parameters from config
