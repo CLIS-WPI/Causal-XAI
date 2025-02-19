@@ -366,3 +366,111 @@ class BeamManager:
         combined_beam = self._combine_multipath(refined_beam, channel_data)
         
         return combined_beam
+    
+    def _predict_optimal_beam(self, channel_data):
+        """
+        Predicts optimal beam direction based on channel data
+        
+        Args:
+            channel_data: Dictionary containing channel state information
+            
+        Returns:
+            tf.Tensor: Predicted optimal beam direction
+        """
+        try:
+            # Get current channel conditions
+            if 'beam_metrics' not in channel_data:
+                return self.current_beam if self.current_beam is not None else tf.zeros([2])
+                
+            # Extract SNR information
+            snr_data = channel_data['beam_metrics'].get('snr_db', 0)
+            
+            # Get best beam from codebook based on SNR
+            best_beam_idx = tf.argmax(snr_data) if isinstance(snr_data, (tf.Tensor, np.ndarray)) else 0
+            predicted_beam = self.beam_codebook[best_beam_idx]
+            
+            logger.debug(f"Predicted optimal beam: {predicted_beam}")
+            return predicted_beam
+            
+        except Exception as e:
+            logger.error(f"Error in beam prediction: {str(e)}")
+            return self.current_beam if self.current_beam is not None else tf.zeros([2])
+
+    def _refine_beam(self, predicted_beam, channel_data):
+        """
+        Refines the predicted beam direction based on channel conditions
+        
+        Args:
+            predicted_beam: Initial beam prediction
+            channel_data: Channel state information
+            
+        Returns:
+            tf.Tensor: Refined beam direction
+        """
+        try:
+            if predicted_beam is None:
+                return self.current_beam if self.current_beam is not None else tf.zeros([2])
+                
+            # Apply refinement based on channel quality
+            if 'beam_metrics' in channel_data and 'snr_db' in channel_data['beam_metrics']:
+                current_snr = tf.reduce_mean(channel_data['beam_metrics']['snr_db'])
+                
+                # If SNR is good, make smaller adjustments
+                if current_snr > 20.0:  # Good SNR threshold
+                    refinement_factor = 0.1
+                else:
+                    refinement_factor = 0.3
+                    
+                # Apply small adjustment based on SNR
+                refined_beam = predicted_beam * (1 + refinement_factor * tf.random.normal(predicted_beam.shape, mean=0.0, stddev=0.1))
+                
+                # Ensure beam stays within valid ranges
+                refined_beam = tf.clip_by_value(refined_beam, 
+                                            clip_value_min=[-60.0, -30.0],
+                                            clip_value_max=[60.0, 30.0])
+                
+                return refined_beam
+            return predicted_beam
+            
+        except Exception as e:
+            logger.error(f"Error in beam refinement: {str(e)}")
+            return predicted_beam
+
+    def _combine_multipath(self, refined_beam, channel_data):
+        """
+        Combines multiple path contributions for final beam direction
+        
+        Args:
+            refined_beam: Refined beam direction
+            channel_data: Channel state information
+            
+        Returns:
+            tf.Tensor: Final beam direction considering multipath
+        """
+        try:
+            if refined_beam is None:
+                return self.current_beam if self.current_beam is not None else tf.zeros([2])
+                
+            # Check if we have path information
+            if 'path_data' in channel_data:
+                paths = channel_data['path_data']
+                
+                # Weight different paths based on their strength
+                path_weights = tf.nn.softmax(paths['path_powers'])
+                weighted_directions = tf.reduce_sum(paths['path_directions'] * path_weights[:, tf.newaxis], axis=0)
+                
+                # Combine with refined beam
+                alpha = 0.7  # Weight for refined beam vs multipath combination
+                combined_beam = alpha * refined_beam + (1 - alpha) * weighted_directions
+                
+                # Ensure combined beam is within valid ranges
+                combined_beam = tf.clip_by_value(combined_beam,
+                                            clip_value_min=[-60.0, -30.0],
+                                            clip_value_max=[60.0, 30.0])
+                
+                return combined_beam
+            return refined_beam
+            
+        except Exception as e:
+            logger.error(f"Error in multipath combination: {str(e)}")
+            return refined_beam
