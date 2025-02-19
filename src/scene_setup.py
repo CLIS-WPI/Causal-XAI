@@ -6,6 +6,8 @@ from sionna.rt import Scene, Transmitter, Receiver, PlanarArray
 from config import SmartFactoryConfig
 import numpy as np
 import os
+from tensorflow import autograph
+
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +20,8 @@ def _debug_object_state(obj, name):
         logger.debug(f"- Orientation: {obj.orientation.numpy()}")
     if hasattr(obj, 'dtype'):
         logger.debug(f"- dtype: {obj.dtype}")
-
+        
+@autograph.experimental.do_not_convert
 def setup_scene(config: SmartFactoryConfig):
     """
     Sets up the factory scene by:

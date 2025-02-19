@@ -4,6 +4,21 @@ import os
 
 class SmartFactoryConfig:
     """Configuration class for Smart Factory Channel Simulation using Ray Tracing"""
+
+    #class variables at the top
+    tf.config.optimizer.set_jit(True)  # Enable XLA JIT compilation
+    tf.config.optimizer.set_experimental_options({
+        'layout_optimizer': True,
+        'constant_folding': True,
+        'shape_optimization': True,
+        'remapping': True,
+        'arithmetic_optimization': True,
+        'dependency_optimization': True,
+        'loop_optimization': True,
+        'function_optimization': True,
+        'debug_stripper': True,
+    })
+
     def __init__(self):
         # Simulation parameters optimized for beam switching
         self.num_time_steps = 200  # Increased for longer observation

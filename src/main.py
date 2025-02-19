@@ -2,7 +2,6 @@
 import tensorflow as tf
 from config import SmartFactoryConfig
 from scene_setup import setup_scene, verify_los_paths
-import tensorflow as tf
 import os
 import numpy as np
 from datetime import datetime
@@ -19,10 +18,15 @@ from scene_setup import verify_geometry
 from beam_manager import BeamManager
 from channel_generator import SmartFactoryChannel
 from agv_path_manager import AGVPathManager
+from tensorflow import autograph
 
 # Environment setup
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices'
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+# Enable XLA compatibility
+sionna.config.xla_compat = True
 
 # Logging setup
 logging.basicConfig(
@@ -34,9 +38,6 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
-
-# Enable XLA compatibility
-sionna.config.xla_compat = True
 
 def ensure_result_dir():
     """Create result directory if it doesn't exist"""
@@ -143,7 +144,9 @@ def save_channel_data(channel_data, filepath):
     except Exception as e:
         logger.error(f"Error saving channel data to {filepath}: {str(e)}")
         raise
-
+@tf.function(jit_compile=True)
+def generate_channel(channel_generator, config):
+    return channel_generator.generate_channel_data(config)
 def main():
     """Streamlined main execution focusing on beam switching"""
     try:

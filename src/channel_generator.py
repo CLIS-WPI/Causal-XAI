@@ -387,7 +387,8 @@ class SmartFactoryChannel:
         except Exception as e:
             logger.error(f"Error in beam switching analysis: {str(e)}")
             raise
-
+    
+    @tf.function(jit_compile=True)
     def generate_channel_data(self, config):
         """Generate channel data using ray tracing"""
         try:
