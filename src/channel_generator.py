@@ -156,7 +156,7 @@ class SmartFactoryChannel:
             k_boltzmann = 1.380649e-23
             temperature = 290  # Room temperature in Kelvin
             bandwidth = config.subcarrier_spacing * config.num_subcarriers
-            noise_figure_db = 6  # Reduced for better performance
+            noise_figure_db = 5  # Reduced for better performance
             implementation_loss_db = 1  # Reduced for better performance
             
             logger.debug(f"Noise parameters:")
