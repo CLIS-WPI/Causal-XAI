@@ -267,8 +267,17 @@ def main():
             channel_generator = SmartFactoryChannel(config, scene)
             channel_data = generate_channel(channel_generator, config)
 
-            # Add these lines:
-            # Track beam switching metrics
+            # Get optimal beam direction based on channel conditions
+            optimal_beam = beam_manager.optimize_beam_direction(
+                channel_data, 
+                path_manager,
+                config.scene_objects.get('obstacles', [])
+            )
+
+            # Update the beam configuration
+            beam_manager.update_beam(optimal_beam)
+
+            # Now check if switch occurred
             if beam_manager.has_switch_occurred():
                 switch_timing_metrics['switch_start_time'] = time.time()
                 
