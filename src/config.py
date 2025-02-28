@@ -27,11 +27,11 @@ class SmartFactoryConfig:  # Define configuration class for smart factory simula
         self.dtype = tf.complex64  # Use complex64 data type for signal processing (real + imaginary components)
         self.real_dtype = tf.float32  # Use float32 for real-valued computations
         self.seed = 42  # Set random seed to 42 for reproducible results
-        self.bandwidth = 500e6  # 500 MHz, realistic for 140 GHz
+        self.bandwidth = 50e6  # 50 MHz, realistic for 140 GHz
         self.num_subcarriers = 64  # Define 128 subcarriers for OFDM signal
         self.subcarrier_spacing = 7.5e3  # Set subcarrier spacing to 15 kHz, typical for wireless systems
         self.scene_type = "indoor"  # Specify the simulation environment as indoor
-        self.tx_power = 30  # Set transmit power to 90 dBm for the base station
+        self.tx_power = 60  # Set transmit power to 60 dBm for the base station
         # Room dimensions remain the same
         self.room_dim = [20.0, 20.0, 5.0]  # Define room dimensions as 20m x 20m x 5m (length, width, height)
         #self.path_loss_db = 80  # Typical value for indoor factory at 28GHz ## Removed, let Ray Tracing calculate dynamically

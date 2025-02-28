@@ -55,7 +55,7 @@ This project simulates an indoor smart factory environment featuring Autonomous 
   - NLoS: Rayleigh fading
 
 ### AI Components
-
+pip install h5py numpy pandas statsmodels matplotlib networkx scikit-learn shap
 
 ## Core Functionalities
 

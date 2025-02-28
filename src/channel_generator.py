@@ -151,8 +151,7 @@ class SmartFactoryChannel:
         logger.debug(f"- Total loss: {float(total_loss):.2f} dB")
         
         return total_loss
- 
-    
+     
     def generate_channel_data(self, config):
         print("\n=== CHANNEL GENERATOR STATE ===")
         print(f"Scene transmitters exist: {hasattr(self.scene, 'transmitters')}")
@@ -242,7 +241,7 @@ class SmartFactoryChannel:
             # محاسبه path_losses به صورت ساده‌تر با NumPy
             distances_np = distances.numpy()
             carrier_freq_np = float(config.carrier_frequency)
-            path_losses_np = 20 * np.log10(distances_np + 1e-6) + 20 * np.log10(carrier_freq_np) - 147.55
+            path_losses_np = 0.7 * (20 * np.log10(distances_np + 1e-6) + 20 * np.log10(carrier_freq_np) - 147.55)
             path_losses = tf.convert_to_tensor(path_losses_np, dtype=tf.float32)
             logger.debug(f"Path losses computed directly: shape={path_losses.shape}, value={path_losses.numpy()}")
 
@@ -429,10 +428,10 @@ class SmartFactoryChannel:
                 print(f"Path losses converted to tensor: shape={path_losses.shape}, value={path_losses.numpy()}")
             logger.debug(f"Input path_losses: shape={path_losses.shape}, value={path_losses.numpy()}")
 
-            tx_power_dbm = 90.0
-            tx_antenna_gain_db = 45.0
-            rx_antenna_gain_db = 25.0
-            total_noise_power = 1e-15
+            tx_power_dbm = config.tx_power
+            tx_antenna_gain_db = config.bs_array['antenna_gain_db']
+            rx_antenna_gain_db = config.agv_array['antenna_gain_db']
+            total_noise_power = config.simulation['noise_power']
             logger.debug(f"Config parameters - TX power: {tx_power_dbm} dBm, TX gain: {tx_antenna_gain_db} dB, RX gain: {rx_antenna_gain_db} dB, Noise power: {total_noise_power:.2e} W")
             print(f"Transmit power dBm: {tx_power_dbm}, TX gain dB: {tx_antenna_gain_db}, RX gain dB: {rx_antenna_gain_db}, Noise power: {total_noise_power:.2e} W")
 
@@ -483,133 +482,6 @@ class SmartFactoryChannel:
         except Exception as e:
             logger.error(f"Error calculating SNR: {str(e)}", exc_info=True)
             raise
-
-    def generate_channel_data(self, config):
-        print("\n=== CHANNEL GENERATOR STATE ===")
-        print(f"Scene transmitters exist: {hasattr(self.scene, 'transmitters')}")
-        print(f"Number of transmitters: {len(self.scene.transmitters)}")
-        print(f"Transmitter keys: {list(self.scene.transmitters.keys())}")
-        print("==============================\n")
-        try:
-            import mitsuba
-            variant = ensure_mitsuba_variant('cuda_ad_rgb')
-            logger.debug(f"Mitsuba variant in use: {variant}")
-            if not hasattr(mitsuba, '_variant_name'):
-                logger.error("Mitsuba variant not set correctly!")
-                raise RuntimeError("Mitsuba variant not set")
-
-            logger.debug("=== Generating channel data ===")
-            logger.debug(f"Scene transmitters: {list(self.scene.transmitters.keys())}")
-            logger.debug(f"Scene receivers: {list(self.scene.receivers.keys())}")
-
-            agv_positions = self.path_manager.update_positions()
-            agv_positions = tf.convert_to_tensor(agv_positions, dtype=config.real_dtype)
-            logger.debug(f"AGV positions updated: shape={agv_positions.shape}")
-            for i in range(config.num_agvs):
-                self.scene.receivers[f'rx_agv_{i}'].position = agv_positions[i]
-                logger.debug(f"Receiver rx_agv_{i} position set to: {agv_positions[i]}")
-
-            tx_pos = list(self.scene.transmitters.values())[0].position
-            logger.debug(f"Transmitter position: {tx_pos}")
-
-            logger.debug("Starting compute_paths...")
-            paths = self.scene.compute_paths(
-                max_depth=config.ray_tracing['max_depth'],
-                method=config.ray_tracing['method'],
-                num_samples=500,
-                los=config.ray_tracing['los'],
-                reflection=config.ray_tracing['reflection'],
-                diffraction=config.ray_tracing['diffraction'],
-                scattering=config.ray_tracing['scattering'],
-                scat_keep_prob=config.ray_tracing.get('scat_keep_prob', 0.7),
-                edge_diffraction=config.ray_tracing.get('edge_diffraction', True)
-            )
-            logger.debug("compute_paths completed successfully")
-
-            a, tau = paths.cir()
-            a = tf.convert_to_tensor(a, dtype=tf.complex64)
-            tau = tf.convert_to_tensor(tau, dtype=tf.float32)
-            logger.debug(f"CIR shape: a={a.shape}, tau={tau.shape}")
-
-            reflection_mask = tf.logical_not(tf.cast(paths.LOS, tf.bool))
-            a = tf.where(reflection_mask, a * self.inf_params['reflection_coeff'], a)
-            los_conditions = tf.cast(paths.LOS, tf.bool)
-            if tf.size(los_conditions) == 1:
-                los_conditions = tf.tile([los_conditions], [config.num_agvs])
-            logger.debug(f"LOS conditions: shape={los_conditions.shape}")
-
-            for i in range(config.num_agvs):
-                if los_conditions[i]:
-                    a = self._apply_rician_fading(a, self.inf_params['los_k_factor'], i)
-                else:
-                    a = self._apply_rayleigh_fading(a, self.inf_params['nlos_sigma'], i)
-
-            path_powers = tf.reduce_mean(tf.abs(a)**2, axis=-1)
-            direction_vectors = agv_positions - tx_pos
-            magnitude = tf.norm(direction_vectors, axis=-1)
-            theta = tf.math.acos(direction_vectors[..., 2] / (magnitude + tf.keras.backend.epsilon()))
-            phi = tf.math.atan2(direction_vectors[..., 1], direction_vectors[..., 0])
-            path_directions = tf.stack([theta, phi], axis=-1)
-            logger.debug(f"Path powers: shape={path_powers.shape}")
-            logger.debug(f"Path directions: shape={path_directions.shape}")
-
-            frequencies = subcarrier_frequencies(
-                num_subcarriers=config.num_subcarriers,
-                subcarrier_spacing=config.subcarrier_spacing
-            )
-            logger.debug(f"Frequencies: shape={frequencies.shape}")
-
-            h_freq = cir_to_ofdm_channel(frequencies, a, tau, normalize=True)
-            logger.debug(f"h_freq initial shape: {h_freq.shape}")
-            h_freq = tf.squeeze(h_freq, axis=[0, 3, 5])
-            logger.debug(f"h_freq after squeeze: shape={h_freq.shape}")
-            h_freq = tf.reduce_mean(h_freq, axis=[1, 2])
-            logger.debug(f"h_freq after reducing antennas and paths: shape={h_freq.shape}")
-            h_freq = tf.ensure_shape(h_freq, [config.num_agvs, config.num_subcarriers])
-            logger.debug(f"h_freq final shape: {h_freq.shape}")
-
-            distances = tf.norm(agv_positions - tx_pos, axis=-1)
-            logger.debug(f"Distances computed: shape={distances.shape}, value={distances.numpy()}")
-            logger.debug(f"Carrier frequency: {config.carrier_frequency}")
-            # محاسبه path_losses با NumPy
-            distances_np = distances.numpy()
-            carrier_freq_np = float(config.carrier_frequency)
-            path_losses_np = 20 * np.log10(distances_np + 1e-6) + 20 * np.log10(carrier_freq_np) - 147.55
-            path_losses = tf.convert_to_tensor(path_losses_np, dtype=tf.float32)
-            logger.debug(f"Path losses computed with NumPy: shape={path_losses.shape}, value={path_losses.numpy()}")
-
-            path_losses_linear = tf.pow(10.0, -path_losses / 10.0)
-            path_losses_linear = tf.ensure_shape(path_losses_linear, [config.num_agvs])
-            h_freq = h_freq * tf.cast(path_losses_linear[:, tf.newaxis], tf.complex64)
-            logger.debug(f"Path losses linear: shape={path_losses_linear.shape}")
-
-            snr_metrics = self.calculate_snr(h_freq, config, path_losses)
-            los_conditions = tf.cast(paths.LOS, tf.int32)
-            if tf.size(los_conditions) == 1:
-                los_conditions = tf.tile([los_conditions], [config.num_agvs])
-            logger.debug(f"SNR metrics: average_snr={snr_metrics['average_snr']}, snr_db shape={snr_metrics['beam_metrics']['snr_db'].shape}")
-
-            channel_data = {
-                'channel_matrices': h_freq,
-                'path_delays': tau,
-                'los_conditions': los_conditions,
-                'agv_positions': agv_positions,
-                'path_losses': path_losses,
-                'beam_metrics': {
-                    'snr_db': snr_metrics['beam_metrics']['snr_db'],
-                    'beam_directions': self.beam_manager.get_current_beams()
-                },
-                'path_data': {
-                    'path_powers': path_powers,
-                    'path_directions': path_directions
-                }
-            }
-            logger.debug(f"Channel data keys: {channel_data.keys()}")
-            return channel_data
-
-        except Exception as e:
-            logger.error(f"Error in channel data generation: {str(e)}", exc_info=True)
-            return None
 
     def track_los_nlos_paths(self):
             try:
