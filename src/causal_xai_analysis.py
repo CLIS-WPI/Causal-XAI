@@ -178,6 +178,26 @@ class CausalXaiAnalysis:
         plt.close()
         logger.info(f"SHAP plot saved to {self.sim_file.parent / 'shap_summary.png'}")
 
+    def build_causal_graph(self):
+        """Build and visualize the causal graph."""
+        G = nx.DiGraph()
+        G.add_nodes_from(['O', 'M', 'B', 'P', 'S'])
+        G.add_edges_from([
+            ('O', 'M'), ('O', 'B'),  # Obstacle effects
+            ('M', 'B'),              # SNR effect
+            ('P', 'M'), ('P', 'B'),  # Position effects 
+            ('S', 'M'), ('S', 'B')   # System decision effects
+        ])
+        
+        plt.figure(figsize=(8, 6))
+        pos = nx.spring_layout(G)
+        nx.draw(G, pos, with_labels=True, node_color='lightblue', node_size=2000, font_size=12, font_weight='bold', arrows=True)
+        plt.title("Causal DAG for Beamforming")
+        plt.savefig(self.sim_file.parent / 'causal_graph.png')
+        plt.close()
+        logger.info(f"Causal graph saved to {self.sim_file.parent / 'causal_graph.png'}")
+        return G
+
 if __name__ == "__main__":
     try:
         # File paths
@@ -192,10 +212,11 @@ if __name__ == "__main__":
             # Load and analyze steps
             analysis.load_all_steps()
 
-            # Plot causal effects and perform XAI
+            # Plot causal effects, perform XAI, and build causal graph
             if analysis.step_results:
                 analysis.plot_effects_over_steps()
                 analysis.xai_analysis()
+                analysis.build_causal_graph()  # Added to generate the DAG visualization
 
                 # Print summary
                 logger.info("\nSummary of Causal Effects Across Steps:")
