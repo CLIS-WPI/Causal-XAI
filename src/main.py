@@ -1,5 +1,5 @@
 #main.py
-#t the very top of main.py (before all imports)
+#tttt the very top of main.py (before all imports)
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
