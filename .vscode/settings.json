@@ -1,0 +1,10 @@
+{
+  "python.defaultInterpreterPath": "/home/tanglab/miniconda3/envs/causalxai/bin/python",
+  "python.envFile": "${workspaceFolder}/.env",
+  "terminal.integrated.env.linux": {
+    "PYTHONPATH": "${env:PYTHONPATH}:${workspaceFolder}"
+  },
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}"
+  ]
+}
