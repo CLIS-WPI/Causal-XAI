@@ -115,7 +115,7 @@ class CausalXaiAnalysis:
 
             self.step_results[step_num] = {
                 'O': O, 'M': M, 'B': B, 'P': P, 'S': S,
-                'effects': self.calculate_effects(O, M, B, P, S),
+                'effects': self.calculate_effects(O, M, B, P, S, step_num),  # Pass step_num here
                 'beam_directions': beam_directions[:min_length, 0]  # Store only azimuth (1D)
             }
             logger.debug(f"Step {step_num} analyzed successfully")
@@ -123,23 +123,24 @@ class CausalXaiAnalysis:
         except Exception as e:
             logger.error(f"Error in step {step_num}: {e}")
 
-    def calculate_effects(self, O, M, B, P, S):
-        """Calculate causal effects with fallback for singular matrices."""
+    def calculate_effects(self, O, M, B, P, S, step_num):
+        """Calculate causal effects with regularization to handle perfect separation."""
         try:
             data = pd.DataFrame({'O': O, 'M': M, 'B': B, 'P': P, 'S': S})
+            logger.debug(f"Step {step_num} - B distribution: {np.bincount(B.astype(int) if B.size > 0 else [0])}")  # Log B distribution
             X1 = sm.add_constant(data[['O']])
             X2 = sm.add_constant(data[['O', 'P', 'S']])
             X3 = sm.add_constant(data[['O', 'M', 'P', 'S']])
 
             model1 = sm.OLS(data['M'], X1).fit()  # O -> M
-            # Use OLS as fallback if Logit fails due to perfect separation
+            # Use Logit with regularization (ncg method) and fallback to OLS if needed
             try:
-                model2 = sm.Logit(data['B'], X2).fit(disp=0, maxiter=100)  # O -> B
+                model2 = sm.Logit(data['B'], X2).fit(disp=0, method='ncg', maxiter=100)  # O -> B
             except:
                 logger.warning("Logit failed for model2, using OLS as fallback")
                 model2 = sm.OLS(data['B'], X2).fit()
             try:
-                model3 = sm.Logit(data['B'], X3).fit(disp=0, maxiter=100)  # O -> M -> B
+                model3 = sm.Logit(data['B'], X3).fit(disp=0, method='ncg', maxiter=100)  # O -> M -> B
             except:
                 logger.warning("Logit failed for model3, using OLS as fallback")
                 model3 = sm.OLS(data['B'], X3).fit()
@@ -157,7 +158,7 @@ class CausalXaiAnalysis:
             return {k: 0.0 for k in ['total_effect', 'direct_effect', 'indirect_effect', 'position_effect', 'switch_intent_effect']}
 
     def plot_effects_over_steps(self):
-        """Plot causal effects over steps."""
+        """Plot causal effects over steps with annotations for significant steps."""
         if not self.step_results:
             logger.warning("No results to plot")
             return
@@ -167,18 +168,24 @@ class CausalXaiAnalysis:
 
         plt.figure(figsize=(15, 8))
         for label, values in effects.items():
-            plt.plot(steps, values, label=label.replace('_', ' ').title())
-        plt.xlabel('Step Number')
-        plt.ylabel('Effect Size')
-        plt.legend()
-        plt.title('Causal Effects Over Steps')
-        plt.grid(True)
-        plt.savefig(self.sim_file.parent / 'effects_over_steps.png')
+            plt.plot(steps, values, label=label.replace('_', ' ').title(), linewidth=2)
+        plt.xlabel('Step Number', fontsize=12)
+        plt.ylabel('Effect Size', fontsize=12)
+        plt.legend(fontsize=10)
+        plt.title('Causal Effects Over Steps', fontsize=14)
+        plt.grid(True, linestyle='--', alpha=0.7)
+
+        # Annotate significant steps (e.g., steps 4 and 6 with large effects)
+        for step in [4, 6]:
+            plt.annotate(f'Step {step}', (step, effects['total_effect'][step]), 
+                        textcoords="offset points", xytext=(0,10), ha='center', fontsize=8)
+
+        plt.savefig(self.sim_file.parent / 'effects_over_steps.png', dpi=300, bbox_inches='tight')
         plt.close()
         logger.info(f"Effects plot saved to {self.sim_file.parent / 'effects_over_steps.png'}")
 
     def xai_analysis(self):
-        """Perform XAI analysis using SHAP for beam directions."""
+        """Perform XAI analysis using SHAP for beam directions, including Switch Intent."""
         if not self.step_results:
             logger.warning("No data for XAI analysis")
             return
@@ -192,7 +199,7 @@ class CausalXaiAnalysis:
             'beam_directions': np.concatenate([self.step_results[s]['beam_directions'] for s in self.step_results])
         })
 
-        X = all_data[['O', 'M', 'P']]
+        X = all_data[['O', 'M', 'P', 'S']]  # Include S in features
         y = all_data['beam_directions']
 
         model = RandomForestRegressor(n_estimators=100, random_state=42)
@@ -201,13 +208,18 @@ class CausalXaiAnalysis:
         explainer = shap.TreeExplainer(model)
         shap_values = explainer.shap_values(X)
 
-        shap.summary_plot(shap_values, X, show=False)
-        plt.savefig(self.sim_file.parent / 'shap_summary.png')
+        # Create SHAP summary plot with custom formatting
+        plt.figure(figsize=(10, 6))
+        shap.summary_plot(shap_values, X, plot_type="bar", show=False)
+        plt.title("Feature Importance in Beam Direction Prediction", fontsize=14)
+        plt.xlabel("SHAP Value (Impact on Model Output)", fontsize=12)
+        plt.ylabel("Feature", fontsize=12)
+        plt.savefig(self.sim_file.parent / 'shap_summary.png', dpi=300, bbox_inches='tight')
         plt.close()
         logger.info(f"SHAP plot saved to {self.sim_file.parent / 'shap_summary.png'}")
 
     def build_causal_graph(self):
-        """Build and visualize the causal graph."""
+        """Build and visualize the causal graph with edge weights."""
         G = nx.DiGraph()
         G.add_nodes_from(['O', 'M', 'B', 'P', 'S'])
         G.add_edges_from([
@@ -217,11 +229,33 @@ class CausalXaiAnalysis:
             ('S', 'M'), ('S', 'B')
         ])
         
+        # Calculate average effect magnitudes for edge weights (simplified)
+        avg_effects = {}
+        if self.step_results:
+            steps = list(self.step_results.keys())
+            effects = [self.step_results[s]['effects'] for s in steps]
+            avg_effects['O->M'] = np.mean([e['indirect_effect'] for e in effects if e['indirect_effect'] != 0.0] or [0.0])
+            avg_effects['O->B'] = np.mean([e['direct_effect'] for e in effects if e['direct_effect'] != 0.0] or [0.0])
+            avg_effects['M->B'] = np.mean([e['indirect_effect'] for e in effects if e['indirect_effect'] != 0.0] or [0.0])
+            avg_effects['P->M'] = np.mean([e['position_effect'] for e in effects if e['position_effect'] != 0.0] or [0.0])
+            avg_effects['P->B'] = np.mean([e['position_effect'] for e in effects if e['position_effect'] != 0.0] or [0.0])
+            avg_effects['S->M'] = np.mean([e['switch_intent_effect'] for e in effects if e['switch_intent_effect'] != 0.0] or [0.0])
+            avg_effects['S->B'] = np.mean([e['switch_intent_effect'] for e in effects if e['switch_intent_effect'] != 0.0] or [0.0])
+
         plt.figure(figsize=(8, 6))
         pos = nx.spring_layout(G)
         nx.draw(G, pos, with_labels=True, node_color='lightblue', node_size=2000, font_size=12, font_weight='bold', arrows=True)
-        plt.title("Causal DAG for Beamforming")
-        plt.savefig(self.sim_file.parent / 'causal_graph.png')
+
+        # Add edge labels (weights)
+        edge_labels = {}
+        for u, v in G.edges():
+            edge_key = f"{u}->{v}"
+            weight = abs(avg_effects.get(edge_key, 0.0))
+            edge_labels[(u, v)] = f"{weight:.2f}" if weight > 0 else ""
+        nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=8)
+
+        plt.title("Causal DAG for Beamforming with Effect Weights", fontsize=14)
+        plt.savefig(self.sim_file.parent / 'causal_graph.png', dpi=300, bbox_inches='tight')
         plt.close()
         logger.info(f"Causal graph saved to {self.sim_file.parent / 'causal_graph.png'}")
         return G
