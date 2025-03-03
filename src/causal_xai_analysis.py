@@ -27,19 +27,40 @@ class CausalXaiAnalysis:
         logger.info(f"Validating file: {file_path}")
         try:
             with h5py.File(file_path, 'r') as f:
-                logger.info(f"Keys: {list(f.keys())}")
+                logger.info(f"Top-level keys: {list(f.keys())}")
                 for key in f.keys():
                     if isinstance(f[key], h5py.Group):
                         subkeys = list(f[key].keys())
                         logger.info(f"Group {key}: {subkeys}")
-                        for subkey in subkeys:  # Use .keys() explicitly
-                            data = f[key][subkey][()]
-                            logger.info(f"  {subkey}: shape={data.shape}, dtype={data.dtype}, min={np.min(data)}, max={np.max(data)}")
-                            if np.any(np.isnan(data)) or np.any(np.isinf(data)):
-                                logger.warning(f"  {subkey} contains NaN or Inf values!")
+                        for subkey in subkeys:
+                            subgroup = f[key][subkey]
+                            if isinstance(subgroup, h5py.Group):
+                                logger.info(f"  Subgroup {subkey}: {list(subgroup.keys())}")
+                                for subsubkey in subgroup.keys():
+                                    data = subgroup[subsubkey][()]
+                                    logger.info(f"    {subsubkey}: shape={data.shape}, dtype={data.dtype}")
+                                    if data.size > 0:
+                                        logger.info(f"    {subsubkey}: min={np.min(data)}, max={np.max(data)}")
+                                    else:
+                                        logger.warning(f"    {subsubkey} is empty (size=0)")
+                                    if data.size > 0 and (np.any(np.isnan(data)) or np.any(np.isinf(data))):
+                                        logger.warning(f"    {subsubkey} contains NaN or Inf values!")
+                            else:
+                                data = subgroup[()]
+                                logger.info(f"  {subkey}: shape={data.shape}, dtype={data.dtype}")
+                                if data.size > 0:
+                                    logger.info(f"  {subkey}: min={np.min(data)}, max={np.max(data)}")
+                                else:
+                                    logger.warning(f"  {subkey} is empty (size=0)")
+                                if data.size > 0 and (np.any(np.isnan(data)) or np.any(np.isinf(data))):
+                                    logger.warning(f"  {subkey} contains NaN or Inf values!")
                     else:
                         data = f[key][()]
-                        logger.info(f"{key}: shape={data.shape}, dtype={data.dtype}, min={np.min(data)}, max={np.max(data)}")
+                        logger.info(f"Dataset {key}: shape={data.shape}, dtype={data.dtype}")
+                        if data.size > 0:
+                            logger.info(f"Dataset {key}: min={np.min(data)}, max={np.max(data)}")
+                        else:
+                            logger.warning(f"Dataset {key} is empty (size=0)")
             return True
         except Exception as e:
             logger.error(f"Error validating {file_path}: {e}")
@@ -65,21 +86,18 @@ class CausalXaiAnalysis:
         """Analyze a single step from the HDF5 file."""
         try:
             step_group = h5_file[f'step_{step_num}']
-            # Validate required data
             required = ['mobility_data/agv_positions', 'mobility_data/los_conditions', 'beam_data/snr_db', 'beam_data/beam_directions']
             for r in required:
                 if r not in step_group:
                     logger.warning(f"Missing {r} in step {step_num}")
                     return
 
-            # Extract data
             agv_positions = step_group['mobility_data/agv_positions'][()]
             los_conditions = step_group['mobility_data/los_conditions'][()]
             snr = step_group['beam_data/snr_db'][()]
             beam_directions = step_group['beam_data/beam_directions'][()]
             switch_reason = step_group['beam_data'].attrs.get('switch_reason', 'None')
 
-            # Compute beam changes (B)
             if step_num == 0:
                 B = np.zeros(len(agv_positions))
             else:
@@ -87,21 +105,18 @@ class CausalXaiAnalysis:
                 prev_beams = prev_step['beam_data/beam_directions'][()]
                 B = np.any(beam_directions != prev_beams, axis=1).astype(np.float32)
 
-            # Define variables
-            O = np.array(los_conditions == 0, dtype=np.float32)  # 1 for NLoS
-            M = np.array(snr, dtype=np.float32)  # SNR as mediator
-            P = np.linalg.norm(agv_positions[:, :2], axis=1)  # Distance from origin
+            O = np.array(los_conditions == 0, dtype=np.float32)
+            M = np.array(snr, dtype=np.float32)
+            P = np.linalg.norm(agv_positions[:, :2], axis=1)
             S = np.array([1 if 'switch' in switch_reason.lower() else 0] * len(agv_positions), dtype=np.float32)
 
-            # Ensure compatible shapes
             min_length = min(len(O), len(M), len(B), len(P), len(S))
             O, M, B, P, S = O[:min_length], M[:min_length], B[:min_length], P[:min_length], S[:min_length]
 
-            # Store results
             self.step_results[step_num] = {
                 'O': O, 'M': M, 'B': B, 'P': P, 'S': S,
                 'effects': self.calculate_effects(O, M, B, P, S),
-                'beam_directions': beam_directions[:min_length]
+                'beam_directions': beam_directions[:min_length, 0]  # Store only azimuth (1D)
             }
             logger.debug(f"Step {step_num} analyzed successfully")
 
@@ -109,7 +124,7 @@ class CausalXaiAnalysis:
             logger.error(f"Error in step {step_num}: {e}")
 
     def calculate_effects(self, O, M, B, P, S):
-        """Calculate causal effects."""
+        """Calculate causal effects with fallback for singular matrices."""
         try:
             data = pd.DataFrame({'O': O, 'M': M, 'B': B, 'P': P, 'S': S})
             X1 = sm.add_constant(data[['O']])
@@ -117,8 +132,17 @@ class CausalXaiAnalysis:
             X3 = sm.add_constant(data[['O', 'M', 'P', 'S']])
 
             model1 = sm.OLS(data['M'], X1).fit()  # O -> M
-            model2 = sm.Logit(data['B'], X2).fit(disp=0)  # O -> B
-            model3 = sm.Logit(data['B'], X3).fit(disp=0)  # O -> M -> B
+            # Use OLS as fallback if Logit fails due to perfect separation
+            try:
+                model2 = sm.Logit(data['B'], X2).fit(disp=0, maxiter=100)  # O -> B
+            except:
+                logger.warning("Logit failed for model2, using OLS as fallback")
+                model2 = sm.OLS(data['B'], X2).fit()
+            try:
+                model3 = sm.Logit(data['B'], X3).fit(disp=0, maxiter=100)  # O -> M -> B
+            except:
+                logger.warning("Logit failed for model3, using OLS as fallback")
+                model3 = sm.OLS(data['B'], X3).fit()
 
             effects = {
                 'total_effect': float(model2.params['O']),
@@ -159,20 +183,24 @@ class CausalXaiAnalysis:
             logger.warning("No data for XAI analysis")
             return
 
-        # Prepare data for all steps
-        all_data = pd.concat([pd.DataFrame(self.step_results[s]) for s in self.step_results], ignore_index=True)
-        X = all_data[['O', 'M', 'P']]  # Features: blockage, SNR, position
-        y = all_data['beam_directions'].apply(lambda x: x[0])  # Predict first beam angle (azimuth)
+        all_data = pd.DataFrame({
+            'O': np.concatenate([self.step_results[s]['O'] for s in self.step_results]),
+            'M': np.concatenate([self.step_results[s]['M'] for s in self.step_results]),
+            'B': np.concatenate([self.step_results[s]['B'] for s in self.step_results]),
+            'P': np.concatenate([self.step_results[s]['P'] for s in self.step_results]),
+            'S': np.concatenate([self.step_results[s]['S'] for s in self.step_results]),
+            'beam_directions': np.concatenate([self.step_results[s]['beam_directions'] for s in self.step_results])
+        })
 
-        # Train a simple model
+        X = all_data[['O', 'M', 'P']]
+        y = all_data['beam_directions']
+
         model = RandomForestRegressor(n_estimators=100, random_state=42)
         model.fit(X, y)
 
-        # SHAP analysis
         explainer = shap.TreeExplainer(model)
         shap_values = explainer.shap_values(X)
 
-        # Plot SHAP summary
         shap.summary_plot(shap_values, X, show=False)
         plt.savefig(self.sim_file.parent / 'shap_summary.png')
         plt.close()
@@ -183,10 +211,10 @@ class CausalXaiAnalysis:
         G = nx.DiGraph()
         G.add_nodes_from(['O', 'M', 'B', 'P', 'S'])
         G.add_edges_from([
-            ('O', 'M'), ('O', 'B'),  # Obstacle effects
-            ('M', 'B'),              # SNR effect
-            ('P', 'M'), ('P', 'B'),  # Position effects 
-            ('S', 'M'), ('S', 'B')   # System decision effects
+            ('O', 'M'), ('O', 'B'),
+            ('M', 'B'),
+            ('P', 'M'), ('P', 'B'),
+            ('S', 'M'), ('S', 'B')
         ])
         
         plt.figure(figsize=(8, 6))
@@ -200,25 +228,19 @@ class CausalXaiAnalysis:
 
 if __name__ == "__main__":
     try:
-        # File paths
         sim_file_path = "/home/tanglab/Desktop/Causal-XAI/results/simulation_data.h5"
         perf_file_path = "/home/tanglab/Desktop/Causal-XAI/results/performance_metrics.h5"
 
-        # Initialize analysis
         analysis = CausalXaiAnalysis(sim_file_path, perf_file_path)
 
-        # Validate files
         if analysis.validate_hdf5(sim_file_path) and analysis.validate_hdf5(perf_file_path):
-            # Load and analyze steps
             analysis.load_all_steps()
 
-            # Plot causal effects, perform XAI, and build causal graph
             if analysis.step_results:
                 analysis.plot_effects_over_steps()
                 analysis.xai_analysis()
-                analysis.build_causal_graph()  # Added to generate the DAG visualization
+                analysis.build_causal_graph()
 
-                # Print summary
                 logger.info("\nSummary of Causal Effects Across Steps:")
                 for step, results in analysis.step_results.items():
                     effects = results['effects']
