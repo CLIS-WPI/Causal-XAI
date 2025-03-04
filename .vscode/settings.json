@@ -1,8 +1,15 @@
 {
   "python.defaultInterpreterPath": "/home/tanglab/miniconda3/envs/causalxai/bin/python",
   "python.envFile": "${workspaceFolder}/.env",
+  "terminal.integrated.defaultProfile.linux": "bash",
+  "terminal.integrated.profiles.linux": {
+    "bash": {
+      "path": "bash",
+      "args": ["-i"]
+    }
+  },
   "terminal.integrated.env.linux": {
-    "PYTHONPATH": "${env:PYTHONPATH}:${workspaceFolder}"
+    "CONDA_DEFAULT_ENV": "causalxai"
   },
   "python.analysis.extraPaths": [
     "${workspaceFolder}"

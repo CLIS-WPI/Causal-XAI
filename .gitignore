@@ -2,7 +2,11 @@
 
 # Ignore virtual environments
 sionna_env/
-
+cudnn-linux-x86_64-8.9.7.29_cuda12-archive
+drjit
+plugins
+NVIDIA-OptiX-SDK-8.1.0-linux64-x86_64
+NVIDIA-OptiX-SDK-9.0.0-linux64-x86_64
 # Ignore Python cache
 __pycache__/
 *.pyc
@@ -20,3 +24,8 @@ __pycache__/
 *.jsonsrc/cudnn-linux-x86_64-8.9.7.29_cuda12-archive/
 *.so
 *.a
+*.run
+*.deb
+*.sh
+*.xz
+*.json

@@ -33,6 +33,20 @@ if gpus:
         print('Number of GPUs available:', len(gpus))
         print('GPUs:', gpus)
         tf.keras.mixed_precision.set_global_policy('mixed_float16')
+        
+        # Clear GPU memory using TensorFlow instead of PyTorch
+        tf.keras.backend.clear_session()
+        import gc
+        gc.collect()
+        
+        # Optional: Force garbage collection on GPU
+        try:
+            # Only if running on Linux
+            import subprocess
+            subprocess.run('nvidia-smi -r', shell=True, check=False)
+        except:
+            pass
+            
     except RuntimeError as e:
         print(e)
 
@@ -131,26 +145,43 @@ def validate_config(config):
 def cleanup():
     tf.keras.backend.clear_session()
     try:
-        current_strategy = tf.distribute.get_strategy()
-        logger.debug(f"Current strategy type: {type(current_strategy)}")
-        logger.debug(f"Strategy stack before cleanup: {getattr(current_strategy, '_distribution_strategy_stack', 'No stack attribute')}")
-        if isinstance(current_strategy, tf.distribute.MirroredStrategy):
-            stack = getattr(current_strategy, '_distribution_strategy_stack', [])
-            logger.debug(f"Strategy stack content: {stack}")
-            if stack:
-                while stack:  # پاک‌سازی کامل استک
-                    stack.pop()
-                    logger.debug("Popped strategy stack item")
-            else:
-                logger.warning("Strategy stack is empty during cleanup - Attempting to reset")
-                # ریست کردن استراتژی با تنظیم مجدد
+        # Get the current TensorFlow version
+        tf_version = tf.__version__
+        
+        # Try to access the current strategy
+        try:
+            current_strategy = tf.distribute.get_strategy()
+            logger.debug(f"Current strategy type: {type(current_strategy)}")
+            
+            # Check for the _distribution_strategy_stack attribute
+            if hasattr(current_strategy, '_distribution_strategy_stack'):
+                stack = current_strategy._distribution_strategy_stack
+                logger.debug(f"Strategy stack content: {stack}")
+                
+                # Use safer approach to clear stack
+                while len(stack) > 0:
+                    try:
+                        stack.pop()
+                    except (IndexError, AttributeError):
+                        break
+            
+            # Only do this for newer TF versions that have this API
+            if hasattr(tf.distribute, 'experimental_reset_distribution_strategy'):
                 tf.distribute.experimental_reset_distribution_strategy()
-        else:
-            logger.warning("No active MirroredStrategy found during cleanup - Attempting to reset")
-            tf.distribute.experimental_reset_distribution_strategy()
+                logger.debug("Distribution strategy reset successfully")
+            else:
+                logger.info("TensorFlow version doesn't support explicit strategy reset")
+                
+        except (AttributeError, ValueError) as e:
+            logger.warning(f"Could not access current strategy: {str(e)}")
+            
     except Exception as e:
         logger.error(f"Strategy cleanup error: {str(e)}")
-        raise
+        # Don't re-raise, just log - this is cleanup code
+        
+    # Force garbage collection
+    import gc
+    gc.collect()
 
 def safe_to_numpy(data):
     return data.numpy() if isinstance(data, tf.Tensor) else data
@@ -429,10 +460,11 @@ def main():
     except Exception as e:
         print(f"Error during simulation: {str(e)}")
         logger.error(f"Simulation failed: {str(e)}", exc_info=True)
-        cleanup()
+        
         raise
     finally:
         logger.debug("Final cleanup - Checking strategy status: {tf.distribute.has_strategy()}")
+        cleanup()
         logger.info("Simulation finished, cleaning up strategy scope")
 if __name__ == "__main__":
     main()

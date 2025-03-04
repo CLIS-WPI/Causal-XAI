@@ -169,9 +169,9 @@ class SmartFactoryConfig:  # Define configuration class for smart factory simula
 
         # Enhanced ray tracing configuration for better beam switching
         self.ray_tracing = {  # Configure ray tracing parameters
-            'max_depth': 4,  # Set maximum reflection depth to 5 for detailed paths
+            'max_depth': 2,  # Set maximum reflection depth to 5 for detailed paths
             'method': "fibonacci",  # Use Fibonacci sampling for ray distribution
-            'num_samples': 750,  # Set 250 rays for high tracing accuracy
+            'num_samples': 500,  # Set 250 rays for high tracing accuracy
             'diffraction': True,  # Enable diffraction effects
             'scattering': True,  # Enable scattering effects
             'los': True,  # Enable line-of-sight paths
