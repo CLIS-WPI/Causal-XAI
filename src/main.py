@@ -39,6 +39,9 @@ if gpus:
 strategy = tf.distribute.MirroredStrategy()
 print(f'Number of devices: {strategy.num_replicas_in_sync}')
 
+logger.debug(f"Initializing MirroredStrategy - Number of devices: {strategy.num_replicas_in_sync}")
+logger.debug(f"Strategy scope active: {hasattr(strategy, '_scope')}")  # بررسی وضعیت scope
+
 # Enable XLA JIT compilation
 tf.config.optimizer.set_jit(True)
 tf.config.optimizer.set_experimental_options({
@@ -129,16 +132,25 @@ def cleanup():
     tf.keras.backend.clear_session()
     try:
         current_strategy = tf.distribute.get_strategy()
+        logger.debug(f"Current strategy type: {type(current_strategy)}")
+        logger.debug(f"Strategy stack before cleanup: {getattr(current_strategy, '_distribution_strategy_stack', 'No stack attribute')}")
         if isinstance(current_strategy, tf.distribute.MirroredStrategy):
             stack = getattr(current_strategy, '_distribution_strategy_stack', [])
+            logger.debug(f"Strategy stack content: {stack}")
             if stack:
-                stack.pop()
+                while stack:  # پاک‌سازی کامل استک
+                    stack.pop()
+                    logger.debug("Popped strategy stack item")
             else:
-                logger.warning("No distribution strategy stack to pop during cleanup")
+                logger.warning("Strategy stack is empty during cleanup - Attempting to reset")
+                # ریست کردن استراتژی با تنظیم مجدد
+                tf.distribute.experimental_reset_distribution_strategy()
         else:
-            logger.warning("No active MirroredStrategy found during cleanup")
-    except (RuntimeError, IndexError, AttributeError) as e:
-        logger.warning(f"Strategy scope cleanup failed: {str(e)}")
+            logger.warning("No active MirroredStrategy found during cleanup - Attempting to reset")
+            tf.distribute.experimental_reset_distribution_strategy()
+    except Exception as e:
+        logger.error(f"Strategy cleanup error: {str(e)}")
+        raise
 
 def safe_to_numpy(data):
     return data.numpy() if isinstance(data, tf.Tensor) else data
@@ -175,6 +187,7 @@ def main():
         logger.info("Scene setup completed")
 
         with strategy.scope():
+            logger.debug("Entering MirroredStrategy scope")
             agv_manager = AGVPathManager(config, scene)
             beam_manager = BeamManager(config)
             channel_generator = SmartFactoryChannel(config, scene)
@@ -234,10 +247,12 @@ def main():
                         start_time = time.time()
 
                         def process_batch(batch):
+                            logger.debug("Processing batch in MirroredStrategy scope")
                             agv_positions = batch[0]
                             for i in range(config.num_agvs):
                                 scene.receivers[f'rx_agv_{i}'].position = agv_positions[i]
                             raw_channel_data = channel_generator.generate_channel_data(config)
+                            logger.debug("Batch processed - Channel data keys: {raw_channel_data.keys() if isinstance(raw_channel_data, dict) else 'None'}")
                             return raw_channel_data
 
                         tf.profiler.experimental.start('logdir')
@@ -257,9 +272,11 @@ def main():
                             try:
                                 # هر قدم یه iterator جدید بساز
                                 dataset_iterator = iter(strategy.experimental_distribute_dataset(base_dataset))
+                                logger.debug(f"Dataset iterator created - Strategy replicas: {strategy.num_replicas_in_sync}")
                                 batch = next(dataset_iterator)
-                                logger.debug(f"Step {step}: Batch shape: {get_batch_shape(batch)}")
+                                logger.debug(f"Batch fetched - Shape: {get_batch_shape(batch)}")
                                 channel_data = strategy.run(process_batch, args=(batch,))
+                                logger.debug(f"Channel data processed - Type: {type(channel_data)}, Keys: {channel_data.keys() if isinstance(channel_data, dict) else 'Not a dict'}")
                                 channel_data = convert_to_numpy(channel_data)
                                 
                                 if channel_data is None or not isinstance(channel_data, dict):
@@ -406,7 +423,7 @@ def main():
                     else:
                         logger.error(f"Failed to open HDF5 file after {max_attempts} attempts: {str(e)}")
                         raise
-
+        logger.debug("Exiting MirroredStrategy scope - Checking strategy stack: {getattr(strategy, '_distribution_strategy_stack', [])}")
         logger.info("Strategy scope exited naturally")
 
     except Exception as e:
@@ -415,7 +432,7 @@ def main():
         cleanup()
         raise
     finally:
+        logger.debug("Final cleanup - Checking strategy status: {tf.distribute.has_strategy()}")
         logger.info("Simulation finished, cleaning up strategy scope")
-
 if __name__ == "__main__":
     main()

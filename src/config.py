@@ -27,7 +27,7 @@ class SmartFactoryConfig:  # Define configuration class for smart factory simula
         self.dtype = tf.complex64  # Use complex64 data type for signal processing (real + imaginary components)
         self.real_dtype = tf.float32  # Use float32 for real-valued computations
         self.seed = 42  # Set random seed to 42 for reproducible results
-        self.bandwidth = 50e6  # 50 MHz, realistic for 140 GHz
+        self.bandwidth = 75e6  # 70 MHz, realistic for 140 GHz
         self.num_subcarriers = 64  # Define 128 subcarriers for OFDM signal
         self.subcarrier_spacing = 7.5e3  # Set subcarrier spacing to 15 kHz, typical for wireless systems
         self.scene_type = "indoor"  # Specify the simulation environment as indoor
@@ -169,16 +169,16 @@ class SmartFactoryConfig:  # Define configuration class for smart factory simula
 
         # Enhanced ray tracing configuration for better beam switching
         self.ray_tracing = {  # Configure ray tracing parameters
-            'max_depth': 3,  # Set maximum reflection depth to 5 for detailed paths
+            'max_depth': 4,  # Set maximum reflection depth to 5 for detailed paths
             'method': "fibonacci",  # Use Fibonacci sampling for ray distribution
-            'num_samples': 250,  # Set 14,000 rays for high tracing accuracy
+            'num_samples': 750,  # Set 250 rays for high tracing accuracy
             'diffraction': True,  # Enable diffraction effects
             'scattering': True,  # Enable scattering effects
             'los': True,  # Enable line-of-sight paths
             'reflection': True,  # Enable reflection paths
             'ris': False,  # Disable Reconfigurable Intelligent Surfaces (not used)
             'scene_type': self.scene_type,  # Use scene type (indoor) from earlier
-            'scat_keep_prob': 0.7,  # Set scattering keep probability to 0.7
+            'scat_keep_prob': 0.9,  # Set scattering keep probability to 0.7
             'edge_diffraction': True  # Enable edge diffraction for realistic modeling
         }
 
@@ -188,12 +188,12 @@ class SmartFactoryConfig:  # Define configuration class for smart factory simula
             'beam_width': 2,  # Set beam width to 2 degrees for precision
             'max_steering_angle': 60,  # Allow ±60 degrees steering range
             'adaptation_interval': 0.001,  # Update beams every 1ms (matches sampling)
-            'min_snr_threshold': 15.0,  # Set minimum SNR threshold to 15 dB
+            'min_snr_threshold': 8.0,  # Set minimum SNR threshold to 15 dB
             'blockage_detection': True,  # Enable blockage detection for beam switching
             'beam_switching': {  # Configure beam switching behavior
                 'enabled': True,  # Enable beam switching feature
-                'switching_threshold': 3.0,  # Set SNR drop threshold for switching (3 dB)
-                'hysteresis': 1.0,  # Define 1 dB hysteresis to prevent rapid switching
+                'switching_threshold': 0.8,  # Set SNR drop threshold for switching (3 dB)
+                'hysteresis': 0.3,  # Define 1 dB hysteresis to prevent rapid switching
             },
             'codebook': {  # Configure beamforming codebook
                 'type': 'DFT',  # Use Discrete Fourier Transform codebook
@@ -203,7 +203,7 @@ class SmartFactoryConfig:  # Define configuration class for smart factory simula
                 'grid_size_el': 8    # Number of elevation beams
             },
             'obstacle_radius': 1.5,  # Safety margin for obstacle collision in meters
-            'min_angular_separation': 15.0,  # Minimum angular separation for reflection paths in degrees
+            'min_angular_separation': 10.0,  # Minimum angular separation for reflection paths in degrees
             'good_snr_threshold': 20.0,  # SNR threshold for good channel quality in dB
             'refinement_factor_good': 0.1,  # Refinement factor for good SNR
             'refinement_factor_poor': 0.3,   # Refinement factor for poor SNR
@@ -213,8 +213,8 @@ class SmartFactoryConfig:  # Define configuration class for smart factory simula
         # Simulation parameters
         self.simulation = {  # Define additional simulation settings
             'time_step': 0.001,  # Set time step to 1ms (matches sampling frequency)
-            'snr_range': [-20, 40],  # Define SNR range from -20 to 40 dB
-            'channel_estimation_error': 0.1,  # Set channel estimation error to 10%
+            'snr_range': [0, 30],  # Define SNR range from -20 to 40 dB
+            'channel_estimation_error': 0.15,  # Set channel estimation error to 10%
             'noise_power': 1.380649e-23 * 293.15 * self.bandwidth  # Update noise power with new bandwidth
         }
 

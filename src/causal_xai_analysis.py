@@ -1,14 +1,15 @@
-#src/causal_xai_analysis.py
+# src/causal_xai_analysis.py
 import h5py
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
 import networkx as nx
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 import shap
 from pathlib import Path
 import logging
+from sklearn.linear_model import LogisticRegression  # Added at the top for consistency
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', filename='causal_xai_analysis.log')
@@ -123,39 +124,120 @@ class CausalXaiAnalysis:
         except Exception as e:
             logger.error(f"Error in step {step_num}: {e}")
 
-    def calculate_effects(self, O, M, B, P, S, step_num):
-        """Calculate causal effects with regularization to handle perfect separation."""
-        try:
-            data = pd.DataFrame({'O': O, 'M': M, 'B': B, 'P': P, 'S': S})
-            logger.debug(f"Step {step_num} - B distribution: {np.bincount(B.astype(int) if B.size > 0 else [0])}")  # Log B distribution
-            X1 = sm.add_constant(data[['O']])
-            X2 = sm.add_constant(data[['O', 'P', 'S']])
-            X3 = sm.add_constant(data[['O', 'M', 'P', 'S']])
-
-            model1 = sm.OLS(data['M'], X1).fit()  # O -> M
-            # Use Logit with regularization (ncg method) and fallback to OLS if needed
+    def calculate_effects(self, O, M, B, P, S, step_num):    
+            """Calculate causal effects with scikit-learn LogisticRegression and fallback models to handle perfect separation."""
             try:
-                model2 = sm.Logit(data['B'], X2).fit(disp=0, method='ncg', maxiter=100)  # O -> B
-            except:
-                logger.warning("Logit failed for model2, using OLS as fallback")
-                model2 = sm.OLS(data['B'], X2).fit()
-            try:
-                model3 = sm.Logit(data['B'], X3).fit(disp=0, method='ncg', maxiter=100)  # O -> M -> B
-            except:
-                logger.warning("Logit failed for model3, using OLS as fallback")
-                model3 = sm.OLS(data['B'], X3).fit()
+                data = pd.DataFrame({'O': O, 'M': M, 'B': B, 'P': P, 'S': S})
+                # Log B distribution with more detail, including total samples and class balance
+                b_unique, b_counts = np.unique(B, return_counts=True) if B.size > 0 else ([0], [0])
+                b_dist = dict(zip(b_unique, b_counts))
+                min_samples_per_class = 1  # Reduced minimum samples required per class for LogisticRegression
+                logger.debug(f"Step {step_num} - B distribution: {b_dist}, total samples: {len(B)}")
+                X1 = sm.add_constant(data[['O']])
+                X2 = sm.add_constant(data[['O', 'P', 'S']])
+                X3 = sm.add_constant(data[['O', 'M', 'P', 'S']])
 
-            effects = {
-                'total_effect': float(model2.params['O']),
-                'direct_effect': float(model3.params['O']),
-                'indirect_effect': float(model1.params['O'] * model3.params['M']),
-                'position_effect': float(model3.params['P']),
-                'switch_intent_effect': float(model3.params['S'])
-            }
-            return effects
-        except Exception as e:
-            logger.warning(f"Effect calculation failed: {e}")
-            return {k: 0.0 for k in ['total_effect', 'direct_effect', 'indirect_effect', 'position_effect', 'switch_intent_effect']}
+                # Debug shapes of X2 and X3, and input data
+                logger.debug(f"Step {step_num} - X2 shape: {X2.shape}, X3 shape: {X3.shape}")
+                logger.debug(f"Step {step_num} - Data shapes: O={len(O)}, M={len(M)}, B={len(B)}, P={len(P)}, S={len(S)}")
+                logger.debug(f"Step {step_num} - B unique values: {b_unique}, counts: {b_counts}")
+
+                # Use OLS for O -> M (continuous outcome)
+                model1 = sm.OLS(data['M'], X1).fit()  # O -> M
+
+                # Handle single-class or imbalanced data in B
+                if len(b_unique) < 2 or any(count < min_samples_per_class for count in b_counts):
+                    logger.warning(f"Step {step_num} - B has insufficient class variation ({b_dist}), using OLS as fallback")
+                    # Attempt to aggregate with previous/next step if available and data is minimal
+                    if step_num > 0 and step_num < 9 and step_num in self.step_results and len(B) < 4:  # Aggregate if total samples < 4
+                        prev_b = self.step_results[step_num - 1]['B'] if step_num - 1 in self.step_results else None
+                        next_b = self.step_results[step_num + 1]['B'] if step_num + 1 in self.step_results else None
+                        if prev_b is not None and len(np.unique(prev_b)) >= 2 and all(count >= min_samples_per_class for count in np.unique(prev_b, return_counts=True)[1]):
+                            logger.info(f"Step {step_num} - Aggregating B with previous step")
+                            B = np.concatenate([prev_b, B])
+                            data['B'] = B
+                            X2 = sm.add_constant(data[['O', 'P', 'S']])
+                            X3 = sm.add_constant(data[['O', 'M', 'P', 'S']])
+                        elif next_b is not None and len(np.unique(next_b)) >= 2 and all(count >= min_samples_per_class for count in np.unique(next_b, return_counts=True)[1]):
+                            logger.info(f"Step {step_num} - Aggregating B with next step")
+                            B = np.concatenate([B, next_b])
+                            data['B'] = B
+                            X2 = sm.add_constant(data[['O', 'P', 'S']])
+                            X3 = sm.add_constant(data[['O', 'M', 'P', 'S']])
+                    model2 = sm.OLS(data['B'], X2).fit()
+                    model3 = sm.OLS(data['B'], X3).fit()
+                else:
+                    try:
+                        # Try L2 regularization first with adjusted C
+                        model2 = LogisticRegression(penalty='l2', C=0.5, max_iter=2000, random_state=42)  # Reduced C, increased iterations
+                        model2.fit(X2, data['B'])
+                        # Manually create params Series, ensuring length matches columns
+                        model2_params = np.insert(model2.coef_[0], 0, model2.intercept_)
+                        if len(model2_params) != len(X2.columns):
+                            logger.warning(f"Step {step_num} - Mismatch in model2 params length: {len(model2_params)} vs columns {len(X2.columns)}")
+                            # Try L1 regularization with saga solver for potential sparsity
+                            model2 = LogisticRegression(penalty='l1', C=0.5, max_iter=2000, random_state=42, solver='saga')
+                            model2.fit(X2, data['B'])
+                            model2_params = np.insert(model2.coef_[0], 0, model2.intercept_)
+                            if len(model2_params) != len(X2.columns):
+                                logger.warning(f"Step {step_num} - L1 also failed for model2 (saga), trying RandomForest as fallback")
+                                from sklearn.ensemble import RandomForestClassifier
+                                model2 = RandomForestClassifier(n_estimators=100, random_state=42)
+                                model2.fit(X2, data['B'])
+                                # Estimate coefficients for compatibility (simplified approximation, ensuring correct shape)
+                                model2_params = np.zeros(len(X2.columns))
+                                model2_params[0] = model2.predict_proba(X2)[:, 1].mean() if X2.shape[0] > 0 else 0.0  # Handle empty data
+                                if X2.shape[1] > 1:  # Ensure features exist
+                                    model2_params[1:] = model2.feature_importances_
+                                else:
+                                    model2_params[1:] = 0.0
+                                model2.params = pd.Series(model2_params, index=X2.columns)
+                            else:
+                                model2.params = pd.Series(model2_params, index=X2.columns)
+                        else:
+                            model2.params = pd.Series(model2_params, index=X2.columns)
+
+                        # Model 3: O -> M -> B
+                        model3 = LogisticRegression(penalty='l2', C=0.5, max_iter=2000, random_state=42)
+                        model3.fit(X3, data['B'])
+                        model3_params = np.insert(model3.coef_[0], 0, model3.intercept_)
+                        if len(model3_params) != len(X3.columns):
+                            logger.warning(f"Step {step_num} - Mismatch in model3 params length: {len(model3_params)} vs columns {len(X3.columns)}")
+                            model3 = LogisticRegression(penalty='l1', C=0.5, max_iter=2000, random_state=42, solver='saga')
+                            model3.fit(X3, data['B'])
+                            model3_params = np.insert(model3.coef_[0], 0, model3.intercept_)
+                            if len(model3_params) != len(X3.columns):
+                                logger.warning(f"Step {step_num} - L1 also failed for model3 (saga), trying RandomForest as fallback")
+                                from sklearn.ensemble import RandomForestClassifier
+                                model3 = RandomForestClassifier(n_estimators=100, random_state=42)
+                                model3.fit(X3, data['B'])
+                                model3_params = np.zeros(len(X3.columns))
+                                model3_params[0] = model3.predict_proba(X3)[:, 1].mean() if X3.shape[0] > 0 else 0.0
+                                if X3.shape[1] > 1:
+                                    model3_params[1:] = model3.feature_importances_
+                                else:
+                                    model3_params[1:] = 0.0
+                                model3.params = pd.Series(model3_params, index=X3.columns)
+                            else:
+                                model3.params = pd.Series(model3_params, index=X3.columns)
+                        else:
+                            model3.params = pd.Series(model3_params, index=X3.columns)
+                    except Exception as e:
+                        logger.warning(f"LogisticRegression failed for models, using OLS as fallback: {e}")
+                        model2 = sm.OLS(data['B'], X2).fit()
+                        model3 = sm.OLS(data['B'], X3).fit()
+
+                effects = {
+                    'total_effect': float(model2.params['O']),
+                    'direct_effect': float(model3.params['O']),
+                    'indirect_effect': float(model1.params['O'] * model3.params['M']),
+                    'position_effect': float(model3.params['P']),
+                    'switch_intent_effect': float(model3.params['S'])
+                }
+                return effects
+            except Exception as e:
+                logger.warning(f"Effect calculation failed: {e}")
+                return {k: 0.0 for k in ['total_effect', 'direct_effect', 'indirect_effect', 'position_effect', 'switch_intent_effect']}
 
     def plot_effects_over_steps(self):
         """Plot causal effects over steps with annotations for significant steps."""
@@ -208,7 +290,7 @@ class CausalXaiAnalysis:
         explainer = shap.TreeExplainer(model)
         shap_values = explainer.shap_values(X)
 
-        # Create SHAP summary plot with custom formatting
+        # Create SHAP summary plot with custom formatting (bar plot)
         plt.figure(figsize=(10, 6))
         shap.summary_plot(shap_values, X, plot_type="bar", show=False)
         plt.title("Feature Importance in Beam Direction Prediction", fontsize=14)
@@ -216,7 +298,17 @@ class CausalXaiAnalysis:
         plt.ylabel("Feature", fontsize=12)
         plt.savefig(self.sim_file.parent / 'shap_summary.png', dpi=300, bbox_inches='tight')
         plt.close()
-        logger.info(f"SHAP plot saved to {self.sim_file.parent / 'shap_summary.png'}")
+        logger.info(f"SHAP bar plot saved to {self.sim_file.parent / 'shap_summary.png'}")
+
+        # Create SHAP scatter plot to show distribution of impacts
+        plt.figure(figsize=(12, 8))
+        shap.summary_plot(shap_values, X, plot_type="dot", show=False)
+        plt.title("Feature Impact Distribution in Beam Direction Prediction", fontsize=14)
+        plt.xlabel("SHAP Value (Impact on Model Output)", fontsize=12)
+        plt.ylabel("Feature", fontsize=12)
+        plt.savefig(self.sim_file.parent / 'shap_scatter.png', dpi=300, bbox_inches='tight')
+        plt.close()
+        logger.info(f"SHAP scatter plot saved to {self.sim_file.parent / 'shap_scatter.png'}")
 
     def build_causal_graph(self):
         """Build and visualize the causal graph with edge weights."""
