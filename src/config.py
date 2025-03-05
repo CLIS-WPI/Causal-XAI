@@ -171,7 +171,7 @@ class SmartFactoryConfig:  # Define configuration class for smart factory simula
         self.ray_tracing = {  # Configure ray tracing parameters
             'max_depth': 2,  # Set maximum reflection depth to 5 for detailed paths
             'method': "fibonacci",  # Use Fibonacci sampling for ray distribution
-            'num_samples': 500,  # Set 250 rays for high tracing accuracy
+            'num_samples': 750,  # Set 500 rays for high tracing accuracy
             'diffraction': True,  # Enable diffraction effects
             'scattering': True,  # Enable scattering effects
             'los': True,  # Enable line-of-sight paths
@@ -192,8 +192,8 @@ class SmartFactoryConfig:  # Define configuration class for smart factory simula
             'blockage_detection': True,  # Enable blockage detection for beam switching
             'beam_switching': {  # Configure beam switching behavior
                 'enabled': True,  # Enable beam switching feature
-                'switching_threshold': 0.8,  # Set SNR drop threshold for switching (3 dB)
-                'hysteresis': 0.3,  # Define 1 dB hysteresis to prevent rapid switching
+                'switching_threshold': 1.0,  # Set SNR drop threshold for switching (3 dB)
+                'hysteresis': 0.5,  # Define 1 dB hysteresis to prevent rapid switching
             },
             'codebook': {  # Configure beamforming codebook
                 'type': 'DFT',  # Use Discrete Fourier Transform codebook
