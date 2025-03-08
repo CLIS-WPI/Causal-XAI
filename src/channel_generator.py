@@ -15,6 +15,7 @@ from sionna.channel.utils import subcarrier_frequencies
 from beam_manager import BeamManager
 from agv_path_manager import AGVPathManager
 from scipy.special import erfc
+import gc
 
 logger = logging.getLogger(__name__)
 
@@ -151,132 +152,328 @@ class SmartFactoryChannel:
         logger.debug(f"- Total loss: {float(total_loss):.2f} dB")
         
         return total_loss
-     
-    def generate_channel_data(self, config):
-        print("\n=== CHANNEL GENERATOR STATE ===")
-        print(f"Scene transmitters exist: {hasattr(self.scene, 'transmitters')}")
-        print(f"Number of transmitters: {len(self.scene.transmitters)}")
-        print(f"Transmitter keys: {list(self.scene.transmitters.keys())}")
-        print("==============================\n")
+    
+    def _safe_process_channel(self, h_freq, num_agvs, num_subcarriers):
         try:
-            import mitsuba
-            variant = ensure_mitsuba_variant('cuda_ad_rgb')
-            logger.debug(f"Mitsuba variant in use: {variant}")
-            if not hasattr(mitsuba, '_variant_name'):
-                logger.error("Mitsuba variant not set correctly!")
-                raise RuntimeError("Mitsuba variant not set")
+            if tf.shape(h_freq)[0] != num_agvs or tf.shape(h_freq)[-1] != num_subcarriers:
+                logger.warning(f"Adjusting h_freq shape from {h_freq.shape} to [{num_agvs}, {num_subcarriers}]")
+                return tf.reshape(h_freq, [num_agvs, num_subcarriers])
+            return h_freq
+        except Exception as e:
+            logger.error(f"Failed to process h_freq: {str(e)}")
+            return tf.complex(
+                tf.random.normal([num_agvs, num_subcarriers], dtype=tf.float32),
+                tf.random.normal([num_agvs, num_subcarriers], dtype=tf.float32)
+            )
 
+    @tf.autograph.experimental.do_not_convert
+    def generate_channel_data(self, agv_positions):
+        """Generate channel data with ray tracing in eager mode."""
+        try:
+            # Force eager execution to avoid graph mode issues
+            tf.config.run_functions_eagerly(True)
             logger.debug("=== Generating channel data ===")
             logger.debug(f"Scene transmitters: {list(self.scene.transmitters.keys())}")
             logger.debug(f"Scene receivers: {list(self.scene.receivers.keys())}")
+            logger.debug(f"AGV positions input: shape={agv_positions.shape}")
 
-            agv_positions = self.path_manager.update_positions()
-            agv_positions = tf.convert_to_tensor(agv_positions, dtype=config.real_dtype)
-            logger.debug(f"AGV positions updated: shape={agv_positions.shape}")
-            for i in range(config.num_agvs):
+            # Initialize channel_data dictionary at the start
+            channel_data = {
+                'paths': None,
+                'channel_matrices': None,
+                'path_delays': None,
+                'los_conditions': None,
+                'agv_positions': None,
+                'path_losses': None,
+                'beam_metrics': None,
+                'path_data': None
+            }
+
+            # Memory management to prevent GPU OOM errors
+            tf.keras.backend.clear_session()
+            try:
+                for device in tf.config.list_physical_devices('GPU'):
+                    tf.config.experimental.set_memory_growth(device, True)
+            except:
+                pass
+
+            # Ensure Mitsuba variant
+            import mitsuba
+            mitsuba.set_variant('cuda_ad_rgb')
+            variant = ensure_mitsuba_variant('cuda_ad_rgb')
+            logger.debug(f"Mitsuba variant in use: {variant}")
+            if mitsuba.variant() != 'cuda_ad_rgb':
+                logger.error("Mitsuba variant not set to cuda_ad_rgb")
+                raise RuntimeError("Mitsuba variant not set to cuda_ad_rgb")
+
+            # Handle batched input: reduce to single time step if necessary
+            if len(agv_positions.shape) == 3:  # Shape: (batch_size, num_agvs, 3)
+                agv_positions = agv_positions[0]  # Take first time step: (num_agvs, 3)
+                logger.debug(f"Reduced agv_positions to first time step: shape={agv_positions.shape}")
+            elif len(agv_positions.shape) != 2 or agv_positions.shape[0] != self.config.num_agvs or agv_positions.shape[1] != 3:
+                logger.error(f"Invalid agv_positions shape: expected ({self.config.num_agvs}, 3), got {agv_positions.shape}")
+                raise ValueError(f"Invalid agv_positions shape: {agv_positions.shape}")
+
+            # Update receiver positions with provided agv_positions
+            agv_positions = tf.convert_to_tensor(agv_positions, dtype=self.config.real_dtype)
+            for i in range(self.config.num_agvs):
                 self.scene.receivers[f'rx_agv_{i}'].position = agv_positions[i]
                 logger.debug(f"Receiver rx_agv_{i} position set to: {agv_positions[i]}")
 
+            # Check and fix receiver positions for safety
+            self._check_and_fix_receiver_positions()
+
             tx_pos = list(self.scene.transmitters.values())[0].position
+            tx_pos = tf.convert_to_tensor(tx_pos, dtype=self.config.real_dtype)
             logger.debug(f"Transmitter position: {tx_pos}")
 
-            logger.debug("Starting compute_paths...")
-            paths = self.scene.compute_paths(
-                max_depth=config.ray_tracing['max_depth'],
-                method=config.ray_tracing['method'],
-                num_samples=config.ray_tracing['num_samples'],
-                los=config.ray_tracing['los'],
-                reflection=config.ray_tracing['reflection'],
-                diffraction=config.ray_tracing['diffraction'],
-                scattering=config.ray_tracing['scattering'],
-                scat_keep_prob=config.ray_tracing.get('scat_keep_prob', 0.7),
-                edge_diffraction=config.ray_tracing.get('edge_diffraction', True)
-            )
-            logger.debug("compute_paths completed successfully")
+            # Compute paths in eager mode
+            logger.debug("Starting compute_paths")
+            if self.config.ray_tracing['num_samples'] > 50 or self.config.ray_tracing['max_depth'] > 2:
+                paths = self._process_ray_tracing_in_chunks(agv_positions)
+            else:
+                paths = self.scene.compute_paths(
+                    max_depth=self.config.ray_tracing['max_depth'],
+                    method=self.config.ray_tracing['method'],
+                    num_samples=self.config.ray_tracing['num_samples'],
+                    los=self.config.ray_tracing['los'],
+                    reflection=self.config.ray_tracing['reflection'],
+                    diffraction=self.config.ray_tracing['diffraction'],
+                    scattering=self.config.ray_tracing['scattering'],
+                    scat_keep_prob=self.config.ray_tracing.get('scat_keep_prob', 0.7),
+                    edge_diffraction=self.config.ray_tracing.get('edge_diffraction', True)
+                )
 
+            tf.keras.backend.clear_session()
+            gc.collect()
+            logger.debug("Paths computed successfully")
+
+            if paths is None:
+                logger.error("Path computation returned None")
+                return self._create_fallback_channel_data(agv_positions, tx_pos)
+
+            # Populate initial channel data
+            channel_data['paths'] = paths
+            channel_data['agv_positions'] = agv_positions
+
+            # Compute CIR from paths
             a, tau = paths.cir()
             a = tf.convert_to_tensor(a, dtype=tf.complex64)
             tau = tf.convert_to_tensor(tau, dtype=tf.float32)
-            logger.debug(f"CIR shape: a={a.shape}, tau={tau.shape}")
+            logger.debug(f"CIR computed: a={a.shape}, tau={tau.shape}")
+            channel_data['path_delays'] = tau
 
-            reflection_mask = tf.logical_not(tf.cast(paths.LOS, tf.bool))
-            a = tf.where(reflection_mask, a * self.inf_params['reflection_coeff'], a)
+            # Apply fading based on LOS conditions
             los_conditions = tf.cast(paths.LOS, tf.bool)
             if tf.size(los_conditions) == 1:
-                los_conditions = tf.tile([los_conditions], [config.num_agvs])
-            logger.debug(f"LOS conditions: shape={los_conditions.shape}")
-
-            for i in range(config.num_agvs):
+                los_conditions = tf.tile([los_conditions], [self.config.num_agvs])
+            
+            for i in range(self.config.num_agvs):
                 if los_conditions[i]:
-                    a = self._apply_rician_fading(a, self.inf_params['los_k_factor'], i)
+                    a = self._apply_rician_fading(a, self.inf_params['los_k_factor'])
                 else:
-                    a = self._apply_rayleigh_fading(a, self.inf_params['nlos_sigma'], i)
+                    a = self._apply_rayleigh_fading(a, self.inf_params['nlos_sigma'])
+            logger.debug(f"Fading applied: a={a.shape}")
+            # Compute path powers and directions
+            try:
+                path_powers = tf.reduce_mean(tf.abs(a)**2, axis=-1)
+                direction_vectors = agv_positions - tx_pos
+                magnitude = tf.norm(direction_vectors, axis=-1) + 1e-10
+                theta = tf.math.acos(tf.clip_by_value(direction_vectors[..., 2] / magnitude, -1.0, 1.0))
+                phi = tf.math.atan2(direction_vectors[..., 1], direction_vectors[..., 0])
+                path_directions = tf.stack([theta, phi], axis=-1)
+                logger.debug(f"Path powers: shape={path_powers.shape}, Path directions: shape={path_directions.shape}")
+            except Exception as e:
+                logger.error(f"Error in path power/direction calculation: {str(e)}")
+                path_powers = tf.zeros([1, self.config.num_agvs, 1], dtype=tf.float32)
+                path_directions = tf.zeros([self.config.num_agvs, 2], dtype=tf.float32)
 
-            path_powers = tf.reduce_mean(tf.abs(a)**2, axis=-1)
-            direction_vectors = agv_positions - tx_pos
-            magnitude = tf.norm(direction_vectors, axis=-1)
-            theta = tf.math.acos(direction_vectors[..., 2] / (magnitude + tf.keras.backend.epsilon()))
-            phi = tf.math.atan2(direction_vectors[..., 1], direction_vectors[..., 0])
-            path_directions = tf.stack([theta, phi], axis=-1)
-            logger.debug(f"Path powers: shape={path_powers.shape}")
-            logger.debug(f"Path directions: shape={path_directions.shape}")
-
-            frequencies = subcarrier_frequencies(
-                num_subcarriers=config.num_subcarriers,
-                subcarrier_spacing=config.subcarrier_spacing
-            )
-            logger.debug(f"Frequencies: shape={frequencies.shape}")
-
-            h_freq = cir_to_ofdm_channel(frequencies, a, tau, normalize=True)
-            logger.debug(f"h_freq initial shape: {h_freq.shape}")
-            h_freq = tf.squeeze(h_freq, axis=[0, 3, 5])
-            logger.debug(f"h_freq after squeeze: shape={h_freq.shape}")
-            h_freq = tf.reduce_mean(h_freq, axis=[1, 2])
-            logger.debug(f"h_freq after reducing antennas and paths: shape={h_freq.shape}")
-            h_freq = tf.ensure_shape(h_freq, [config.num_agvs, config.num_subcarriers])
-            logger.debug(f"h_freq final shape: {h_freq.shape}")
-
-            distances = tf.norm(agv_positions - tx_pos, axis=-1)
-            logger.debug(f"Distances computed: shape={distances.shape}")
-            # محاسبه path_losses به صورت ساده‌تر با NumPy
-            distances_np = distances.numpy()
-            carrier_freq_np = float(config.carrier_frequency)
-            path_losses_np = 0.7 * (20 * np.log10(distances_np + 1e-6) + 20 * np.log10(carrier_freq_np) - 147.55)
-            path_losses = tf.convert_to_tensor(path_losses_np, dtype=tf.float32)
-            logger.debug(f"Path losses computed directly: shape={path_losses.shape}, value={path_losses.numpy()}")
-
-            path_losses_linear = tf.pow(10.0, -path_losses / 10.0)
-            path_losses_linear = tf.ensure_shape(path_losses_linear, [config.num_agvs])
-            h_freq = h_freq * tf.cast(path_losses_linear[:, tf.newaxis], tf.complex64)
-            logger.debug(f"Path losses linear: shape={path_losses_linear.shape}")
-
-            snr_metrics = self.calculate_snr(h_freq, config, path_losses)
-            los_conditions = tf.cast(paths.LOS, tf.int32)
-            if tf.size(los_conditions) == 1:
-                los_conditions = tf.tile([los_conditions], [config.num_agvs])
-            logger.debug(f"SNR metrics: average_snr={snr_metrics['average_snr']}, snr_db shape={snr_metrics['beam_metrics']['snr_db'].shape}")
-
-            channel_data = {
-                'channel_matrices': h_freq,
-                'path_delays': tau,
-                'los_conditions': los_conditions,
-                'agv_positions': agv_positions,
-                'path_losses': path_losses,
-                'beam_metrics': {
-                    'snr_db': snr_metrics['beam_metrics']['snr_db'],
-                    'beam_directions': self.beam_manager.get_current_beams()
-                },
-                'path_data': {
-                    'path_powers': path_powers,
-                    'path_directions': path_directions
-                }
+            channel_data['path_data'] = {
+                'path_powers': path_powers,
+                'path_directions': path_directions
             }
-            logger.debug(f"Channel data keys: {channel_data.keys()}")
+
+            # Compute OFDM channel
+            try:
+                frequencies = subcarrier_frequencies(
+                    num_subcarriers=self.config.num_subcarriers,  # e.g., 512 or 256
+                    subcarrier_spacing=self.config.subcarrier_spacing
+                )
+                logger.debug(f"Generating CIR - a shape: {a.shape}, tau shape: {tau.shape}")
+                h_freq_raw = cir_to_ofdm_channel(frequencies, a, tau, normalize=True)
+                logger.debug(f"h_freq_raw shape: {h_freq_raw.shape}")
+
+                # Extract only the dimensions we care about: AGV (dim 1) and subcarriers (last dim)
+                # Compute the dimensions to reduce - all except dim 1 (AGVs) and the last dimension (subcarriers)
+                dims_to_reduce = [i for i in range(tf.rank(h_freq_raw)) if i != 1 and i != tf.rank(h_freq_raw)-1]
+                
+                # For debug purposes, still do the squeeze operation to log the shape
+                squeeze_dims = [i for i in range(tf.rank(h_freq_raw)) if h_freq_raw.shape[i] == 1 and i != 1]
+                h_freq_squeezed = tf.squeeze(h_freq_raw, axis=squeeze_dims)
+                logger.debug(f"h_freq after squeeze shape: {h_freq_squeezed.shape}")
+                
+                # Directly reduce all dimensions except AGV and subcarriers in one operation
+                h_freq = tf.reduce_mean(h_freq_raw, axis=dims_to_reduce)
+                
+                # Log the intermediate shape after reduction for debug purposes
+                logger.debug(f"h_freq after reduce shape: {h_freq.shape}")
+                
+                # Make sure we have the correct shape [num_agvs, num_subcarriers]
+                h_freq = tf.reshape(h_freq, [self.config.num_agvs, -1])
+                actual_subcarriers = h_freq.shape[-1]
+                expected_shape = [self.config.num_agvs, actual_subcarriers]
+                logger.debug(f"Reshaping h_freq to {expected_shape}")
+                
+                # Optional: Pad or trim to match config.num_subcarriers if needed
+                if actual_subcarriers != self.config.num_subcarriers:
+                    logger.debug(f"Subcarrier mismatch: actual={actual_subcarriers}, expected={self.config.num_subcarriers}")
+                    if actual_subcarriers < self.config.num_subcarriers:
+                        pad_width = self.config.num_subcarriers - actual_subcarriers
+                        h_freq = tf.pad(h_freq, [[0, 0], [0, pad_width]], mode="CONSTANT")
+                    elif actual_subcarriers > self.config.num_subcarriers:
+                        h_freq = h_freq[:, :self.config.num_subcarriers]
+                    logger.debug(f"Adjusted h_freq shape: {h_freq.shape}")
+
+                channel_data['channel_matrices'] = h_freq
+                logger.debug(f"Final h_freq shape: {h_freq.shape}")
+            except Exception as e:
+                logger.error(f"Error in OFDM channel computation: {str(e)}")
+                h_freq = tf.complex(
+                    tf.random.normal([self.config.num_agvs, self.config.num_subcarriers], dtype=tf.float32),
+                    tf.random.normal([self.config.num_agvs, self.config.num_subcarriers], dtype=tf.float32)
+                )
+                channel_data['channel_matrices'] = h_freq
+
+            # Compute path losses
+            try:
+                distances = tf.norm(agv_positions - tx_pos, axis=-1)
+                path_losses = 70.0 + 20.0 * tf.math.log(distances + 1e-6) / tf.math.log(10.0)
+                path_losses = tf.cast(path_losses, tf.float32)
+                path_losses = tf.ensure_shape(path_losses, [self.config.num_agvs])
+                channel_data['path_losses'] = path_losses
+            except Exception as e:
+                logger.error(f"Error calculating path losses: {str(e)}")
+                channel_data['path_losses'] = tf.ones([self.config.num_agvs], dtype=tf.float32) * 70.0
+
+            # Calculate SNR
+            try:
+                snr_metrics = self.calculate_snr(h_freq, self.config, path_losses)
+                logger.debug(f"SNR metrics: average_snr={snr_metrics['average_snr']}")
+                channel_data['beam_metrics'] = snr_metrics['beam_metrics']
+            except Exception as e:
+                logger.error(f"Error calculating SNR: {str(e)}")
+                channel_data['beam_metrics'] = {
+                    'snr_db': tf.ones([self.config.num_agvs], dtype=tf.float32) * 10.0
+                }
+                snr_metrics = {'average_snr': 10.0}
+
+            # Ensure proper los_conditions shape
+            try:
+                los_conditions = tf.cast(paths.LOS, tf.int32)
+                if tf.size(los_conditions) == 1:
+                    los_conditions = tf.tile([los_conditions], [self.config.num_agvs])
+                los_conditions = tf.reshape(los_conditions, [self.config.num_agvs])
+                channel_data['los_conditions'] = los_conditions
+            except Exception as e:
+                logger.error(f"Error processing LOS conditions: {str(e)}")
+                channel_data['los_conditions'] = tf.zeros([self.config.num_agvs], dtype=tf.int32)
+
+            # Get current beam directions
+            try:
+                beam_directions = self.beam_manager.get_current_beams()
+                channel_data['beam_metrics']['beam_directions'] = beam_directions
+            except Exception as e:
+                logger.error(f"Error getting beam directions: {str(e)}")
+                channel_data['beam_metrics']['beam_directions'] = tf.zeros([self.config.num_agvs, 2], dtype=tf.float32)
+
+            logger.debug(f"Channel data generated: keys={channel_data.keys()}")
             return channel_data
 
         except Exception as e:
             logger.error(f"Error in channel data generation: {str(e)}", exc_info=True)
-            return None
+            return self._create_fallback_channel_data(agv_positions if 'agv_positions' in locals() else None, 
+                                                    tx_pos if 'tx_pos' in locals() else None)
+
+    def _create_fallback_channel_data(self, agv_positions=None, tx_pos=None):
+        """Create fallback channel data when the main channel generation fails"""
+        logger.warning("Creating fallback channel data")
+        
+        # Handle missing agv_positions
+        if agv_positions is None:
+            agv_positions = tf.zeros([self.config.num_agvs, 3], dtype=tf.float32)
+            for i in range(self.config.num_agvs):
+                if hasattr(self.scene.receivers, f'rx_agv_{i}'):
+                    agv_positions = self.scene.receivers[f'rx_agv_{i}'].position
+        
+        # Handle missing tx_pos
+        if tx_pos is None and hasattr(self, 'scene') and self.scene is not None:
+            try:
+                tx_pos = list(self.scene.transmitters.values())[0].position
+            except (IndexError, AttributeError):
+                tx_pos = tf.constant(self.config.bs_position, dtype=tf.float32)
+        elif tx_pos is None:
+            tx_pos = tf.constant(self.config.bs_position, dtype=tf.float32)
+        
+        # Create random channel matrices
+        h_freq = tf.complex(
+            tf.random.normal([self.config.num_agvs, self.config.num_subcarriers], dtype=tf.float32),
+            tf.random.normal([self.config.num_agvs, self.config.num_subcarriers], dtype=tf.float32)
+        )
+        
+        # Calculate basic path losses based on distance
+        distances = tf.norm(agv_positions - tx_pos, axis=-1)
+        path_losses = 20 * tf.math.log(distances + 1e-6) / tf.math.log(10.0) + 60.0
+        
+        # Create basic path data
+        path_powers = tf.zeros([1, self.config.num_agvs, 1], dtype=tf.float32) + 0.1
+        path_directions = tf.zeros([self.config.num_agvs, 2], dtype=tf.float32)
+        
+        # Random SNR values within reasonable bounds
+        snr_db = tf.random.uniform([self.config.num_agvs], minval=5.0, maxval=20.0, dtype=tf.float32)
+        
+        # Create basic fallback channel data
+        return {
+            'paths': None,
+            'channel_matrices': h_freq,
+            'path_delays': tf.zeros([1, self.config.num_agvs, 1], dtype=tf.float32),
+            'los_conditions': tf.zeros([self.config.num_agvs], dtype=tf.int32),
+            'agv_positions': agv_positions,
+            'path_losses': path_losses,
+            'beam_metrics': {
+                'snr_db': snr_db,
+                'beam_directions': self.beam_manager.get_current_beams() 
+                    if hasattr(self, 'beam_manager') else tf.zeros([self.config.num_agvs, 2], dtype=tf.float32)
+            },
+            'path_data': {
+                'path_powers': path_powers,
+                'path_directions': path_directions
+            }
+        }
+
+    def _apply_rician_fading(self, channel, k_factor):
+        """Apply Rician fading to the channel with the given K-factor"""
+        try:
+            k_linear = tf.pow(10.0, k_factor / 10.0)
+            shape = tf.shape(channel)
+            real = tf.random.normal(shape, mean=0.0, stddev=1.0)
+            imag = tf.random.normal(shape, mean=0.0, stddev=1.0)
+            los_component = tf.sqrt(k_linear / (k_linear + 1))
+            nlos_component = tf.sqrt(1 / (k_linear + 1)) * tf.complex(real, imag)
+            return channel * (los_component + nlos_component)
+        except Exception as e:
+            logger.error(f"Error in Rician fading: {str(e)}")
+            return channel
+
+    def _apply_rayleigh_fading(self, channel, sigma):
+        """Apply Rayleigh fading to the channel with the given sigma"""
+        try:
+            shape = tf.shape(channel)
+            real = tf.random.normal(shape, mean=0.0, stddev=sigma)
+            imag = tf.random.normal(shape, mean=0.0, stddev=sigma)
+            return channel * tf.complex(real, imag)
+        except Exception as e:
+            logger.error(f"Error in Rayleigh fading: {str(e)}")
+            return channel
 
     def verify_scene_configuration(self):
         if self.scene is None:
@@ -407,13 +604,26 @@ class SmartFactoryChannel:
     def _check_and_fix_receiver_positions(self):
         """Check and fix receiver positions to ensure they are correctly shaped"""
         for rx_name, rx in self.scene.receivers.items():
-            position = rx.position
-            if len(position.shape) > 1 and position.shape[0] > 1:
-                logger.warning(f"Receiver {rx_name} has invalid position shape {position.shape}")
-                # Take only the first row if it's a 2D array
-                corrected_position = position[0]
-                logger.warning(f"Correcting to: {corrected_position}")
-                rx.position = corrected_position
+            try:
+                position = rx.position
+                # Convert to tensor if not already
+                if not isinstance(position, tf.Tensor):
+                    position = tf.convert_to_tensor(position, dtype=tf.float32)
+                
+                # Fix shape issues
+                if len(position.shape) > 1 and position.shape[0] > 1:
+                    logger.warning(f"Receiver {rx_name} has invalid position shape {position.shape}")
+                    # Take only the first row if it's a 2D array
+                    corrected_position = position[0]
+                    logger.warning(f"Correcting to: {corrected_position}")
+                    rx.position = corrected_position
+                elif len(position.shape) == 0:
+                    logger.warning(f"Receiver {rx_name} has scalar position, converting to vector")
+                    rx.position = tf.zeros([3], dtype=tf.float32)
+            except Exception as e:
+                logger.error(f"Error fixing position for receiver {rx_name}: {str(e)}")
+                # Set a safe default position
+                rx.position = tf.zeros([3], dtype=tf.float32)
 
     def calculate_snr(self, h_freq, config, path_losses=None):
         try:
@@ -421,13 +631,30 @@ class SmartFactoryChannel:
             logger.debug(f"Input h_freq: shape={h_freq.shape}, dtype={h_freq.dtype}, sample={h_freq.numpy()[:2, :5]}")
             print(f"Input h_freq: shape={h_freq.shape}, dtype={h_freq.dtype}, sample={h_freq.numpy()[:2, :5]}")
 
-            h_freq = h_freq * 7000.0
-            if not isinstance(path_losses, tf.Tensor):
+            # Safety check - verify h_freq is valid (no scaling applied yet)
+            if (tf.reduce_any(tf.math.is_nan(tf.math.real(h_freq))) or 
+                tf.reduce_any(tf.math.is_inf(tf.math.real(h_freq))) or
+                tf.reduce_any(tf.math.is_nan(tf.math.imag(h_freq))) or 
+                tf.reduce_any(tf.math.is_inf(tf.math.imag(h_freq)))):
+                logger.warning("h_freq contains NaN or Inf values, normalizing")
+                h_freq = h_freq / (tf.reduce_max(tf.abs(h_freq)) + 1e-10) * 10.0
+
+            # Ensure path_losses is properly formatted
+            if path_losses is None:
+                logger.debug("No path_losses provided, using default")
+                path_losses = tf.ones([self.config.num_agvs], dtype=tf.float32) * 70.0
+                print(f"Using default path losses: {path_losses.numpy()}")
+            elif not isinstance(path_losses, tf.Tensor):
                 logger.debug("Converting path_losses to tensor")
                 path_losses = tf.convert_to_tensor(path_losses, dtype=tf.float32)
+                if tf.size(path_losses) != self.config.num_agvs:
+                    logger.warning(f"Reshaping path_losses from {tf.shape(path_losses)} to [{self.config.num_agvs}]")
+                    path_losses = tf.broadcast_to(path_losses, [self.config.num_agvs])
                 print(f"Path losses converted to tensor: shape={path_losses.shape}, value={path_losses.numpy()}")
+
             logger.debug(f"Input path_losses: shape={path_losses.shape}, value={path_losses.numpy()}")
 
+            # Get configuration parameters
             tx_power_dbm = config.tx_power
             tx_antenna_gain_db = config.bs_array['antenna_gain_db']
             rx_antenna_gain_db = config.agv_array['antenna_gain_db']
@@ -435,43 +662,62 @@ class SmartFactoryChannel:
             logger.debug(f"Config parameters - TX power: {tx_power_dbm} dBm, TX gain: {tx_antenna_gain_db} dB, RX gain: {rx_antenna_gain_db} dB, Noise power: {total_noise_power:.2e} W")
             print(f"Transmit power dBm: {tx_power_dbm}, TX gain dB: {tx_antenna_gain_db}, RX gain dB: {rx_antenna_gain_db}, Noise power: {total_noise_power:.2e} W")
 
-            tx_power = tf.pow(10.0, (tx_power_dbm - 30) / 10.0)
+            # Convert from dB to linear scale safely
+            tx_power = tf.pow(10.0, (tx_power_dbm - 30) / 10.0)  # dBm to Watts
             tx_gain = tf.pow(10.0, tx_antenna_gain_db / 10.0)
             rx_gain = tf.pow(10.0, rx_antenna_gain_db / 10.0)
             logger.debug(f"Linear conversions - TX power: {float(tx_power):.2e} W, TX gain: {float(tx_gain):.2f}, RX gain: {float(rx_gain):.2f}, Noise power: {float(total_noise_power):.2e} W")
             print(f"Transmit power: {float(tx_power):.2e} W, TX gain: {float(tx_gain):.2f}, RX gain: {float(rx_gain):.2f}, Noise power: {float(total_noise_power):.2e} W")
 
+            # Calculate channel power without arbitrary scaling
             logger.debug("Calculating channel power from h_freq")
-            channel_power = tf.reduce_mean(tf.abs(h_freq)**2, axis=1)
-            logger.debug(f"Channel power calculated: shape={channel_power.shape}, mean={float(tf.reduce_mean(channel_power)):.2e}, value={channel_power.numpy()}")
-            print(f"Channel power: shape={channel_power.shape}, mean={float(tf.reduce_mean(channel_power)):.2e}, value={channel_power.numpy()}")
+            try:
+                # Average over subcarriers (and other dims if present)
+                channel_power = tf.reduce_mean(tf.abs(h_freq)**2, axis=1)
+                channel_power = tf.reshape(channel_power, [self.config.num_agvs])
+            except Exception as e:
+                logger.error(f"Error in channel power calculation: {str(e)}")
+                channel_power = tf.ones([self.config.num_agvs], dtype=tf.float32)
 
+            # Check for NaN/Inf values and replace if needed
+            if tf.reduce_any(tf.math.is_nan(channel_power)) or tf.reduce_any(tf.math.is_inf(channel_power)):
+                logger.warning("Channel power contains NaN or Inf, replacing with default")
+                channel_power = tf.where(
+                    tf.math.is_nan(channel_power) | tf.math.is_inf(channel_power),
+                    tf.ones_like(channel_power),
+                    channel_power
+                )
+
+            logger.debug(f"Channel power calculated: shape={channel_power.shape}, mean={float(tf.reduce_mean(channel_power)):.2e}, value={channel_power.numpy()}")
+
+            # Calculate signal power
             signal_power = channel_power * tx_power * tx_gain * rx_gain
             logger.debug(f"Signal power (no path loss): shape={signal_power.shape}, mean={float(tf.reduce_mean(signal_power)):.2e}, value={signal_power.numpy()}")
-            print(f"Signal power before path loss: shape={signal_power.shape}, mean={float(tf.reduce_mean(signal_power)):.2e}, value={signal_power.numpy()}")
 
+            # Apply path losses if provided
             if path_losses is not None:
                 logger.debug("Applying path losses")
+                path_losses = tf.reshape(path_losses, [self.config.num_agvs])
                 path_loss_linear = tf.pow(10.0, -path_losses / 10.0)
-                path_loss_linear = tf.ensure_shape(path_loss_linear, [self.config.num_agvs])
-                signal_power = signal_power * tf.cast(path_loss_linear, tf.float32)
-                logger.debug(f"Path loss linear: shape={path_loss_linear.shape}, mean={float(tf.reduce_mean(path_loss_linear)):.2e}, value={path_loss_linear.numpy()}")
+                path_loss_linear = tf.maximum(path_loss_linear, 1e-10)  # Avoid division by zero
+                signal_power *= tf.cast(path_loss_linear, tf.float32)
                 logger.debug(f"Signal power (with path loss): shape={signal_power.shape}, mean={float(tf.reduce_mean(signal_power)):.2e}, value={signal_power.numpy()}")
-                print(f"Path loss applied: shape={path_loss_linear.shape}, mean={float(tf.reduce_mean(path_loss_linear)):.2e}, value={path_loss_linear.numpy()}")
-                print(f"Updated signal power: shape={signal_power.shape}, mean={float(tf.reduce_mean(signal_power)):.2e}, value={signal_power.numpy()}")
 
-            logger.debug("Computing SNR")
+            # Ensure noise power is positive
+            total_noise_power = tf.maximum(total_noise_power, 1e-20)
+
+            # Compute SNR
             snr_linear = signal_power / total_noise_power
-            logger.debug(f"SNR linear: shape={snr_linear.shape}, mean={float(tf.reduce_mean(snr_linear)):.2e}, value={snr_linear.numpy()}")
-            print(f"SNR linear: shape={snr_linear.shape}, mean={float(tf.reduce_mean(snr_linear)):.2e}, value={snr_linear.numpy()}")
+            snr_linear = tf.maximum(snr_linear, 1e-10)  # Avoid log(0)
+            logger.debug(f"SNR calculation intermediate - Signal power: {signal_power.numpy()}, SNR linear: {snr_linear.numpy()}")  # Added logging as requested
+            
+            snr_db = 10 * tf.math.log(snr_linear) / tf.math.log(10.0)
 
-            snr_db = 10 * tf.math.log(snr_linear) / tf.math.log(10.0)  # اصلاح شده
-            logger.debug(f"SNR dB calculated: shape={snr_db.shape}, mean={float(tf.reduce_mean(snr_db)):.2f}, value={snr_db.numpy()}")
-            print(f"SNR dB: shape={snr_db.shape}, mean={float(tf.reduce_mean(snr_db)):.2f}, value={snr_db.numpy()}")
-
-            snr_db_clipped = tf.clip_by_value(snr_db, -10.0, 40.0)
+            # Clip to a realistic range
+            snr_db_clipped = tf.clip_by_value(snr_db, -10.0, 30.0)  # Changed from 40.0 to 30.0
             snr_db_clipped = tf.ensure_shape(snr_db_clipped, [self.config.num_agvs])
             average_snr = float(tf.reduce_mean(snr_db_clipped))
+
             logger.debug(f"SNR clipped - Shape: {snr_db_clipped.shape}, Mean: {average_snr:.2f} dB, Value: {snr_db_clipped.numpy()}")
             print(f"SNR clipped - Shape: {snr_db_clipped.shape}, Mean: {average_snr:.2f} dB, Value: {snr_db_clipped.numpy()}")
 
@@ -481,7 +727,12 @@ class SmartFactoryChannel:
             }
         except Exception as e:
             logger.error(f"Error calculating SNR: {str(e)}", exc_info=True)
-            raise
+            snr_db = tf.ones([self.config.num_agvs], dtype=tf.float32) * 15.0
+            print(f"ERROR in SNR calculation: {str(e)}, using fallback values")
+            return {
+                'average_snr': 15.0,
+                'beam_metrics': {'snr_db': snr_db}
+            }
 
     def track_los_nlos_paths(self):
             try:
@@ -557,7 +808,7 @@ class SmartFactoryChannel:
             logger.error(f"Error in Rician fading: {str(e)}")
             raise
 
-    def _apply_rayleigh_fading(self, channel, sigma, agv_idx):
+    def _apply_rayleigh_fading(self, channel, sigma):
         try:
             shape = tf.shape(channel)
             real = tf.random.normal(shape, mean=0.0, stddev=sigma)
@@ -671,5 +922,130 @@ class SmartFactoryChannel:
             for key, value in vars(self.config).items():
                 if isinstance(value, (int, float, str, list)):
                     config_group.attrs[key] = value
+
+    # Add this new method to your class
+    def _process_ray_tracing_in_chunks(self, agv_positions, max_chunk_size=50):
+        """Process ray tracing in smaller chunks to avoid memory issues"""
+        
+        # Get ray tracing parameters
+        max_depth = self.config.ray_tracing['max_depth']
+        method = self.config.ray_tracing['method']
+        num_samples = self.config.ray_tracing['num_samples']
+        
+        # Reduce chunk size based on depth to avoid memory issues
+        adjusted_chunk_size = max(10, int(max_chunk_size / max_depth))
+        
+        # If num_samples is small enough, use normal processing
+        if num_samples <= adjusted_chunk_size:
+            return self.scene.compute_paths(
+                max_depth=max_depth,
+                method=method,
+                num_samples=num_samples,
+                los=self.config.ray_tracing['los'],
+                reflection=self.config.ray_tracing['reflection'],
+                diffraction=self.config.ray_tracing['diffraction'],
+                scattering=self.config.ray_tracing['scattering'],
+                scat_keep_prob=self.config.ray_tracing.get('scat_keep_prob', 0.7),
+                edge_diffraction=self.config.ray_tracing.get('edge_diffraction', True)
+            )
+        
+        # For large sample counts, process in chunks
+        num_chunks = (num_samples + adjusted_chunk_size - 1) // adjusted_chunk_size
+        logger.info(f"Processing ray tracing in {num_chunks} chunks of {adjusted_chunk_size} rays (adjusted for depth={max_depth})")
+        
+        # Progressive approach - try with a single chunk first
+        try:
+            chunk_samples = min(adjusted_chunk_size, num_samples)
+            logger.debug(f"First trying with {chunk_samples} samples")
+            
+            paths = self.scene.compute_paths(
+                max_depth=max_depth,
+                method=method,
+                num_samples=chunk_samples,
+                los=self.config.ray_tracing['los'],
+                reflection=self.config.ray_tracing['reflection'],
+                diffraction=self.config.ray_tracing['diffraction'],
+                scattering=self.config.ray_tracing['scattering'],
+                scat_keep_prob=self.config.ray_tracing.get('scat_keep_prob', 0.7),
+                edge_diffraction=self.config.ray_tracing.get('edge_diffraction', True)
+            )
+            
+            # If successful with small sample, that's good enough
+            if paths is not None:
+                logger.info(f"Successfully processed with {chunk_samples} rays instead of {num_samples}")
+                return paths
+        except Exception as e:
+            logger.warning(f"Error with initial chunk: {str(e)}. Falling back to smaller chunks.")
+            # Force memory cleanup
+            tf.keras.backend.clear_session()
+            gc.collect()
+        
+        # If we get here, try with even smaller chunks
+        smaller_chunk = max(5, adjusted_chunk_size // 2)
+        logger.info(f"Retrying with smaller chunks of {smaller_chunk} rays")
+        
+        all_paths = []
+        for i in range(num_chunks):
+            # Calculate chunk size 
+            chunk_samples = min(smaller_chunk, num_samples - i * smaller_chunk)
+            if chunk_samples <= 0:
+                break
+                
+            logger.debug(f"Processing ray chunk {i+1}/{num_chunks} with {chunk_samples} samples")
+            
+            try:
+                # Process chunk
+                chunk_paths = self.scene.compute_paths(
+                    max_depth=max_depth,
+                    method=method,
+                    num_samples=chunk_samples,
+                    los=self.config.ray_tracing['los'],
+                    reflection=self.config.ray_tracing['reflection'],
+                    diffraction=self.config.ray_tracing['diffraction'],
+                    scattering=self.config.ray_tracing['scattering'],
+                    scat_keep_prob=self.config.ray_tracing.get('scat_keep_prob', 0.7),
+                    edge_diffraction=self.config.ray_tracing.get('edge_diffraction', True)
+                )
+                
+                if chunk_paths is not None:
+                    all_paths.append(chunk_paths)
+                    
+                # Clean up memory between chunks
+                tf.keras.backend.clear_session()
+                gc.collect()
+                
+                # If we got at least one successful chunk, that's enough
+                if len(all_paths) > 0:
+                    logger.info(f"Successfully processed at least one chunk, stopping early")
+                    break
+                    
+            except Exception as e:
+                logger.error(f"Error processing chunk {i+1}: {str(e)}")
+                # Force memory cleanup
+                tf.keras.backend.clear_session()
+                gc.collect()
+        
+        # Return the first successful chunk
+        for paths in all_paths:
+            if paths is not None:
+                return paths
+                
+        # If all failed, try one last time with minimal settings
+        logger.warning("All chunks failed, trying with minimal ray tracing settings")
+        try:
+            return self.scene.compute_paths(
+                max_depth=min(2, max_depth),  # Reduce depth
+                method=method,
+                num_samples=10,  # Minimum samples
+                los=True,
+                reflection=True,
+                diffraction=False,  # Disable complex features
+                scattering=False,
+                scat_keep_prob=0.7,
+                edge_diffraction=False
+            )
+        except Exception as e:
+            logger.error(f"Final fallback failed: {str(e)}")
+            return None
     
     

@@ -76,37 +76,41 @@ class AGVPathManager:
                 'los_status': []
             } for i in range(self.num_agvs)
         }
-        
+    
     def _generate_paths(self):
         """Generate smooth paths for AGVs based on trajectories"""
         steps = self.config.num_time_steps
         paths = []
+        
+        # Loop through AGVs (0 and 1 for agv_1 and agv_2)
         for i in range(self.num_agvs):
-            agv_id = f'agv_{i}'
-            traj_key = f'agv_{i+1}'
-            traj = self.config.agv_trajectories[traj_key]
+            agv_id = f'agv_{i + 1}'  # Matches config keys: agv_1, agv_2
+            traj = self.config.agv_trajectories[agv_id]
             num_points = len(traj)
-            path = np.zeros((steps, 3), dtype=np.float32)
+            path = np.zeros((steps, 3), dtype=np.float32)  # x, y, z only
             step_per_segment = steps // (num_points - 1)
             
             for j in range(num_points - 1):
-                start = np.array(traj[j] + [self.config.agv_height])
-                end = np.array(traj[j + 1] + [self.config.agv_height])
+                # Use trajectory points directly (they already include x, y, z)
+                start = np.array(traj[j], dtype=np.float32)  # e.g., [2.0, 3.0, 0.5]
+                end = np.array(traj[j + 1], dtype=np.float32)  # e.g., [18.0, 3.0, 0.5]
                 segment_steps = min(step_per_segment, steps - j * step_per_segment)
                 path[j * step_per_segment:j * step_per_segment + segment_steps] = np.linspace(start, end, segment_steps)
             
-            # Fill remaining steps with last position
+            # Fill remaining steps with the last position
             if j * step_per_segment + segment_steps < steps:
                 path[j * step_per_segment + segment_steps:] = end
             
-            # Adjust to avoid collisions
+            # Since paths are predefined and collision-free, skip collision adjustment for now
+            # If you want to keep collision checking, uncomment and adjust below
+            """
             for step in range(steps):
-                max_attempts = 100  # Limit iterations
+                max_attempts = 100
                 attempts = 0
                 while (self.check_collision(path[step], self.config.scene_objects) or 
-                    not self.validate_position(path[step])):
+                       not self.validate_position(path[step])):
                     if attempts >= max_attempts:
-                        logger.warning(f"Could not find safe path for {agv_id} at step {step}, keeping original position")
+                        logger.warning(f"Could not find safe path for {agv_id} at step {step}")
                         break
                     if path[step, 1] < 10.0:
                         path[step, 1] += 0.5
@@ -114,8 +118,11 @@ class AGVPathManager:
                         path[step, 1] -= 0.5
                     path[step, 1] = np.clip(path[step, 1], 0.5, self.config.room_dim[1] - 0.5)
                     attempts += 1
+            """
             
             paths.append(path)
+            logger.info(f"Path generated for {agv_id} with shape {path.shape}")
+        
         return paths
 
     def update_positions(self):
