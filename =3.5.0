@@ -1,0 +1,2 @@
+Requirement already satisfied: mitsuba in /home/tanglab/miniconda3/envs/causal-xai/lib/python3.10/site-packages (3.5.2)
+Requirement already satisfied: drjit==0.4.6 in /home/tanglab/miniconda3/envs/causal-xai/lib/python3.10/site-packages (from mitsuba) (0.4.6)
