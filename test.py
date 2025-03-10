@@ -1,29 +1,30 @@
-import tensorflow as tf
-import sionna as sn
+# Print Sionna version
+import sionna
+print(f"Sionna version: {sionna.__version__}")
 
-# تست TensorFlow
-print("TensorFlow version:", tf.__version__)
-print("GPU available:", len(tf.config.list_physical_devices('GPU')) > 0)
-print("Physical devices:", tf.config.list_physical_devices('GPU'))
+# Import required modules
+from sionna.rt import Scene
+import inspect
 
-# تست Sionna
-print("Sionna version:", sn.__version__)
+# Examine Scene class initialization parameters
+print(f"Scene initialization parameters:")
+print(inspect.signature(Scene.__init__))
 
-# تعریف صحنه
-scene = sn.rt.Scene()
+# Check Scene class attributes
+scene = Scene()
+print("\nScene instance attributes:")
+for attr in dir(scene):
+    if not attr.startswith('__'):
+        print(f"- {attr}")
 
-# تعریف فرستنده و آرایه آنتنش
-tx = sn.rt.Transmitter("tx", [0, 0, 0])
-tx_array = sn.rt.PlanarArray(num_rows=1, num_cols=1, vertical_spacing=0.5, horizontal_spacing=0.5, pattern="iso")
-tx.array = tx_array
-scene.add(tx)
+# Check specifically for dtype-related attributes
+dtype_attrs = [attr for attr in dir(scene) if 'dtype' in attr]
+print("\nDtype-related attributes:")
+print(dtype_attrs)
 
-# تعریف گیرنده و آرایه آنتنش
-rx = sn.rt.Receiver("rx", [1, 1, 1])
-rx_array = sn.rt.PlanarArray(num_rows=1, num_cols=1, vertical_spacing=0.5, horizontal_spacing=0.5, pattern="iso")
-rx.array = rx_array
-scene.add(rx)
-
-# محاسبه مسیرها
-paths = scene.compute_paths()
-print("Sionna works!")
+# Check the Scene's source code for frequency setter
+print("\nFrequency setter method:")
+try:
+    print(inspect.getsource(Scene.__class__.frequency.fset))
+except:
+    print("Could not get source for frequency setter")

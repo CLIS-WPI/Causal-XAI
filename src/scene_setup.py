@@ -5,7 +5,7 @@ import sionna
 import logging
 import os
 import numpy as np
-from sionna.rt import Scene, Transmitter, Receiver, PlanarArray, RadioMaterial
+from sionna.rt import Scene, Transmitter, Receiver, PlanarArray, RadioMaterial, SceneObject
 from config import SmartFactoryConfig
 
 logger = logging.getLogger(__name__)
@@ -27,70 +27,97 @@ def setup_scene(config: SmartFactoryConfig):
         logger.debug(f"Mitsuba variant set to: {mitsuba.variant()}")
 
         # Create empty Sionna scene
-        scene = Scene()
+        scene = Scene(dtype=tf.complex64)
+        if not hasattr(scene, '_dtype'):
+            scene._dtype = tf.complex64
+
         logger.debug("=== Scene Configuration ===")
         logger.debug(f"Room dimensions: {config.room_dim}")
         logger.debug(f"Number of AGVs: {config.num_agvs}")
         logger.debug(f"Carrier frequency: {config.carrier_frequency} Hz")
 
-        # Define radio materials from config
-        concrete_material = RadioMaterial(
+        # Define radio materials
+        scene.add(RadioMaterial(
             name="factory_concrete",
             relative_permittivity=config.materials['concrete']['relative_permittivity'],
             conductivity=config.materials['concrete']['conductivity'],
-            scattering_coefficient=config.materials['concrete']['scattering_coefficient'],
-            xpd_coefficient=config.materials['concrete']['xpd_coefficient']
-        )
-        metal_material = RadioMaterial(
+            scattering_coefficient=config.materials['concrete'].get('scattering_coefficient', 0.7),
+            xpd_coefficient=config.materials['concrete'].get('xpd_coefficient', 8.0)
+        ))
+        scene.add(RadioMaterial(
             name="factory_metal",
             relative_permittivity=config.materials['metal']['relative_permittivity'],
             conductivity=config.materials['metal']['conductivity'],
-            scattering_coefficient=config.materials['metal']['scattering_coefficient'],
-            xpd_coefficient=config.materials['metal']['xpd_coefficient']
-        )
-        scene.add(concrete_material)
-        scene.add(metal_material)
+            scattering_coefficient=config.materials['metal'].get('scattering_coefficient', 0.3),
+            xpd_coefficient=config.materials['metal'].get('xpd_coefficient', 15.0)
+        ))
         logger.info(f"Defined radio materials: factory_concrete "
                     f"(permittivity={config.materials['concrete']['relative_permittivity']}, "
                     f"conductivity={config.materials['concrete']['conductivity']}), "
                     f"factory_metal (permittivity={config.materials['metal']['relative_permittivity']}, "
                     f"conductivity={config.materials['metal']['conductivity']})")
 
-        # Load PLY files using Mitsuba and add to Sionna scene
+        # Build Mitsuba XML from PLY files
         meshes_dir = os.path.join(os.path.dirname(__file__), "meshes")
         if not os.path.exists(meshes_dir):
             logger.error(f"Meshes directory not found: {meshes_dir}. Run sionna_ply_generator.py first.")
             raise FileNotFoundError(f"Meshes directory not found: {meshes_dir}")
 
+        xml_content = '<?xml version="1.0"?>\n<scene version="3.0.0">\n'
         material_map = {}
-        for ply_file in os.listdir(meshes_dir):
+        for idx, ply_file in enumerate(os.listdir(meshes_dir)):
             if ply_file.endswith(".ply"):
                 full_path = os.path.join(meshes_dir, ply_file)
-                name = ply_file[:-4]  # Remove .ply extension
-                material_name = ("factory_concrete" if "wall" in name or "floor" in name or "ceiling" in name
-                                 else "factory_metal")
-                
-                # Load PLY file as a Mitsuba shape
-                shape = mitsuba.load_dict({
-                    'type': 'ply',
-                    'filename': full_path,
-                    'to_world': mitsuba.ScalarTransform4f(),  # Identity transform
-                    'bsdf': {'type': 'null'}  # No BSDF needed for ray tracing
-                })
-                
-                # Add the shape to the Sionna scene
-                scene.add(shape)
-                # Store material mapping (since we can't set it directly)
+                name = ply_file[:-4]
+                material_name = "factory_concrete" if "wall" in name or "floor" in name or "ceiling" in name else "factory_metal"
+
+                xml_content += f'    <shape type="ply" id="{name}">\n'
+                xml_content += f'        <string name="filename" value="{full_path}"/>\n'
+                xml_content += '        <bsdf type="null"/>\n'
+                xml_content += '    </shape>\n'
                 material_map[name] = material_name
-                logger.debug(f"Loaded {ply_file} as {name} with intended material {material_name}")
+                logger.debug(f"Added {ply_file} to XML with ID {name} and intended material {material_name}")
+        xml_content += '</scene>'
 
-        # Debug scene objects
-        logger.debug(f"Objects loaded: {list(scene.objects.keys())}")
-        logger.debug(f"Material mapping: {material_map}")
+        # Write temporary XML file
+        temp_xml_path = os.path.join(meshes_dir, "temp_scene.xml")
+        with open(temp_xml_path, 'w') as f:
+            f.write(xml_content)
 
-        # Set scene frequency
-        scene.frequency = tf.cast(config.carrier_frequency, tf.float32)
+        # Load Mitsuba scene and set it
+        mitsuba_scene = mitsuba.load_file(temp_xml_path)
+        scene._scene = mitsuba_scene
+        logger.debug(f"Loaded Mitsuba scene from {temp_xml_path} and set scene._scene")
+
+        # Clean up temporary file
+        os.remove(temp_xml_path)
+
+        # Manually populate scene.objects from mitsuba_scene shapes
+        scene.objects.clear()  # Ensure it’s empty before adding
+        for shape in scene._scene.shapes():
+            name = shape.id()
+            if name:
+                scene_obj = SceneObject(name, scene)  # Minimal args
+                scene_obj._shape = shape  # Set shape manually
+                scene.objects[name] = scene_obj
+                logger.debug(f"Registered object {name} in scene.objects")
+
+        # Assign RadioMaterial to scene objects
+        for obj_name, obj in scene.objects.items():
+            base_name = obj_name.split(':')[0]  # Handle Mitsuba suffixes
+            if base_name in material_map:
+                obj.radio_material = material_map[base_name]
+                logger.debug(f"Assigned {material_map[base_name]} to object {obj_name}")
+            else:
+                logger.warning(f"No material mapping for {obj_name}, defaulting to factory_concrete")
+                obj.radio_material = "factory_concrete"
+
+        logger.debug(f"Objects in scene: {list(scene.objects.keys())}")
+        logger.debug(f"Material mapping applied: {material_map}")
+
+        # Set scene properties
         scene.synthetic_array = True
+        scene.frequency = tf.cast(config.carrier_frequency, tf.float32)
 
         # Add base station (transmitter)
         logger.debug("\n=== Base Station Configuration ===")
@@ -111,18 +138,8 @@ def setup_scene(config: SmartFactoryConfig):
         )
         bs.array = bs_array
         scene.add(bs)
-        _debug_object_state(bs, "Base station")
         scene.tx_array = bs_array
-
-        # Debug transmitters
-        print("\n=== CRITICAL TRANSMITTER DEBUG ===")
-        print(f"Number of transmitters in scene: {len(scene.transmitters)}")
-        print(f"Available transmitter keys: {list(scene.transmitters.keys())}")
-        if 'bs' in scene.transmitters:
-            print(f"BS position: {scene.transmitters['bs'].position.numpy()}")
-        else:
-            print("WARNING: No base station transmitter found!")
-        print("===================================\n")
+        _debug_object_state(bs, "Base station")
 
         # Add AGVs (receivers)
         logger.debug("\n=== AGV Configurations ===")
@@ -166,18 +183,13 @@ def setup_scene(config: SmartFactoryConfig):
 
         # Configure ray tracing
         logger.debug("\n=== Ray Tracing Configuration ===")
-        logger.debug(f"Max depth: {config.ray_tracing['max_depth']}")
-        logger.debug(f"Method: {config.ray_tracing['method']}")
-        logger.debug(f"Number of samples: {config.ray_tracing['num_samples']}")
-        scene.configure_ray_tracing(
-            los=True,
-            reflection=True,
-            diffraction=True,
-            scattering=True,
-            max_depth=config.ray_tracing['max_depth'],
-            num_samples=config.ray_tracing['num_samples'],
-            method=config.ray_tracing['method']
-        )
+        scene.los = True
+        scene.reflection = True
+        scene.diffraction = True
+        scene.scattering = True
+        scene.max_depth = config.ray_tracing['max_depth']
+        scene.num_samples = config.ray_tracing['num_samples']
+        scene.method = config.ray_tracing['method']
         scene.test_medium = True
         scene.delete_duplicates = True
 
@@ -197,10 +209,6 @@ def setup_scene(config: SmartFactoryConfig):
         logger.info(f"  - Test medium: {scene.test_medium}")
         logger.info("Scene setup completed")
 
-        # Warning about material assignment
-        logger.warning("Material assignment is not directly supported in this version of Sionna. "
-                       "Objects added without explicit material binding; ray tracing may use default material.")
-
         return scene
 
     except Exception as e:
@@ -213,15 +221,15 @@ def verify_geometry(scene):
     logger.info(f"Number of objects in scene: {len(scene.objects)}")
 
     for obj_name, obj in scene.objects.items():
-        logger.info(f"Object name: {obj_name}")
+        logger.info(f"Object: {obj_name}")
+        if hasattr(obj, 'radio_material'):
+            logger.info(f"  - Material: {obj.radio_material.name}")
+        else:
+            logger.warning(f"  - No RadioMaterial assigned")
         if hasattr(obj, 'vertices'):
             logger.info(f"  - Vertices: {len(obj.vertices)}")
         if hasattr(obj, 'faces'):
             logger.info(f"  - Faces: {len(obj.faces)}")
-        if hasattr(obj, 'material'):
-            logger.info(f"  - Material: {obj.material.name}")
-        else:
-            logger.warning(f"  - No material assigned to {obj_name}")
 
     logger.info("\nAvailable materials:")
     for mat_name in scene.radio_materials:
