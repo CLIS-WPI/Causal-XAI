@@ -1,31 +1,46 @@
 # main.py
+# System imports
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Mitsuba setup
+# Keep unchanged - external dependencies
 from utils import ensure_mitsuba_variant
-ensure_mitsuba_variant('cuda_ad_rgb')
 import mitsuba
+import time
 import tensorflow as tf
-print(f"TensorFlow version: {tf.__version__}")
+import numpy as np
+import logging
+from scene_setup import setup_scene
+from beam_manager import BeamManager
+from agv_path_manager import AGVPathManager
+from scipy.special import erfc
+import gc
+
+# Sionna core imports
+from sionna.constants import SPEED_OF_LIGHT
+from sionna.phy.channel.utils import cir_to_ofdm_channel, subcarrier_frequencies
+
+# Sionna RT imports
+from sionna.rt import Scene 
+from sionna.rt.components import Transmitter, Receiver, PathSolver
+from sionna.rt.antenna import PlanarArray, DiscretePhaseProfile
+from sionna.rt.materials import RadioMaterial
+from sionna.rt.paths import Paths
+from sionna.rt.grid import CellGrid
+
+logger = logging.getLogger(__name__)
+
+# Local imports
 from config import SmartFactoryConfig
 from scene_setup import setup_scene, verify_los_paths
-from scene_manager import SceneManager  # Added import
-import time
-import numpy as np
-from datetime import datetime
-import sionna
-from sionna.rt import Scene
-import logging
-logger = logging.getLogger(__name__)
-import h5py
+from scene_manager import SceneManager
 from sionna_ply_generator import SionnaPLYGenerator
 from beam_manager import BeamManager
 from channel_generator import SmartFactoryChannel
 from agv_path_manager import AGVPathManager
 from data_store import save_performance_metrics
-import psutil
-import gc
-
 # Environment settings (unchanged)
 os.environ['XLA_FLAGS'] = '--xla_gpu_cuda_data_dir=/usr/local/cuda-12.2'
 os.environ['TF_XLA_FLAGS'] = '--tf_xla_auto_jit=2 --tf_xla_cpu_global_jit'

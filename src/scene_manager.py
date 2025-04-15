@@ -1,10 +1,17 @@
 #src/scene_manager.py
+# Core libraries
 import mitsuba
 import tensorflow as tf
-from sionna.rt import Scene, Transmitter, Receiver, PlanarArray, RadioMaterial
 import logging
-from config import SmartFactoryConfig
 
+# Sionna imports
+from sionna.rt.scenes import Scene
+from sionna.rt.components import Transmitter, Receiver
+from sionna.rt.antenna import PlanarArray
+from sionna.rt.materials import RadioMaterial
+
+# Local imports
+from config import SmartFactoryConfig
 logger = logging.getLogger(__name__)
 
 class SceneManager:

@@ -1,5 +1,6 @@
 import tensorflow as tf  # Import TensorFlow for numerical computations and machine learning operations
-from sionna.constants import SPEED_OF_LIGHT  # Import SPEED_OF_LIGHT constant from Sionna for wavelength calculations
+from sionna.phy.constants import SPEED_OF_LIGHT
+  # Import SPEED_OF_LIGHT constant from Sionna for wavelength calculations
 import os  # Import os module for file and directory operations
 
 class SmartFactoryConfig:  # Define configuration class for smart factory simulation

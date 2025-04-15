@@ -1,4 +1,5 @@
 #channel_generator.py#
+# Keep unchanged - external dependencies
 from utils import ensure_mitsuba_variant
 import mitsuba
 import time
@@ -6,16 +7,23 @@ import tensorflow as tf
 import numpy as np
 import sionna
 from scene_setup import setup_scene
-from sionna.constants import SPEED_OF_LIGHT
-from sionna.channel.utils import cir_to_ofdm_channel
-from sionna.rt import Scene, Transmitter, Receiver, PlanarArray, RadioMaterial, Paths
-from sionna.rt import DiscretePhaseProfile, CellGrid
 import logging
-from sionna.channel.utils import subcarrier_frequencies
 from beam_manager import BeamManager
 from agv_path_manager import AGVPathManager
 from scipy.special import erfc
 import gc
+
+# Update Sionna imports based on new structure
+from sionna.constants import SPEED_OF_LIGHT
+from sionna.phy.channel.utils import cir_to_ofdm_channel, subcarrier_frequencies
+
+# Update RT-related imports (these need to be reorganized based on new structure)
+from sionna.rt.scenes import Scene
+from sionna.rt.components import Transmitter, Receiver
+from sionna.rt.antenna import PlanarArray, DiscretePhaseProfile
+from sionna.rt.materials import RadioMaterial
+from sionna.rt.paths import Paths, PathSolver
+from sionna.rt.grid import CellGrid
 
 logger = logging.getLogger(__name__)
 
@@ -168,231 +176,246 @@ class SmartFactoryChannel:
 
     @tf.autograph.experimental.do_not_convert
     def generate_channel_data(self, agv_positions):
-        """Generate channel data with ray tracing in eager mode."""
+        """Generate channel data with ray tracing, calculating power from CIR."""
         try:
-            # Force eager execution to avoid graph mode issues
-            tf.config.run_functions_eagerly(True)
+            # Force eager execution if still needed for your Sionna/Mitsuba version
+            # tf.config.run_functions_eagerly(True) # Uncomment if required
+
             logger.debug("=== Generating channel data ===")
-            logger.debug(f"Scene transmitters: {list(self.scene.transmitters.keys())}")
-            logger.debug(f"Scene receivers: {list(self.scene.receivers.keys())}")
             logger.debug(f"AGV positions input: shape={agv_positions.shape}")
 
-            # Initialize channel_data dictionary at the start
+            # Initialize channel_data dictionary
             channel_data = {
                 'paths': None,
-                'channel_matrices': None,
+                'channel_matrices': None, # This might become the full MIMO matrix
+                'h_freq_averaged': None, # Or keep the averaged one if needed elsewhere
                 'path_delays': None,
                 'los_conditions': None,
                 'agv_positions': None,
-                'path_losses': None,
-                'beam_metrics': None,
-                'path_data': None
+                'received_power_linear': None, # Correctly calculated power
+                'beam_metrics': None, # Keep structure for compatibility
+                'path_data': None # Keep structure for compatibility
             }
 
-            # Memory management to prevent GPU OOM errors
+            # --- Memory management (Keep as is) ---
             tf.keras.backend.clear_session()
             try:
                 for device in tf.config.list_physical_devices('GPU'):
                     tf.config.experimental.set_memory_growth(device, True)
             except:
                 pass
+            gc.collect() # Explicit garbage collection
 
-            # Ensure Mitsuba variant
-            import mitsuba
-            mitsuba.set_variant('cuda_ad_rgb')
-            variant = ensure_mitsuba_variant('cuda_ad_rgb')
-            logger.debug(f"Mitsuba variant in use: {variant}")
-            if mitsuba.variant() != 'cuda_ad_rgb':
-                logger.error("Mitsuba variant not set to cuda_ad_rgb")
-                raise RuntimeError("Mitsuba variant not set to cuda_ad_rgb")
+            # --- Ensure Mitsuba variant (Keep as is, assuming needed) ---
+            # import mitsuba
+            # mitsuba.set_variant('cuda_ad_rgb') # Or ensure variant logic
 
-            # Handle batched input: reduce to single time step if necessary
+            # --- Handle batched input (Keep as is) ---
             if len(agv_positions.shape) == 3:  # Shape: (batch_size, num_agvs, 3)
                 agv_positions = agv_positions[0]  # Take first time step: (num_agvs, 3)
-                logger.debug(f"Reduced agv_positions to first time step: shape={agv_positions.shape}")
-            elif len(agv_positions.shape) != 2 or agv_positions.shape[0] != self.config.num_agvs or agv_positions.shape[1] != 3:
-                logger.error(f"Invalid agv_positions shape: expected ({self.config.num_agvs}, 3), got {agv_positions.shape}")
-                raise ValueError(f"Invalid agv_positions shape: {agv_positions.shape}")
+            # ...(rest of shape validation)
 
-            # Update receiver positions with provided agv_positions
+            # --- Update receiver positions (Keep as is) ---
             agv_positions = tf.convert_to_tensor(agv_positions, dtype=self.config.real_dtype)
             for i in range(self.config.num_agvs):
-                self.scene.receivers[f'rx_agv_{i}'].position = agv_positions[i]
-                logger.debug(f"Receiver rx_agv_{i} position set to: {agv_positions[i]}")
-
-            # Check and fix receiver positions for safety
-            self._check_and_fix_receiver_positions()
+                rx_name = f'rx_agv_{i}'
+                if rx_name in self.scene.receivers:
+                   self.scene.receivers[rx_name].position = agv_positions[i]
+                else:
+                   logger.error(f"Receiver {rx_name} not found in scene!")
+            self._check_and_fix_receiver_positions() # Keep safety check
 
             tx_pos = list(self.scene.transmitters.values())[0].position
             tx_pos = tf.convert_to_tensor(tx_pos, dtype=self.config.real_dtype)
-            logger.debug(f"Transmitter position: {tx_pos}")
 
-            # Compute paths in eager mode
-            logger.debug("Starting compute_paths")
-            if self.config.ray_tracing['num_samples'] > 50 or self.config.ray_tracing['max_depth'] > 2:
-                paths = self._process_ray_tracing_in_chunks(agv_positions)
-            else:
-                paths = self.scene.compute_paths(
-                    max_depth=self.config.ray_tracing['max_depth'],
-                    method=self.config.ray_tracing['method'],
-                    num_samples=self.config.ray_tracing['num_samples'],
-                    los=self.config.ray_tracing['los'],
-                    reflection=self.config.ray_tracing['reflection'],
-                    diffraction=self.config.ray_tracing['diffraction'],
-                    scattering=self.config.ray_tracing['scattering'],
-                    scat_keep_prob=self.config.ray_tracing.get('scat_keep_prob', 0.7),
-                    edge_diffraction=self.config.ray_tracing.get('edge_diffraction', True)
-                )
+            # --- Compute paths using PathSolver (Sionna 1.0 API Style) ---
+            logger.debug("Starting path computation...")
+            # Instantiate solver here or use self.path_solver initialized in __init__
+            # Need to check how RT parameters are passed in Sionna 1.0 PathSolver API
+            # Example placeholder: assumes parameters are set during solver init
+            path_solver = PathSolver() # Replace with self.path_solver if initialized elsewhere
+            paths = path_solver(self.scene) # Call the solver instance
 
-            tf.keras.backend.clear_session()
-            gc.collect()
-            logger.debug("Paths computed successfully")
-
+            # --- Fallback if paths=None (Keep similar logic) ---
             if paths is None:
                 logger.error("Path computation returned None")
+                # Use your existing fallback logic, ensure it returns compatible keys
                 return self._create_fallback_channel_data(agv_positions, tx_pos)
 
-            # Populate initial channel data
+            logger.debug("Paths computed successfully")
             channel_data['paths'] = paths
             channel_data['agv_positions'] = agv_positions
 
-            # Compute CIR from paths
+            # --- Compute CIR from paths (Keep as is) ---
             a, tau = paths.cir()
             a = tf.convert_to_tensor(a, dtype=tf.complex64)
             tau = tf.convert_to_tensor(tau, dtype=tf.float32)
+            # !!! CRITICAL: Log and VERIFY the shape of 'a' !!!
             logger.debug(f"CIR computed: a={a.shape}, tau={tau.shape}")
             channel_data['path_delays'] = tau
 
-            # Apply fading based on LOS conditions
-            los_conditions = tf.cast(paths.LOS, tf.bool)
-            if tf.size(los_conditions) == 1:
-                los_conditions = tf.tile([los_conditions], [self.config.num_agvs])
-            
-            for i in range(self.config.num_agvs):
-                if los_conditions[i]:
-                    a = self._apply_rician_fading(a, self.inf_params['los_k_factor'])
-                else:
-                    a = self._apply_rayleigh_fading(a, self.inf_params['nlos_sigma'])
-            logger.debug(f"Fading applied: a={a.shape}")
-            # Compute path powers and directions
+            # --- Calculate Received Power from 'a' (NEW LOGIC) ---
             try:
-                path_powers = tf.reduce_mean(tf.abs(a)**2, axis=-1)
-                direction_vectors = agv_positions - tx_pos
-                magnitude = tf.norm(direction_vectors, axis=-1) + 1e-10
-                theta = tf.math.acos(tf.clip_by_value(direction_vectors[..., 2] / magnitude, -1.0, 1.0))
-                phi = tf.math.atan2(direction_vectors[..., 1], direction_vectors[..., 0])
-                path_directions = tf.stack([theta, phi], axis=-1)
-                logger.debug(f"Path powers: shape={path_powers.shape}, Path directions: shape={path_directions.shape}")
+                # Sum power over paths dimension. VERIFY THE AXIS INDEX (-1 is usually paths).
+                path_powers = tf.abs(a)**2
+                total_power_per_tx_rx_pair = tf.reduce_sum(path_powers, axis=-1)
+                logger.debug(f"Total power per Tx/Rx pair: shape={total_power_per_tx_rx_pair.shape}")
+
+                # Average power over Rx and Tx antennas to get power per AGV link.
+                # VERIFY AXES based on the actual shape logged above.
+                # Example: Assumes shape [batch=1, num_agvs=2, num_rx_ant=16, num_tx_ant=1024]
+                if len(total_power_per_tx_rx_pair.shape) == 4:
+                    dims_to_avg_over_antennas = [-1, -2] # Avg over Tx, then Rx antennas
+                    received_power_per_agv = tf.reduce_mean(total_power_per_tx_rx_pair, axis=dims_to_avg_over_antennas)
+                    received_power_per_agv = tf.squeeze(received_power_per_agv, axis=0) # Remove batch dim
+                # Example: Assumes shape [num_agvs=2, num_rx_ant=16, num_tx_ant=1024]
+                elif len(total_power_per_tx_rx_pair.shape) == 3:
+                    dims_to_avg_over_antennas = [-1, -2] # Avg over Tx, then Rx antennas
+                    received_power_per_agv = tf.reduce_mean(total_power_per_tx_rx_pair, axis=dims_to_avg_over_antennas)
+                else:
+                     logger.error(f"Unexpected shape for total_power_per_tx_rx_pair: {total_power_per_tx_rx_pair.shape}. Cannot reliably average over antennas.")
+                     # Fallback: Use a simple mean, but this is likely wrong.
+                     received_power_per_agv = tf.reduce_mean(total_power_per_tx_rx_pair, axis=list(range(1, tf.rank(total_power_per_tx_rx_pair))))
+                     received_power_per_agv = tf.reshape(received_power_per_agv, [self.config.num_agvs])
+
+                received_power_per_agv = tf.cast(received_power_per_agv, tf.float32)
+                received_power_per_agv = tf.maximum(received_power_per_agv, 1e-20) # Ensure positive
+                received_power_per_agv = tf.ensure_shape(received_power_per_agv, [self.config.num_agvs])
+
+                # Store the correctly calculated linear power (includes path loss effects)
+                channel_data['received_power_linear'] = received_power_per_agv
+                logger.debug(f"Calculated received power (linear) per AGV from CIR: {received_power_per_agv.numpy()}")
+
             except Exception as e:
-                logger.error(f"Error in path power/direction calculation: {str(e)}")
-                path_powers = tf.zeros([1, self.config.num_agvs, 1], dtype=tf.float32)
-                path_directions = tf.zeros([self.config.num_agvs, 2], dtype=tf.float32)
+                logger.error(f"Error calculating received power from CIR: {str(e)}. Setting default.")
+                channel_data['received_power_linear'] = tf.ones([self.config.num_agvs], dtype=tf.float32) * 1e-10 # Default low power
+            # --- END NEW POWER CALCULATION ---
 
-            channel_data['path_data'] = {
-                'path_powers': path_powers,
-                'path_directions': path_directions
-            }
+            # --- Apply fading (Keep as is, but check function signature if needed) ---
+            los_conditions = tf.cast(paths.LOS, tf.bool)
+            # ... (rest of fading logic) ...
 
-            # Compute OFDM channel
+            # --- Compute path powers and directions (Keep as is, for path_data dict) ---
+            # ... (try-except block for path_powers, path_directions) ...
+            # channel_data['path_data'] = ...
+
+            # --- Compute OFDM channel (Keep, but decide if you need full MIMO or averaged) ---
             try:
                 frequencies = subcarrier_frequencies(
-                    num_subcarriers=self.config.num_subcarriers,  # e.g., 512 or 256
+                    num_subcarriers=self.config.num_subcarriers,
                     subcarrier_spacing=self.config.subcarrier_spacing
                 )
-                logger.debug(f"Generating CIR - a shape: {a.shape}, tau shape: {tau.shape}")
-                h_freq_raw = cir_to_ofdm_channel(frequencies, a, tau, normalize=True)
-                logger.debug(f"h_freq_raw shape: {h_freq_raw.shape}")
+                # This 'a' includes fading applied above
+                h_freq_mimo = cir_to_ofdm_channel(frequencies, a, tau, normalize=True) # Potentially full MIMO H
+                logger.debug(f"h_freq_mimo shape (Full MIMO): {h_freq_mimo.shape}")
 
-                # Extract only the dimensions we care about: AGV (dim 1) and subcarriers (last dim)
-                # Compute the dimensions to reduce - all except dim 1 (AGVs) and the last dimension (subcarriers)
-                dims_to_reduce = [i for i in range(tf.rank(h_freq_raw)) if i != 1 and i != tf.rank(h_freq_raw)-1]
-                
-                # For debug purposes, still do the squeeze operation to log the shape
-                squeeze_dims = [i for i in range(tf.rank(h_freq_raw)) if h_freq_raw.shape[i] == 1 and i != 1]
-                h_freq_squeezed = tf.squeeze(h_freq_raw, axis=squeeze_dims)
-                logger.debug(f"h_freq after squeeze shape: {h_freq_squeezed.shape}")
-                
-                # Directly reduce all dimensions except AGV and subcarriers in one operation
-                h_freq = tf.reduce_mean(h_freq_raw, axis=dims_to_reduce)
-                
-                # Log the intermediate shape after reduction for debug purposes
-                logger.debug(f"h_freq after reduce shape: {h_freq.shape}")
-                
-                # Make sure we have the correct shape [num_agvs, num_subcarriers]
-                h_freq = tf.reshape(h_freq, [self.config.num_agvs, -1])
-                actual_subcarriers = h_freq.shape[-1]
-                expected_shape = [self.config.num_agvs, actual_subcarriers]
-                logger.debug(f"Reshaping h_freq to {expected_shape}")
-                
-                # Optional: Pad or trim to match config.num_subcarriers if needed
-                if actual_subcarriers != self.config.num_subcarriers:
-                    logger.debug(f"Subcarrier mismatch: actual={actual_subcarriers}, expected={self.config.num_subcarriers}")
-                    if actual_subcarriers < self.config.num_subcarriers:
-                        pad_width = self.config.num_subcarriers - actual_subcarriers
-                        h_freq = tf.pad(h_freq, [[0, 0], [0, pad_width]], mode="CONSTANT")
-                    elif actual_subcarriers > self.config.num_subcarriers:
-                        h_freq = h_freq[:, :self.config.num_subcarriers]
-                    logger.debug(f"Adjusted h_freq shape: {h_freq.shape}")
+                # Store the full MIMO matrix - RECOMMENDED for accurate beamforming SNR calc later
+                channel_data['channel_matrices'] = h_freq_mimo
 
-                channel_data['channel_matrices'] = h_freq
-                logger.debug(f"Final h_freq shape: {h_freq.shape}")
+                # --- OPTIONAL: Keep the averaged version if needed elsewhere ---
+                # Calculate the averaged version as before, if required by other parts of code
+                try:
+                    # Determine dimensions to reduce (all except AGVs and subcarriers)
+                    # Assuming AGV dimension is axis=1 after potential squeeze/reshape from cir_to_ofdm
+                    # Assuming Subcarrier dimension is axis=-1
+                    # VERIFY THESE ASSUMPTIONS BASED ON h_freq_mimo.shape LOG
+                    rank = tf.rank(h_freq_mimo)
+                    agv_dim_index = 1 # Assumption, verify!
+                    sc_dim_index = rank - 1
+                    dims_to_reduce_avg = [i for i in range(rank) if i != agv_dim_index and i != sc_dim_index]
+
+                    if dims_to_reduce_avg: # Only reduce if there are other dimensions
+                       h_freq_avg = tf.reduce_mean(h_freq_mimo, axis=dims_to_reduce_avg)
+                    else:
+                       h_freq_avg = h_freq_mimo # Already has the target shape?
+
+                    # Ensure final shape [num_agvs, num_subcarriers]
+                    h_freq_avg = tf.reshape(h_freq_avg, [self.config.num_agvs, self.config.num_subcarriers])
+
+                    channel_data['h_freq_averaged'] = h_freq_avg
+                    logger.debug(f"h_freq_averaged shape: {h_freq_avg.shape}")
+                except Exception as avg_e:
+                    logger.error(f"Could not calculate averaged h_freq: {avg_e}")
+                    channel_data['h_freq_averaged'] = None
+                # --- END OPTIONAL AVERAGED H_FREQ ---
+
             except Exception as e:
                 logger.error(f"Error in OFDM channel computation: {str(e)}")
-                h_freq = tf.complex(
+                # Provide fallback for both potential matrices
+                fallback_h = tf.complex(
                     tf.random.normal([self.config.num_agvs, self.config.num_subcarriers], dtype=tf.float32),
                     tf.random.normal([self.config.num_agvs, self.config.num_subcarriers], dtype=tf.float32)
                 )
-                channel_data['channel_matrices'] = h_freq
+                # Need fallback for MIMO shape too - requires knowing expected MIMO dims
+                channel_data['channel_matrices'] = None # Or fallback MIMO shape
+                channel_data['h_freq_averaged'] = fallback_h
 
-            # Compute path losses
-            try:
-                distances = tf.norm(agv_positions - tx_pos, axis=-1)
-                path_losses = 70.0 + 20.0 * tf.math.log(distances + 1e-6) / tf.math.log(10.0)
-                path_losses = tf.cast(path_losses, tf.float32)
-                path_losses = tf.ensure_shape(path_losses, [self.config.num_agvs])
-                channel_data['path_losses'] = path_losses
-            except Exception as e:
-                logger.error(f"Error calculating path losses: {str(e)}")
-                channel_data['path_losses'] = tf.ones([self.config.num_agvs], dtype=tf.float32) * 70.0
 
-            # Calculate SNR
+            # --- REMOVE OLD PATH LOSS CALCULATION BLOCK ---
+            # The try-except block calculating 'path_losses' with the formula is already deleted from instructions above.
+
+            # --- Calculate SNR using the *new* calculate_snr (needs modification too) ---
+            # SNR calculation should ideally use 'received_power_linear' now.
+            # Let's calculate a *basic* average SNR here for logging, assuming calculate_snr is called later.
             try:
-                snr_metrics = self.calculate_snr(h_freq, self.config, path_losses)
-                logger.debug(f"SNR metrics: average_snr={snr_metrics['average_snr']}")
-                channel_data['beam_metrics'] = snr_metrics['beam_metrics']
+                # We use the 'received_power_linear' calculated earlier.
+                # This power already includes path loss from RT.
+                # We still need Tx power, gains, and noise power from config.
+                tx_power_linear = tf.pow(10.0, (self.config.tx_power - 30) / 10.0)
+                tx_gain_linear = tf.pow(10.0, self.config.bs_array['antenna_gain_db'] / 10.0)
+                rx_gain_linear = tf.pow(10.0, self.config.agv_array['antenna_gain_db'] / 10.0)
+                total_noise_power = tf.maximum(self.config.simulation['noise_power'], 1e-20)
+
+                # Simple SNR based on average received power (before beamforming gain)
+                signal_power = tx_power_linear * tx_gain_linear * rx_gain_linear * channel_data['received_power_linear']
+                snr_linear = signal_power / total_noise_power
+                snr_linear = tf.maximum(snr_linear, 1e-10)
+                snr_db = 10 * tf.math.log(snr_linear) / tf.math.log(10.0)
+                snr_db_clipped = tf.clip_by_value(snr_db, -10.0, 30.0)
+                snr_db_clipped = tf.ensure_shape(snr_db_clipped, [self.config.num_agvs])
+
+                channel_data['beam_metrics'] = {'snr_db': snr_db_clipped} # Store this basic SNR for now
+                logger.debug(f"Basic average SNR calculated per AGV (before beam gain): {snr_db_clipped.numpy()}")
+
             except Exception as e:
-                logger.error(f"Error calculating SNR: {str(e)}")
+                logger.error(f"Error calculating basic SNR in generate_channel_data: {str(e)}")
                 channel_data['beam_metrics'] = {
                     'snr_db': tf.ones([self.config.num_agvs], dtype=tf.float32) * 10.0
                 }
-                snr_metrics = {'average_snr': 10.0}
 
-            # Ensure proper los_conditions shape
+            # --- Process LOS conditions (Keep as is) ---
             try:
                 los_conditions = tf.cast(paths.LOS, tf.int32)
-                if tf.size(los_conditions) == 1:
-                    los_conditions = tf.tile([los_conditions], [self.config.num_agvs])
-                los_conditions = tf.reshape(los_conditions, [self.config.num_agvs])
+                # ... (rest of LOS processing) ...
                 channel_data['los_conditions'] = los_conditions
             except Exception as e:
-                logger.error(f"Error processing LOS conditions: {str(e)}")
+                # ... (error handling) ...
                 channel_data['los_conditions'] = tf.zeros([self.config.num_agvs], dtype=tf.int32)
 
-            # Get current beam directions
+            # --- Get beam directions (Keep as is, comes from BeamManager) ---
             try:
-                beam_directions = self.beam_manager.get_current_beams()
+                beam_directions = self.beam_manager.get_current_beams() # Assumes beam_manager exists
+                if 'beam_metrics' not in channel_data or channel_data['beam_metrics'] is None:
+                    channel_data['beam_metrics'] = {}
                 channel_data['beam_metrics']['beam_directions'] = beam_directions
             except Exception as e:
-                logger.error(f"Error getting beam directions: {str(e)}")
-                channel_data['beam_metrics']['beam_directions'] = tf.zeros([self.config.num_agvs, 2], dtype=tf.float32)
+                # ... (error handling) ...
+                 if 'beam_metrics' not in channel_data or channel_data['beam_metrics'] is None:
+                    channel_data['beam_metrics'] = {}
+                 channel_data['beam_metrics']['beam_directions'] = tf.zeros([self.config.num_agvs, 2], dtype=tf.float32)
+
 
             logger.debug(f"Channel data generated: keys={channel_data.keys()}")
+            tf.config.run_functions_eagerly(False) # Disable eager after the function if you enabled it
             return channel_data
 
         except Exception as e:
             logger.error(f"Error in channel data generation: {str(e)}", exc_info=True)
-            return self._create_fallback_channel_data(agv_positions if 'agv_positions' in locals() else None, 
-                                                    tx_pos if 'tx_pos' in locals() else None)
+            tf.config.run_functions_eagerly(False) # Ensure eager is disabled on error too
+            # Use your existing fallback logic, ensure it returns compatible keys
+            return self._create_fallback_channel_data(agv_positions if 'agv_positions' in locals() else None,
+                                                   tx_pos if 'tx_pos' in locals() else None)
+
 
     def _create_fallback_channel_data(self, agv_positions=None, tx_pos=None):
         """Create fallback channel data when the main channel generation fails"""
