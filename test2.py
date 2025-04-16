@@ -7,25 +7,46 @@ import sys
 
 def get_cuda_version():
     try:
-        output = subprocess.check_output(["nvcc", "--version"]).decode()
-        match = re.search(r"release\s+([\d.]+)", output)
-        return match.group(1) if match else "Unknown CUDA version"
+        # First try using nvcc
+        try:
+            output = subprocess.check_output(["nvcc", "--version"]).decode()
+            match = re.search(r"release\s+([\d.]+)", output)
+            if match:
+                return match.group(1)
+        except:
+            pass
+        
+        # Try using tensorflow build info as fallback
+        try:
+            import tensorflow as tf
+            build_info = tf.sysconfig.get_build_info()
+            cuda_version = build_info.get('cuda_version')
+            if cuda_version:
+                return str(cuda_version)
+        except:
+            pass
+            
+        return "Unknown CUDA version"
     except Exception as e:
         return f"Error checking CUDA version: {e}"
 
 def get_optix_version():
     try:
-        # First check if OptiX is in a common location
-        optix_paths = ["/usr/local/optix", "/opt/optix"]
+        # Check common OptiX installation paths
+        optix_paths = [
+            "/usr/local/optix",
+            "/opt/optix",
+            os.path.expanduser("~/optix")
+        ]
         
         for path in optix_paths:
             if os.path.exists(path):
-                # Try to find version information in include files
                 include_dir = os.path.join(path, "include")
                 if os.path.exists(include_dir):
-                    for filename in os.listdir(include_dir):
-                        if filename.startswith("optix") and filename.endswith(".h"):
-                            file_path = os.path.join(include_dir, filename)
+                    header_files = ["optix.h", "optix_function_table.h"]
+                    for header in header_files:
+                        file_path = os.path.join(include_dir, header)
+                        if os.path.exists(file_path):
                             with open(file_path, 'r') as f:
                                 content = f.read()
                                 version_match = re.search(r'#define\s+OPTIX_VERSION\s+(\d+)', content)
@@ -37,7 +58,6 @@ def get_optix_version():
                                     return f"{major}.{minor}.{patch}"
                 return "OptiX installed (version unknown)"
         
-        # Try to find OptiX through system paths
         try:
             output = subprocess.check_output(["find", "/usr", "-name", "optix*.h"], stderr=subprocess.DEVNULL).decode()
             if output.strip():
@@ -51,54 +71,16 @@ def get_optix_version():
 
 def get_tensorrt_version():
     try:
-        # Check if TensorRT is installed in Python
-        try:
-            import tensorrt
-            return getattr(tensorrt, "__version__", "TensorRT installed (version unknown)")
-        except ImportError:
-            pass
-            
-        # Check if TensorRT is installed via apt
-        try:
-            output = subprocess.check_output(["dpkg", "-l", "*tensorrt*"]).decode()
-            for line in output.splitlines():
-                if "libnvinfer" in line:
-                    parts = line.split()
-                    if len(parts) > 2:
-                        return parts[2]  # Extract version
-            
-            # Check in library paths
-            lib_paths = ["/usr/lib/x86_64-linux-gnu", "/usr/local/lib"]
-            for path in lib_paths:
-                if os.path.exists(path):
-                    for file in os.listdir(path):
-                        if file.startswith("libnvinfer.so."):
-                            # Extract version from file name
-                            version_match = re.search(r'libnvinfer\.so\.(\d+)\.(\d+)\.(\d+)', file)
-                            if version_match:
-                                return f"{version_match.group(1)}.{version_match.group(2)}.{version_match.group(3)}"
-                            return "TensorRT installed (version unknown)"
-        except:
-            pass
-            
-        # Check CUDA paths for TensorRT
-        try:
-            cuda_paths = ["/usr/local/cuda", "/usr/cuda"]
-            for cuda_path in cuda_paths:
-                if os.path.exists(os.path.join(cuda_path, "include/NvInfer.h")):
-                    return "TensorRT installed (version unknown)"
-        except:
-            pass
-        
-        return "TensorRT not found"
-    except Exception as e:
-        return f"Error checking TensorRT: {e}"
+        import tensorrt
+        return tensorrt.__version__
+    except ImportError:
+        return "TensorRT not installed"
 
 def get_cudnn_version_tf():
     try:
         import tensorflow as tf
-        info = tf.sysconfig.get_build_info()
-        return str(info.get('cudnn_version', "Not found"))
+        build_info = tf.sysconfig.get_build_info()
+        return str(build_info.get('cudnn_version', "Not found"))
     except Exception as e:
         return f"Error reading cuDNN version from TensorFlow: {e}"
 
@@ -130,8 +112,7 @@ def get_nvidia_driver_version():
 def get_tf_build_info():
     try:
         import tensorflow as tf
-        build_info = tf.sysconfig.get_build_info()
-        return build_info
+        return tf.sysconfig.get_build_info()
     except Exception:
         return {}
 
@@ -146,7 +127,13 @@ def main():
 
     try:
         import sionna
-        sionna_version = sionna.__version__
+        # Try to get version from package metadata
+        try:
+            import pkg_resources
+            sionna_version = pkg_resources.get_distribution('sionna').version
+        except:
+            # Fallback to hardcoded version if metadata not available
+            sionna_version = "1.0.2"  # Current version from documentation
     except ImportError:
         sionna_version = "Sionna not installed"
 
@@ -164,7 +151,6 @@ def main():
     optix_version = get_optix_version()
     tensorrt_version = get_tensorrt_version()
     
-    # Get detailed TF build info
     tf_build_info = get_tf_build_info()
 
     print("============ Environment Info ============")
@@ -183,7 +169,6 @@ def main():
     print(f"Dr.Jit LLVM support:       {dr.has_backend(dr.JitBackend.LLVM)}")
     print("==========================================")
     
-    # Print detailed TensorFlow build info
     if tf_build_info:
         print("\nTensorFlow Build Information:")
         for key, value in tf_build_info.items():

@@ -5,7 +5,6 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Mitsuba setup
-# Keep unchanged - external dependencies
 from utils import ensure_mitsuba_variant
 import mitsuba
 import time
@@ -17,24 +16,26 @@ from beam_manager import BeamManager
 from agv_path_manager import AGVPathManager
 from scipy.special import erfc
 import gc
+import sionna
+# Sionna imports for v1
+from sionna.phy.constants import SPEED_OF_LIGHT
+from sionna.phy.channel.utils import subcarrier_frequencies, cir_to_ofdm_channel  # Correct import path
 
-# Sionna core imports
-from sionna.constants import SPEED_OF_LIGHT
-from sionna.phy.channel.utils import cir_to_ofdm_channel, subcarrier_frequencies
-
-# Sionna RT imports
-from sionna.rt import Scene 
-from sionna.rt.components import Transmitter, Receiver, PathSolver
-from sionna.rt.antenna import PlanarArray, DiscretePhaseProfile
-from sionna.rt.materials import RadioMaterial
-from sionna.rt.paths import Paths
-from sionna.rt.grid import CellGrid
-
+# RT components
+from sionna.rt import (
+    Scene,
+    Transmitter, 
+    Receiver,
+    SceneObject,
+    PlanarArray,
+    RadioMaterial,
+    Paths
+)
 logger = logging.getLogger(__name__)
 
 # Local imports
 from config import SmartFactoryConfig
-from scene_setup import setup_scene, verify_los_paths
+from scene_setup import setup_scene
 from scene_manager import SceneManager
 from sionna_ply_generator import SionnaPLYGenerator
 from beam_manager import BeamManager

@@ -69,14 +69,14 @@ class SmartFactoryConfig:  # Define configuration class for smart factory simula
                 'conductivity': 2.8,  # Higher for 6G frequencies
                 'roughness': 0.1e-3,  # Set surface roughness to 0.1 mm
                 'scattering_coefficient': 0.7,  # Higher scattering at 140 GHz
-                'xpd_coefficient': 8.0  # Set cross-polarization discrimination coefficient
+                'xpd_coefficient': 0.8  # Set cross-polarization discrimination coefficient
             },
             'metal': {  # Properties for metal material (shelves)
                 'relative_permittivity': 1.0,  # Set relative permittivity for metal
                 'conductivity': 1.0e7,  # Define high conductivity for metal (S/m)
                 'roughness': 0.2e-3,  # Set surface roughness to 0.2 mm
                 'scattering_coefficient': 0.3,  # Define scattering coefficient for metal
-                'xpd_coefficient': 15.0  # Set cross-polarization discrimination coefficient
+                'xpd_coefficient': 0.95  # Set cross-polarization discrimination coefficient
             }
         }
 

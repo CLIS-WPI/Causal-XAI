@@ -1,5 +1,6 @@
-#channel_generator.py#
-# Keep unchanged - external dependencies
+# channel_generator.py
+# System imports
+# System imports
 from utils import ensure_mitsuba_variant
 import mitsuba
 import time
@@ -13,17 +14,21 @@ from agv_path_manager import AGVPathManager
 from scipy.special import erfc
 import gc
 
-# Update Sionna imports based on new structure
-from sionna.constants import SPEED_OF_LIGHT
-from sionna.phy.channel.utils import cir_to_ofdm_channel, subcarrier_frequencies
+# Sionna imports for v1
+from sionna.phy.constants import SPEED_OF_LIGHT
+from sionna.phy.channel.utils import subcarrier_frequencies
 
-# Update RT-related imports (these need to be reorganized based on new structure)
-from sionna.rt.scenes import Scene
-from sionna.rt.components import Transmitter, Receiver
-from sionna.rt.antenna import PlanarArray, DiscretePhaseProfile
-from sionna.rt.materials import RadioMaterial
-from sionna.rt.paths import Paths, PathSolver
-from sionna.rt.grid import CellGrid
+# RT-related imports - only confirmed components
+from sionna.rt import (
+    Scene,
+    Transmitter, 
+    Receiver,
+    SceneObject,
+    PlanarArray,
+    RadioMaterial,
+    Paths,
+    PathSolver
+)
 
 logger = logging.getLogger(__name__)
 
