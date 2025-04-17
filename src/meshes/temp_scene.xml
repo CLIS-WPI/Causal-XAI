@@ -6,79 +6,60 @@
     <emitter type="constant" id="World">
         <rgb name="radiance" value="1.0 1.0 1.0"/>
     </emitter>
-    <bsdf type="twosided" id="base_material">
-        <bsdf type="diffuse">
-            <rgb name="reflectance" value="0.8 0.8 0.8"/>
-        </bsdf>
-    </bsdf>
     <shape type="ply" id="mesh-agv_robot_1">
         <string name="filename" value="/home/tanglab/Desktop/Causal-XAI/src/meshes/agv_robot_1.ply"/>
         <boolean name="face_normals" value="true"/>
-        <ref id="base_material" name="bsdf"/>
     </shape>
     <shape type="ply" id="mesh-shelf_2">
         <string name="filename" value="/home/tanglab/Desktop/Causal-XAI/src/meshes/shelf_2.ply"/>
         <boolean name="face_normals" value="true"/>
-        <ref id="base_material" name="bsdf"/>
     </shape>
     <shape type="ply" id="mesh-ceiling">
         <string name="filename" value="/home/tanglab/Desktop/Causal-XAI/src/meshes/ceiling.ply"/>
         <boolean name="face_normals" value="true"/>
-        <ref id="base_material" name="bsdf"/>
     </shape>
     <shape type="ply" id="mesh-wall_xp">
         <string name="filename" value="/home/tanglab/Desktop/Causal-XAI/src/meshes/wall_xp.ply"/>
         <boolean name="face_normals" value="true"/>
-        <ref id="base_material" name="bsdf"/>
     </shape>
     <shape type="ply" id="mesh-wall_xm">
         <string name="filename" value="/home/tanglab/Desktop/Causal-XAI/src/meshes/wall_xm.ply"/>
         <boolean name="face_normals" value="true"/>
-        <ref id="base_material" name="bsdf"/>
     </shape>
     <shape type="ply" id="mesh-wall_yp">
         <string name="filename" value="/home/tanglab/Desktop/Causal-XAI/src/meshes/wall_yp.ply"/>
         <boolean name="face_normals" value="true"/>
-        <ref id="base_material" name="bsdf"/>
     </shape>
     <shape type="ply" id="mesh-shelf_4">
         <string name="filename" value="/home/tanglab/Desktop/Causal-XAI/src/meshes/shelf_4.ply"/>
         <boolean name="face_normals" value="true"/>
-        <ref id="base_material" name="bsdf"/>
     </shape>
     <shape type="ply" id="mesh-shelf_3">
         <string name="filename" value="/home/tanglab/Desktop/Causal-XAI/src/meshes/shelf_3.ply"/>
         <boolean name="face_normals" value="true"/>
-        <ref id="base_material" name="bsdf"/>
     </shape>
     <shape type="ply" id="mesh-shelf_0">
         <string name="filename" value="/home/tanglab/Desktop/Causal-XAI/src/meshes/shelf_0.ply"/>
         <boolean name="face_normals" value="true"/>
-        <ref id="base_material" name="bsdf"/>
     </shape>
     <shape type="ply" id="mesh-base_station">
         <string name="filename" value="/home/tanglab/Desktop/Causal-XAI/src/meshes/base_station.ply"/>
         <boolean name="face_normals" value="true"/>
-        <ref id="base_material" name="bsdf"/>
     </shape>
     <shape type="ply" id="mesh-agv_robot_0">
         <string name="filename" value="/home/tanglab/Desktop/Causal-XAI/src/meshes/agv_robot_0.ply"/>
         <boolean name="face_normals" value="true"/>
-        <ref id="base_material" name="bsdf"/>
     </shape>
     <shape type="ply" id="mesh-floor">
         <string name="filename" value="/home/tanglab/Desktop/Causal-XAI/src/meshes/floor.ply"/>
         <boolean name="face_normals" value="true"/>
-        <ref id="base_material" name="bsdf"/>
     </shape>
     <shape type="ply" id="mesh-wall_ym">
         <string name="filename" value="/home/tanglab/Desktop/Causal-XAI/src/meshes/wall_ym.ply"/>
         <boolean name="face_normals" value="true"/>
-        <ref id="base_material" name="bsdf"/>
     </shape>
     <shape type="ply" id="mesh-shelf_1">
         <string name="filename" value="/home/tanglab/Desktop/Causal-XAI/src/meshes/shelf_1.ply"/>
         <boolean name="face_normals" value="true"/>
-        <ref id="base_material" name="bsdf"/>
     </shape>
 </scene>
