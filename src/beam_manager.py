@@ -43,7 +43,7 @@ class BeamManager:
         self.current_channel_state: Optional[Dict[str, Any]] = None
         self.channel_state_history: list = []
         # Stores current beam angles [azimuth, elevation] per AGV
-        self.current_beam_angles: tf.Tensor = tf.zeros((config["num_agvs"], 2), dtype=tf.float32)
+        self.current_beam_angles: tf.Tensor = tf.zeros((config.num_agvs, 2), dtype=tf.float32)
         self.packet_stats: Dict[str, int] = {
             'total': 0,
             'successful': 0,
@@ -63,11 +63,20 @@ class BeamManager:
 
     def validate_config(self) -> None:
         """Validate the beamforming configuration parameters."""
+        # Check if the beamforming attribute exists and has required properties
+        if not hasattr(self.config, 'beamforming'):
+            raise ValueError("Configuration must include 'beamforming' section")
+        
+        # Check for required beamforming parameters
         required = ['num_beams', 'max_steering_angle', 'min_snr_threshold']
-        if not all(k in self.config.get("beamforming", {}) for k in required):
-            raise ValueError(f"Missing required beamforming config keys: {required}")
-        if "bs_array" not in self.config or "num_agvs" not in self.config:
+        missing = [k for k in required if not hasattr(self.config.beamforming, k) and k not in self.config.beamforming]
+        if missing:
+            raise ValueError(f"Missing required beamforming config keys: {missing}")
+        
+        # Check for required attributes at the top level
+        if not hasattr(self.config, "bs_array") or not hasattr(self.config, "num_agvs"):
             raise ValueError("Configuration must include 'bs_array' and 'num_agvs'")
+        
         logger.debug("BeamManager configuration validated.")
 
     def _initialize_beam_codebook(self) -> None:
@@ -75,25 +84,29 @@ class BeamManager:
         try:
             logger.info("Initializing Beamforming Vector & Angle Codebooks...")
             # Cast bs_array dimensions to integers and assert positive values
-            num_rows = tf.cast(self.config["bs_array"]['num_rows'], tf.int32)
-            num_cols = tf.cast(self.config["bs_array"]['num_cols'], tf.int32)
+            num_rows = tf.cast(self.config.bs_array['num_rows'], tf.int32)
+            num_cols = tf.cast(self.config.bs_array['num_cols'], tf.int32)
             tf.debugging.assert_positive(num_rows, message="Number of rows must be positive")
             tf.debugging.assert_positive(num_cols, message="Number of columns must be positive")
             num_tx_ant = int(num_rows.numpy()) * int(num_cols.numpy())
-            num_beams_config = self.config["beamforming"]['num_beams']
+            num_beams_config = self.config.beamforming['num_beams']
 
             # --- Generate Beamforming Vectors (w) using Sionna function ---
             self.beam_vector_codebook = grid_of_beams_dft(
                 num_ant_v=int(num_rows.numpy()),
-                num_ant_h=int(num_cols.numpy()),
-                normalize=True
+                num_ant_h=int(num_cols.numpy())
+            )
+            self.beam_vector_codebook = self.beam_vector_codebook / tf.norm(
+                self.beam_vector_codebook, 
+                axis=1, 
+                keepdims=True
             )
             self.beam_vector_codebook = tf.cast(self.beam_vector_codebook, dtype=tf.complex64)
             self.codebook_size = int(self.beam_vector_codebook.shape[0])
             logger.info(f"Generated beam vector codebook with shape: {self.beam_vector_codebook.shape}")
 
             # --- Generate Corresponding Angle Codebook (azimuth, elevation) ---
-            max_steering_angle = float(self.config["beamforming"]['max_steering_angle'])
+            max_steering_angle = float(self.config.beamforming['max_steering_angle'])
             num_codebook_beams = self.codebook_size
             # Assume a roughly square grid for angles
             num_az_approx = int(np.ceil(np.sqrt(num_codebook_beams)))
@@ -112,8 +125,8 @@ class BeamManager:
 
         except ImportError:
             logger.error("Failed to import grid_of_beams_dft. Using random fallback.")
-            num_tx_ant = self.config["bs_array"]['num_rows'] * self.config["bs_array"]['num_cols']
-            num_beams = self.config["beamforming"]['num_beams']
+            num_tx_ant = self.config.bs_array.num_rows * self.config.bs_array.num_cols
+            num_beams = self.config.beamforming.num_beams
             self.beam_vector_codebook = tf.complex(
                 tf.random.normal([num_beams, num_tx_ant]),
                 tf.random.normal([num_beams, num_tx_ant])
@@ -235,10 +248,10 @@ class BeamManager:
         
         Returns a Boolean tensor indicating for each AGV if a switch should occur.
         """
-        MIN_SNR_THRESHOLD = self.config["beamforming"]['min_snr_threshold']
-        needs_switch = tf.zeros([self.config["num_agvs"]], dtype=tf.bool)
+        MIN_SNR_THRESHOLD = self.config.beamforming.min_snr_threshold
+        needs_switch = tf.zeros([self.config.num_agvs], dtype=tf.bool)
         if current_avg_snr_db < MIN_SNR_THRESHOLD:
-            needs_switch = tf.ones([self.config["num_agvs"]], dtype=tf.bool)
+            needs_switch = tf.ones([self.config.num_agvs], dtype=tf.bool)
             logger.debug(f"Avg SNR below threshold: {current_avg_snr_db:.2f} dB, switching beams.")
         logger.debug(f"Switch check: {needs_switch.numpy()}")
         return needs_switch
@@ -258,11 +271,11 @@ class BeamManager:
         """
         try:
             if self.current_beam_angles is None:
-                self.current_beam_angles = tf.zeros([self.config["num_agvs"], 2], dtype=tf.float32)
+                self.current_beam_angles = tf.zeros([self.config.num_agvs], 2, dtype=tf.float32)
             old_beam_angles = tf.identity(self.current_beam_angles)
             new_beam_angles_tensor = tf.convert_to_tensor(new_beam_angles, dtype=tf.float32)
-            if new_beam_angles_tensor.shape != (self.config["num_agvs"], 2):
-                raise ValueError(f"new_beam_angles shape {new_beam_angles_tensor.shape} does not match expected ({self.config['num_agvs']}, 2)")
+            if new_beam_angles_tensor.shape != (self.config.num_agvs, 2):
+                raise ValueError(f"new_beam_angles shape {new_beam_angles_tensor.shape} does not match expected ({self.config.num_agvs}, 2)")
             if not tf.reduce_all(tf.abs(new_beam_angles_tensor - old_beam_angles) < 1e-4):
                 self.log_beam_switch(old_beam_angles, new_beam_angles_tensor)
                 self.current_beam_angles = new_beam_angles_tensor
@@ -293,9 +306,9 @@ class BeamManager:
         """
         try:
             agv_positions = tf.ensure_shape(tf.convert_to_tensor(agv_positions, dtype=tf.float32),
-                                             [self.config["num_agvs"], 3])
+                                             [self.config.num_agvs, 3])
             obstacle_positions = tf.convert_to_tensor(obstacle_positions, dtype=tf.float32)
-            bs_pos = tf.cast(self.config["bs_position"], tf.float32)
+            bs_pos = tf.cast(self.config.bs_position, tf.float32)
 
             def check_ray_intersection(agv_pos: tf.Tensor) -> tf.Tensor:
                 ray_start = bs_pos[tf.newaxis, :]
@@ -307,7 +320,7 @@ class BeamManager:
                 projections = tf.reduce_sum(to_obstacles * ray_dir, axis=1)
                 closest_points = ray_start + projections[:, tf.newaxis] * ray_dir
                 distances = tf.norm(obstacle_positions - closest_points, axis=1)
-                obstacle_radius = self.config["beamforming"].get('obstacle_radius', 0.5)
+                obstacle_radius = self.config.beamforming.obstacle_radius
                 is_between = tf.logical_and(projections >= 0, projections <= ray_length)
                 intersects = tf.logical_and(distances < obstacle_radius, is_between)
                 return tf.reduce_any(intersects)
@@ -329,7 +342,7 @@ class BeamManager:
             return final_blocked
         except Exception as e:
             logger.error(f"Error in blockage detection: {str(e)}", exc_info=True)
-            return tf.ones([self.config["num_agvs"]], dtype=tf.bool)
+            return tf.ones([self.config.num_agvs], dtype=tf.bool)
 
     def optimize_beam_direction(self, channel_data: Dict[str, Any], path_manager: Any,
                                   obstacle_positions: tf.Tensor) -> tf.Tensor:
@@ -342,37 +355,37 @@ class BeamManager:
                 tf.convert_to_tensor(path_manager.get_current_status(f'agv_{i}')['position'], dtype=tf.float32)
                 if path_manager.get_current_status(f'agv_{i}') is not None and 'position' in path_manager.get_current_status(f'agv_{i}')
                 else tf.constant([0.0, 0.0, 0.5], dtype=tf.float32)
-                for i in range(self.config["num_agvs"])
+                for i in range(self.config.num_agvs)
             ])
             logger.debug(f"AGV positions: {agv_positions.numpy()}")
             blocked = self.detect_blockage(channel_data, agv_positions, obstacle_positions)
             logger.debug(f"Blockage status: {blocked.numpy()}")
-            bs_pos = tf.cast(self.config["bs_position"], tf.float32)
+            bs_pos = tf.cast(self.config.bs_position, tf.float32)
             direction_vectors = agv_positions - bs_pos
             horizontal_distances = tf.norm(direction_vectors[:, :2], axis=1) + 1e-9
             azimuths = tf.math.atan2(direction_vectors[:, 1], direction_vectors[:, 0]) * 180.0 / np.pi
             elevations = tf.math.atan2(direction_vectors[:, 2], horizontal_distances) * 180.0 / np.pi
-            azimuths = tf.clip_by_value(azimuths, -self.config["beamforming"]['max_steering_angle'], self.config["beamforming"]['max_steering_angle'])
-            elevations = tf.clip_by_value(elevations, -self.config["beamforming"]['max_steering_angle']/2.0, self.config["beamforming"]['max_steering_angle']/2.0)
+            azimuths = tf.clip_by_value(azimuths, -self.config.beamforming['max_steering_angle'], self.config.beamforming['max_steering_angle'])
+            elevations = tf.clip_by_value(elevations, -self.config.beamforming['max_steering_angle']/2.0, self.config.beamforming['max_steering_angle']/2.0)
             direct_beams_angles = tf.stack([azimuths, elevations], axis=1)
             logger.debug(f"Direct geometric beam angles: {direct_beams_angles.numpy()}")
             needs_switch = blocked
             logger.debug(f"Needs switch status: {needs_switch.numpy()}")
 
-            if not (channel_data and 'channel_matrices' in channel_data and channel_data['channel_matrices'] is not None):
+            if not (channel_data and 'channel_matrices' in channel_data and channel_data.channel_matrices is not None):
                 logger.error("Full MIMO channel matrix 'channel_matrices' not found. Returning current beam angles.")
                 return self.current_beam_angles
 
-            h_mimo_full = channel_data['channel_matrices']
-            if tf.rank(h_mimo_full) < 4 or tf.shape(h_mimo_full)[0] != self.config["num_agvs"]:
+            h_mimo_full = channel_data.channel_matrices
+            if tf.rank(h_mimo_full) < 4 or tf.shape(h_mimo_full)[0] != self.config.num_agvs:
                 logger.error(f"Unexpected shape for h_mimo_full: {h_mimo_full.shape}.")
                 return self.current_beam_angles
 
-            tx_power_linear = tf.pow(10.0, (self.config["tx_power"] - 30)/10.0)
-            noise_power_linear = tf.maximum(self.config["simulation"]['noise_power'], 1e-20)
+            tx_power_linear = tf.pow(10.0, (self.config.tx_power - 30)/10.0)
+            noise_power_linear = tf.maximum(self.config.simulation.noise_power, 1e-20)
             optimal_beam_angles_list = []
             calculated_snrs_per_agv = []
-            for agv_idx in range(self.config["num_agvs"]):
+            for agv_idx in range(self.config.num_agvs):
                 if not needs_switch[agv_idx]:
                     optimal_beam_angles_list.append(direct_beams_angles[agv_idx])
                     calculated_snrs_per_agv.append(-99.0)
@@ -398,7 +411,7 @@ class BeamManager:
             optimal_beams_angles = tf.cast(optimal_beams_angles, tf.float32)
             logger.debug(f"Final optimal beam angles: {optimal_beams_angles.numpy()}")
             avg_optimal_snr = np.mean(calculated_snrs_per_agv) if calculated_snrs_per_agv else -10.0
-            success = avg_optimal_snr > self.config["beamforming"]['min_snr_threshold']
+            success = avg_optimal_snr > self.config.beamforming['min_snr_threshold']
             self.update_beam(optimal_beams_angles, success=success, channel_data=channel_data)
             self.log_snr(avg_optimal_snr)
             return optimal_beams_angles

@@ -1,143 +1,269 @@
-# src/scene_setup.py
-# src/scene_setup.py
+# This script sets up a smart factory simulation for beam switching using Sionna's Ray Tracing.
+# It defines a scene with PLY-based objects, applies radio materials, and configures transmitters/receivers.
+# The goal is to simulate beamforming in an indoor environment with AGVs and base stations.
+
+import mitsuba
+import tensorflow as tf
 import os
 import logging
-import numpy as np
-import tensorflow as tf
-import mitsuba as mi
-from typing import Optional, Dict
+from typing import Dict
+import xml.etree.ElementTree as ET
 
-from sionna.rt import (
-    Scene,
-    Transmitter,
-    Receiver,
-    SceneObject,
-    PlanarArray,
-    RadioMaterial
-)
-from config import SmartFactoryConfig
+# Sionna imports
+from sionna.rt import Scene, load_scene, Transmitter, Receiver, PlanarArray, RadioMaterial
+# Import configuration
+from config import SmartFactoryConfig # Assuming you have this config file
 
+# Set up logging
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
-mi.set_variant("cuda_ad_rgb")
 
-class RTScene:
-    def __init__(self, dtype: tf.DType = tf.complex64) -> None:
-        self._dtype: tf.DType = dtype
-        self.transmitters: Dict[str, Transmitter] = {}
-        self.receivers: Dict[str, Receiver] = {}
-        self.objects: Dict[str, SceneObject] = {}
-        self.radio_materials: Dict[str, RadioMaterial] = {}
-        self.synthetic_array: bool = False
-        self.frequency: Optional[tf.Tensor] = None
-        self.tx_array: Optional[PlanarArray] = None
-        self.rx_array: Optional[PlanarArray] = None
-        self.scene: Optional[Scene] = None
+def setup_scene(config: SmartFactoryConfig) -> 'sionna.rt.Scene':
+    """
+    Set up the ray tracing scene for a smart factory environment.
 
-    def add(self, obj: object) -> None:
-        if isinstance(obj, RadioMaterial):
-            self.radio_materials[obj.name] = obj
-        elif hasattr(obj, "position") and hasattr(obj, "orientation"):
-            if obj.name == "bs":
-                self.transmitters[obj.name] = obj
-            elif obj.name.startswith("rx_"):
-                self.receivers[obj.name] = obj
+    Args:
+        config (SmartFactoryConfig): Configuration object containing simulation parameters.
+
+    Returns:
+        sionna.rt.Scene: Configured Sionna scene ready for ray tracing and beamforming.
+    """
+    try:
+        # Set Mitsuba variant for GPU-accelerated ray tracing
+        mitsuba.set_variant('cuda_ad_rgb')
+        logger.debug(f"Mitsuba variant set to: {mitsuba.variant()}")
+
+        # Define the directory containing PLY files
+        meshes_dir = os.path.join(os.path.dirname(__file__), "meshes")
+        if not os.path.exists(meshes_dir):
+            raise FileNotFoundError(f"Meshes directory not found: {meshes_dir}")
+        logger.debug(f"Using meshes directory: {meshes_dir}")
+
+        # Build XML content for the scene
+        xml_content = '<?xml version="1.0"?>\n<scene version="3.0.0">\n'
+
+        # Add integrator
+        xml_content += '    <integrator type="path">\n'
+        xml_content += '        <integer name="max_depth" value="12"/>\n' # This depth is for Mitsuba rendering, Sionna uses scene.max_depth
+        xml_content += '    </integrator>\n'
+
+        # Add constant emitter (optional for basic scene loading, but good practice)
+        xml_content += '    <emitter type="constant" id="World">\n'
+        xml_content += '        <rgb name="radiance" value="1.0 1.0 1.0"/>\n'
+        xml_content += '    </emitter>\n'
+
+        # --- Step 1: Define a standard Mitsuba material for initial loading ---
+        xml_content += '    <bsdf type="twosided" id="base_material">\n'
+        xml_content += '        <bsdf type="diffuse">\n'
+        xml_content += '            <rgb name="reflectance" value="0.8 0.8 0.8"/>\n'
+        xml_content += '        </bsdf>\n'
+        xml_content += '    </bsdf>\n'
+
+        # Load all PLY files and map their materials conceptually
+        material_map = {} # Keep track of which Sionna material to apply later
+        for ply_file in os.listdir(meshes_dir):
+            if ply_file.endswith(".ply"):
+                full_path = os.path.join(meshes_dir, ply_file)
+                # Ensure path separators are correct for XML (usually forward slashes)
+                full_path = full_path.replace("\\", "/")
+                name = ply_file[:-4]  # Remove .ply extension
+
+                # Assign conceptual material type based on object name
+                material_type = "concrete" if "wall" in name or "floor" in name or "ceiling" in name else "metal"
+
+                # Add shape to XML, referencing the STANDARD Mitsuba 'base_material'
+                xml_content += f'    <shape type="ply" id="mesh-{name}">\n'
+                xml_content += f'        <string name="filename" value="{full_path}"/>\n'
+                xml_content += '        <boolean name="face_normals" value="true"/>\n'
+                # --- Reference the standard material ID ---
+                xml_content += '        <ref id="base_material" name="bsdf"/>\n'
+                xml_content += '    </shape>\n'
+
+                material_map[name] = material_type # Store for later use with Sionna materials
+                logger.debug(f"Added {ply_file} to XML referencing 'base_material', conceptual type: {material_type}")
+
+        xml_content += '</scene>'
+
+        # Write temporary XML file for scene loading
+        temp_xml_path = os.path.join(meshes_dir, "temp_scene.xml")
+        with open(temp_xml_path, 'w') as f:
+            f.write(xml_content)
+        logger.debug(f"Wrote temporary XML to {temp_xml_path}")
+
+        # Optional: Add XML validation again if needed
+        try:
+            tree = ET.parse(temp_xml_path)
+            root = tree.getroot()
+            logger.debug("Starting XML attribute validation...")
+            for elem in root.iter():
+                # logger.debug(f'Element: {elem.tag}, Attributes: {elem.attrib}') # Can be verbose
+                for attr_name, attr_value in elem.attrib.items():
+                    if attr_value is None:
+                        logger.error(f"Found None value in attribute '{attr_name}' of element '{elem.tag}'")
+                        raise ValueError(f"None value found in attribute '{attr_name}' of element '{elem.tag}'")
+            logger.debug("Finished XML attribute validation")
+        except ET.ParseError as xml_err:
+            logger.error(f"XML parsing failed: {xml_err}")
+            raise
+
+        # --- Load the scene using the XML with standard materials ---
+        scene = load_scene(filename=temp_xml_path, merge_shapes=False)
+        logger.debug("Loaded scene geometry using load_scene with standard materials")
+
+        # Remove temporary XML file
+        os.remove(temp_xml_path)
+        logger.debug("Removed temporary XML file")
+
+        # --- Step 2: Define Sionna RadioMaterial objects ---
+        concrete_material = RadioMaterial(
+            name="factory_concrete",
+            # Make sure these keys exist in your config.materials dict
+            conductivity=config.materials['concrete']['conductivity'],
+            relative_permittivity=config.materials['concrete']['relative_permittivity'],
+            scattering_coefficient=config.materials['concrete'].get('scattering_coefficient', 0.3), # Default if missing
+            thickness=0.1 # Example thickness
+        )
+        metal_material = RadioMaterial(
+            name="factory_metal",
+            conductivity=config.materials['metal']['conductivity'],
+            relative_permittivity=config.materials['metal']['relative_permittivity'],
+            scattering_coefficient=config.materials['metal'].get('scattering_coefficient', 0.8), # Default if missing
+            thickness=0.01 # Example thickness
+        )
+        logger.info("Defined Sionna radio materials: factory_concrete, factory_metal")
+
+        # --- Step 3: Apply Sionna RadioMaterial objects to the loaded scene ---
+        for obj_name in scene.objects:
+            # Extract base name used for mapping (e.g., 'floor' from 'mesh-floor:0')
+            if ':' in obj_name:
+                 base_name_part = obj_name.split(':')[0]
             else:
-                self.objects[obj.name] = obj
-        else:
-            self.objects[obj.name] = obj
+                 base_name_part = obj_name
 
-    def validate(self):
-        if not self.transmitters:
-            raise ValueError("Scene must have at least one transmitter")
-        if not self.receivers:
-            raise ValueError("Scene must have at least one receiver")
+            if base_name_part.startswith('mesh-'):
+                 base_name = base_name_part.replace('mesh-', '')
+            else:
+                 base_name = base_name_part # Handle cases if prefix isn't there
 
-
-def setup_scene(config: SmartFactoryConfig) -> RTScene:
-    scene = RTScene()
-    scene.scene = Scene()
-
-    # Create radio materials
-    concrete = RadioMaterial("factory_concrete",
-        relative_permittivity=config.materials['concrete']['relative_permittivity'],
-        conductivity=config.materials['concrete']['conductivity'])
-    metal = RadioMaterial("factory_metal",
-        relative_permittivity=config.materials['metal']['relative_permittivity'],
-        conductivity=config.materials['metal']['conductivity'])
-
-    # Add materials to both scene objects
-    scene.add(concrete)
-    scene.add(metal)
-    scene.scene.add(concrete)
-    scene.scene.add(metal)
-
-    # Create a basic holder material
-    holder = mi.load_dict({
-        'type': 'diffuse',
-        'reflectance': {'type': 'rgb', 'value': [0.5, 0.5, 0.5]}
-    })
-
-    meshes_dir = os.path.join(os.path.dirname(__file__), "meshes")
-    for ply_file in os.listdir(meshes_dir):
-        if ply_file.endswith(".ply"):
-            name = ply_file[:-4]
-            filepath = os.path.join(meshes_dir, ply_file)
-            radio_mat = concrete if any(x in name for x in ["wall", "floor", "ceiling"]) else metal
-
-            # Create shape with the holder material
-            mi_shape = mi.load_dict({
-                "type": "ply",
-                "filename": filepath,
-                "face_normals": True,
-                "bsdf": {
-                    "type": "diffuse",
-                    "reflectance": {
-                        "type": "rgb",
-                        "value": [0.5, 0.5, 0.5]
-                    }
-                }
-            })
-
-            
-            obj = SceneObject(name=name, mi_shape=mi_shape, radio_material=radio_mat)
-            scene.scene.add(obj)
-            scene.add(obj)
-            logger.debug(f"Added {name} with material {radio_mat.name}")
+            if base_name in material_map:
+                material_to_apply = concrete_material if material_map[base_name] == "concrete" else metal_material
+                try:
+                    scene.set_material(obj_name, material_to_apply)
+                    logger.debug(f"Applied Sionna '{material_map[base_name]}' material ({material_to_apply.name}) to {obj_name}")
+                except Exception as e:
+                    logger.error(f"Failed to apply material to {obj_name}: {e}")
+            else:
+                logger.warning(f"No material mapping found for base name '{base_name}' derived from scene object '{obj_name}'. Defaulting to concrete.")
+                # Apply a default if mapping fails
+                try:
+                    scene.set_material(obj_name, concrete_material)
+                except Exception as e:
+                    logger.error(f"Failed to apply default material to {obj_name}: {e}")
 
 
-    # Add transmitter
-    bs = Transmitter("bs",
-        position=tf.constant(config.bs_position, dtype=tf.float32),
-        orientation=tf.constant(config.bs_orientation, dtype=tf.float32))
-    bs_array = PlanarArray(**config.bs_array)
-    bs.array = bs_array
-    scene.add(bs)
-    scene.scene.add(bs)
-    scene.tx_array = bs_array
-    scene.synthetic_array = True
-    scene.frequency = tf.constant(config.carrier_frequency, tf.float32)
+        # Set scene frequency (this updates material properties automatically based on conductivity/permittivity)
+        scene.frequency = tf.cast(config.carrier_frequency, tf.float32)
+        logger.debug(f"Set scene frequency to {config.carrier_frequency / 1e9:.2f} GHz")
 
-    # Add receivers
-    for i in range(config.num_agvs):
-        pos = config.agv_trajectories[f"agv_{i+1}"][0]
-        ori = config.agv_orientations[i]
-        rx = Receiver(f"rx_agv_{i}",
-            position=tf.constant(pos, dtype=tf.float32),
-            orientation=tf.constant(ori, dtype=tf.float32))
-        rx_array = PlanarArray(**config.agv_array)
-        rx.array = rx_array
-        scene.add(rx)
-        scene.scene.add(rx)
-        if i == 0:
-            scene.rx_array = rx_array
+        # Add base station (transmitter)
+        tx = Transmitter(
+            name="bs",
+            position=tf.constant(config.bs_position, dtype=tf.float32),
+            orientation=tf.constant(config.bs_orientation, dtype=tf.float32)
+        )
+        tx_array = PlanarArray(
+            num_rows=config.bs_array['num_rows'],
+            num_cols=config.bs_array['num_cols'],
+            vertical_spacing=config.bs_array['vertical_spacing'],
+            horizontal_spacing=config.bs_array['horizontal_spacing'],
+            pattern=config.bs_array['pattern'],
+            polarization=config.bs_array['polarization']
+        )
+        tx.array = tx_array
+        scene.add(tx)
+        logger.debug("Added base station transmitter")
 
-    # Configure tracing
-    scene.scene.los = True
-    scene.scene.specular = True
-    scene.scene.diffraction = True
-    scene.scene.scattering = True
-    scene.scene.max_depth = config.ray_tracing['max_depth']
-    scene.scene.num_samples = config.ray_tracing['num_samples']
+        # Add AGVs (receivers)
+        for i in range(config.num_agvs):
+            agv_id = f"agv_{i}"
+            # Ensure trajectory key exists - adjust if keys are 1-based like "agv_1"
+            trajectory_key = f"agv_{i+1}" if f"agv_{i+1}" in config.agv_trajectories else agv_id
+            if trajectory_key not in config.agv_trajectories:
+                 logger.error(f"Trajectory key '{trajectory_key}' not found in config.agv_trajectories")
+                 continue # Skip this AGV if config is missing
+            initial_pos = config.agv_trajectories[trajectory_key][0]
 
-    scene.validate()
-    return scene
+            if i >= len(config.agv_orientations):
+                 logger.error(f"Orientation index {i} out of bounds for config.agv_orientations")
+                 continue # Skip if config is missing
+
+            rx = Receiver(
+                name=f"rx_{agv_id}",
+                position=tf.constant(initial_pos, dtype=tf.float32),
+                orientation=tf.constant(config.agv_orientations[i], dtype=tf.float32)
+            )
+            rx_array = PlanarArray(
+                num_rows=config.agv_array['num_rows'],
+                num_cols=config.agv_array['num_cols'],
+                vertical_spacing=config.agv_array['vertical_spacing'],
+                horizontal_spacing=config.agv_array['horizontal_spacing'],
+                pattern=config.agv_array['pattern'],
+                polarization=config.agv_array['polarization']
+            )
+            rx.array = rx_array
+            scene.add(rx)
+            logger.debug(f"Added receiver for {agv_id} at position {initial_pos}")
+
+        # Configure ray tracing parameters
+        scene.los = config.ray_tracing['los']
+        scene.reflection = config.ray_tracing['reflection']
+        scene.diffraction = config.ray_tracing['diffraction']
+        scene.scattering = config.ray_tracing['scattering']
+        scene.max_depth = config.ray_tracing['max_depth']
+        scene.num_samples = config.ray_tracing['num_samples'] * config.bs_array['num_rows'] * config.bs_array['num_cols'] # Adjust samples as per Sionna docs
+        scene.method = config.ray_tracing['method']
+        logger.debug(f"Configured ray tracing parameters (num_samples adjusted to: {scene.num_samples})")
+
+        logger.info("Scene setup completed successfully")
+        return scene
+
+    except FileNotFoundError as e:
+        logger.error(f"Scene setup failed: {str(e)}")
+        raise
+    except KeyError as e:
+        logger.error(f"Scene setup failed: Missing key in configuration - {str(e)}")
+        raise
+    except Exception as e:
+        logger.error(f"Scene setup failed with unexpected error: {str(e)}")
+        # Log the full traceback for unexpected errors
+        logger.exception("Traceback:")
+        raise
+
+# --- Example Usage (requires a config object) ---
+# if __name__ == '__main__':
+#     # This assumes you have a config.py defining SmartFactoryConfig
+#     # and that it populates all the necessary fields used above
+#     try:
+#         config = SmartFactoryConfig()
+#         # Make sure the materials dict has the required keys
+#         if 'materials' not in config or 'concrete' not in config.materials or 'metal' not in config.materials:
+#              raise ValueError("Config object must define config.materials['concrete'] and config.materials['metal']")
+#         if 'conductivity' not in config.materials['concrete'] or 'relative_permittivity' not in config.materials['concrete']:
+#              raise ValueError("Concrete material config missing 'conductivity' or 'relative_permittivity'")
+#         if 'conductivity' not in config.materials['metal'] or 'relative_permittivity' not in config.materials['metal']:
+#              raise ValueError("Metal material config missing 'conductivity' or 'relative_permittivity'")
+#
+#         # Example: Ensure necessary ray tracing keys exist
+#         required_rt_keys = ['los', 'reflection', 'diffraction', 'scattering', 'max_depth', 'num_samples', 'method']
+#         if 'ray_tracing' not in config or not all(key in config.ray_tracing for key in required_rt_keys):
+#              raise ValueError(f"Config object must define config.ray_tracing with keys: {required_rt_keys}")
+#
+#         # ... add similar checks for bs_array, agv_array, num_agvs, trajectories etc.
+#
+#         scene = setup_scene(config)
+#         print("Scene setup successful!")
+#         # You can now use the 'scene' object for simulations
+#         # e.g., paths = scene.compute_paths()
+#
+#     except Exception as e:
+#          print(f"Error during example execution: {e}")

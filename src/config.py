@@ -22,6 +22,8 @@ class SmartFactoryConfig:  # Define configuration class for smart factory simula
 
     def __init__(self):  # Initialize the configuration object with all parameters
         # Simulation parameters optimized for beam switching
+        self.use_xai = False  # Enable XAI analysis for beamforming decisions (future work)
+        self.use_causal_inference = False  # Enable causal inference for beamforming (future work)
         self.num_time_steps = 60000  # Set total time steps to 60,000 for 60 seconds of simulation at 1ms intervals
         self.sampling_frequency = tf.cast(1000, tf.float32)  # Define sampling frequency as 1000 Hz (1 sample per ms)
         self.batch_size = 1  # Set batch size to 1 for single-scenario simulation
@@ -37,7 +39,7 @@ class SmartFactoryConfig:  # Define configuration class for smart factory simula
         self.room_dim = [20.0, 20.0, 5.0]  # Define room dimensions as 20m x 20m x 5m (length, width, height)
         #self.path_loss_db = 80  # Typical value for indoor factory at 28GHz ## Removed, let Ray Tracing calculate dynamically
         # Frequency configuration for mmWave
-        self.carrier_frequency = tf.cast(140e9, tf.float32)  # Set carrier frequency to 140 GHz (THz band for 6G)
+        self.carrier_frequency = tf.cast(100e9, tf.float32)  # Set carrier frequency to 100 GHz (within valid range for concrete and metal)
         self.wavelength = tf.cast(SPEED_OF_LIGHT/self.carrier_frequency, tf.float32)  # Calculate wavelength based on frequency
         
         # Base station configuration optimized for beam switching
@@ -68,14 +70,14 @@ class SmartFactoryConfig:  # Define configuration class for smart factory simula
                 'relative_permittivity': 6.8,  # Updated for 140 GHz 
                 'conductivity': 2.8,  # Higher for 6G frequencies
                 'roughness': 0.1e-3,  # Set surface roughness to 0.1 mm
-                'scattering_coefficient': 0.7,  # Higher scattering at 140 GHz
+                'scattering_coefficient': 0,  # Higher scattering at 140 GHz
                 'xpd_coefficient': 0.8  # Set cross-polarization discrimination coefficient
             },
             'metal': {  # Properties for metal material (shelves)
                 'relative_permittivity': 1.0,  # Set relative permittivity for metal
                 'conductivity': 1.0e7,  # Define high conductivity for metal (S/m)
                 'roughness': 0.2e-3,  # Set surface roughness to 0.2 mm
-                'scattering_coefficient': 0.3,  # Define scattering coefficient for metal
+                'scattering_coefficient': 0,  # Define scattering coefficient for metal
                 'xpd_coefficient': 0.95  # Set cross-polarization discrimination coefficient
             }
         }
