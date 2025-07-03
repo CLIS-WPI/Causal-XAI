@@ -1,0 +1,117 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib import animation
+from IPython.display import HTML
+
+# ---------- Robot safety parameters ----------
+r_agv = 0.3          # AGV physical radius
+s_margin = 0.2       # Extra safety margin
+d_safe = r_agv + s_margin
+margin = d_safe + 0.2  # Safe distance from walls
+
+# ---------- Obstacles inside the factory ----------
+obstacles = [
+    ((6, 6, 0), (4, 1, 4)),    # O1
+    ((12, 6, 0), (2, 1, 4)),   # O2
+    ((4, 10, 0), (1, 2, 5)),   # O3
+    ((14, 12, 0), (1, 2, 5)),  # O4
+    ((8, 16, 0), (4, 1, 5))    # O5
+]
+
+# ---------- Define square perimeter path ----------
+waypoints = [
+    (margin, margin),
+    (20 - margin, margin),
+    (20 - margin, 20 - margin),
+    (margin, 20 - margin),
+    (margin, margin)
+]
+
+def generate_smooth_path(points, n_per_segment=50):
+    t = np.linspace(0, 1, n_per_segment)
+    x_coords, y_coords = [], []
+    for i in range(len(points)-1):
+        x1, y1 = points[i]
+        x2, y2 = points[i+1]
+        xc, yc = (x1 + x2) / 2, (y1 + y2) / 2
+        x = (1 - t) ** 2 * x1 + 2 * (1 - t) * t * xc + t ** 2 * x2
+        y = (1 - t) ** 2 * y1 + 2 * (1 - t) * t * yc + t ** 2 * y2
+        x_coords.extend(x)
+        y_coords.extend(y)
+    return np.array(x_coords), np.array(y_coords)
+
+# ---------- AGV1 path from start ----------
+agv1_x, agv1_y = generate_smooth_path(waypoints)
+agv1_z = np.ones_like(agv1_x) * 0.5
+
+# ---------- AGV2 starts from opposite corner (shifted by 50%) ----------
+shift = len(agv1_x) // 2
+agv2_x = np.roll(agv1_x, shift)
+agv2_y = np.roll(agv1_y, shift)
+agv2_z = np.ones_like(agv2_x) * 0.5
+
+# ---------- Safety checks ----------
+def distance_to_box(x, y, z, box_pos, box_dim):
+    bx, by, bz = box_pos
+    lx, ly, lz = box_dim
+    dx = max(bx - x, 0, x - (bx + lx))
+    dy = max(by - y, 0, y - (by + ly))
+    dz = max(bz - z, 0, z - (bz + lz))
+    return np.sqrt(dx**2 + dy**2 + dz**2)
+
+def is_safe_from_obstacles(x_path, y_path, z_path, obstacles, d_safe):
+    for x, y, z in zip(x_path, y_path, z_path):
+        for (pos, dim) in obstacles:
+            if distance_to_box(x, y, z, pos, dim) < d_safe:
+                return False
+    return True
+
+def is_safe_between_robots(x1, y1, z1, x2, y2, z2, d_safe):
+    for a, b, c, d_, e, f in zip(x1, y1, z1, x2, y2, z2):
+        if np.sqrt((a - d_)**2 + (b - e)**2 + (c - f)**2) < d_safe:
+            return False
+    return True
+
+# ---------- Check safety guarantees ----------
+print("✅ AGV1 is safe from obstacles:", is_safe_from_obstacles(agv1_x, agv1_y, agv1_z, obstacles, d_safe))
+print("✅ AGV2 is safe from obstacles:", is_safe_from_obstacles(agv2_x, agv2_y, agv2_z, obstacles, d_safe))
+print("✅ AGVs maintain safe distance:", is_safe_between_robots(agv1_x, agv1_y, agv1_z, agv2_x, agv2_y, agv2_z, d_safe))
+
+# ---------- Animation ----------
+def animate_agvs(x1, y1, x2, y2, obstacles):
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.set_xlim(0, 20)
+    ax.set_ylim(0, 20)
+    ax.set_aspect('equal')
+    ax.grid(True)
+    ax.set_title("AGV Motion Along Perimeter (Safe and Opposite Start)")
+
+    # Draw obstacles
+    for idx, ((ox, oy, _), (lx, ly, _)) in enumerate(obstacles):
+        rect = plt.Rectangle((ox, oy), lx, ly, color='gray', alpha=0.5)
+        ax.add_patch(rect)
+        ax.text(ox + lx/2, oy + ly/2, f"O{idx+1}", ha='center', va='center', fontsize=9, color='black')
+
+    # AGV markers and paths
+    agv1_dot, = ax.plot([], [], 'bo', markersize=10, label='AGV 1')
+    agv2_dot, = ax.plot([], [], 'go', markersize=10, label='AGV 2')
+    ax.plot(x1, y1, 'b--', alpha=0.3)
+    ax.plot(x2, y2, 'g--', alpha=0.3)
+
+    ax.legend()
+
+    def init():
+        agv1_dot.set_data([], [])
+        agv2_dot.set_data([], [])
+        return agv1_dot, agv2_dot
+
+    def update(i):
+        agv1_dot.set_data([x1[i]], [y1[i]])
+        agv2_dot.set_data([x2[i]], [y2[i]])
+        return agv1_dot, agv2_dot
+
+    ani = animation.FuncAnimation(fig, update, init_func=init, frames=len(x1), interval=100, blit=True)
+    return HTML(ani.to_jshtml())
+
+# ---------- Run animation ----------
+animate_agvs(agv1_x, agv1_y, agv2_x, agv2_y, obstacles)
